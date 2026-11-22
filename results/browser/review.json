@@ -1,0 +1,52 @@
+{
+  "browser": "153.0.8010.12",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "archive": {
+    "raw": 240,
+    "working": 38,
+    "official": 38,
+    "pageNavigation": true,
+    "partialMonth": true
+  },
+  "filters": {
+    "baseOnlyByDefault": true,
+    "conflictPolicy": "best"
+  },
+  "estimates": {
+    "hourly": 9,
+    "interpolated": 5.97,
+    "timezone": "Europe/Moscow"
+  },
+  "upload": {
+    "csv": true,
+    "json": true,
+    "xlsxWithDataOnSecondSheet": true,
+    "plainText": true
+  },
+  "downloads": {
+    "review": {
+      "name": "review_kr1_pressure_hpa_2024-04-01_2024-04-05.xlsx",
+      "bytes": 54778
+    },
+    "annotatedSource": {
+      "name": "original_kr1_t_air_2032-01-04_2032-01-04.xlsx",
+      "bytes": 9927
+    }
+  },
+  "mobile": {
+    "viewport": 390,
+    "document": 390,
+    "table": 790,
+    "region": 364
+  },
+  "pageErrors": []
+}

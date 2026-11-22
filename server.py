@@ -10,10 +10,14 @@ from urllib.parse import parse_qs, urlsplit
 from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
 from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
+from review_service import ReportExpired, create_report, report_excel, report_page
+from review_upload import MAX_BYTES as MAX_REVIEW_UPLOAD
+from station_model import predict
 from temperature_events import export_events, query_events
 
 WEB = ROOT / "web"
 IMPORT_EXAMPLE = ROOT / "results" / "examples" / "kr1-station-2024-04-01.json"
+XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 API = {
     "/api/meta": "Список станций, диапазонов и параметров",
     "/api/series": "Суточные, декадные и месячные ряды с расчётом покрытия",
@@ -24,6 +28,10 @@ API = {
     "/api/events": "Переходы среднесуточной температуры воздуха через 0 °C",
     "/api/events/export": "Выгрузка выбранных переходов в CSV",
     "/api/import": "POST с файлом наблюдений в формате CSV или JSON для отдельного расчёта",
+    "/api/review": "POST — фильтрация архива или XLSX/CSV/JSON, GET — страница готового расчёта по token",
+    "/api/review.xlsx": "Полный расчёт в редактируемом Excel по token",
+    "/api/review-original.xlsx": "Загруженная книга XLSX с отметками на исходном листе и рабочими решениями",
+    "/api/model": "Прогноз следующей среднесуточной температуры по станции",
 }
 WEB_FILES = {
     "/": "index.html",
@@ -42,6 +50,16 @@ WEB_FILES = {
     "/calendar": "calendar.html",
     "/calendar.js": "calendar.js",
     "/calendar.css": "calendar.css",
+    "/review": "review.html",
+    "/review.js": "review.js",
+    "/review.css": "review.css",
+    "/model": "model.html",
+    "/model.js": "model.js",
+    "/model.css": "model.css",
+    "/precip": "precip.html",
+    "/precip.js": "precip.js",
+    "/precip.css": "precip.css",
+    "/precip-example.json": "precip-example.json",
 }
 
 
@@ -65,7 +83,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store" if self.command == "POST" else "no-cache")
+        no_store = self.command == "POST" or self.path.startswith("/api/review")
+        self.send_header("Cache-Control", "no-store" if no_store else "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         if filename:
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -107,6 +126,16 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/import/example":
                 self.respond(IMPORT_EXAMPLE.read_bytes(), "application/json; charset=utf-8",
                              filename=IMPORT_EXAMPLE.name)
+            elif route == "/api/review":
+                self.send_json(report_page(query))
+            elif route in ("/api/review.xlsx", "/api/review-original.xlsx"):
+                filename, body = report_excel(query, annotated=route == "/api/review-original.xlsx")
+                self.respond(body, XLSX_TYPE, filename=filename)
+            elif route == "/review-example.xlsx":
+                self.respond((ROOT / "results/review/review-example.xlsx").read_bytes(), XLSX_TYPE,
+                             filename="review-example.xlsx")
+            elif route == "/api/model":
+                self.send_json(predict(query))
             elif route in WEB_FILES:
                 path = WEB / WEB_FILES[route]
                 if not path.is_file():
@@ -119,6 +148,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error":"Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
         except (BrokenPipeError, ConnectionResetError):
             return
+        except ReportExpired as error:
+            self.send_json({"error": str(error)}, HTTPStatus.GONE)
         except ValueError as error:
             self.send_json({"error":str(error)}, HTTPStatus.BAD_REQUEST)
         except Exception as error:
@@ -128,11 +159,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             parts = urlsplit(self.path)
-            if parts.path != "/api/import":
+            if parts.path not in ("/api/import", "/api/review"):
                 self.send_json({"error": "Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
                 return
             source_format = CONTENT_FORMATS.get(self.headers.get_content_type())
-            if source_format is None:
+            is_review = parts.path == "/api/review"
+            if not is_review and source_format is None:
                 self.send_json({"error": "Выберите файл CSV или JSON"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
                 return
             lengths = self.headers.get_all("Content-Length", [])
@@ -143,17 +175,21 @@ class Handler(BaseHTTPRequestHandler):
                 size = int(lengths[0])
             except ValueError:
                 raise ValueError("Указан неверный размер файла") from None
-            if size <= 0:
+            if size < 0 or (not is_review and size == 0):
                 raise ValueError("Файл не содержит данных")
-            if size > MAX_UPLOAD:
-                self.send_json({"error": "Размер файла превышает 5 МиБ"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            maximum = MAX_REVIEW_UPLOAD if is_review else MAX_UPLOAD
+            if size > maximum:
+                self.send_json({"error": f"Размер файла превышает {maximum // (1024*1024)} МиБ"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 return
             self.connection.settimeout(10)
             body = self.rfile.read(size)
             if len(body) != size:
                 raise ValueError("Файл загружен не полностью")
             query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
-            self.send_json(preview_import(body, source_format, query))
+            if is_review:
+                self.send_json(create_report(query, body, self.headers.get_content_type()))
+            else:
+                self.send_json(preview_import(body, source_format, query))
         except (BrokenPipeError, ConnectionResetError):
             return
         except TimeoutError:

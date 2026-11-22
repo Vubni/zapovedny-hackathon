@@ -5,67 +5,67 @@
       "request": "/api/meta",
       "status": 200,
       "bytes": 1975,
-      "elapsed_ms": 4.1
+      "elapsed_ms": 2.6
     },
     {
       "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month",
       "status": 200,
       "bytes": 6549,
-      "elapsed_ms": 4.0
+      "elapsed_ms": 2.9
     },
     {
       "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=day",
       "status": 200,
       "bytes": 13414,
-      "elapsed_ms": 1.1
+      "elapsed_ms": 1.0
     },
     {
       "request": "/api/series?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month",
       "status": 200,
       "bytes": 957,
-      "elapsed_ms": 1.1
+      "elapsed_ms": 0.7
     },
     {
       "request": "/api/series?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month",
       "status": 200,
       "bytes": 978,
-      "elapsed_ms": 1.2
+      "elapsed_ms": 0.7
     },
     {
       "request": "/api/raw?station=kr1&param=pressure_hpa&day=2024-04-01&download=1",
       "status": 200,
       "bytes": 5816,
-      "elapsed_ms": 5.7
+      "elapsed_ms": 5.9
     },
     {
       "request": "/api/raw?station=kr1&param=pressure_hpa&day=2024-04-29&download=1",
       "status": 200,
       "bytes": 3491,
-      "elapsed_ms": 8.0
+      "elapsed_ms": 6.6
     },
     {
       "request": "/api/raw?station=kr2&param=pressure_hpa&day=2024-04-01",
       "status": 200,
       "bytes": 5230,
-      "elapsed_ms": 6.4
+      "elapsed_ms": 6.3
     },
     {
       "request": "/api/raw?station=ame60&param=wind_dir&day=1993-04-02",
       "status": 200,
       "bytes": 10247,
-      "elapsed_ms": 13.7
+      "elapsed_ms": 10.6
     },
     {
       "request": "/api/export?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month",
       "status": 200,
       "bytes": 4284,
-      "elapsed_ms": 3.5
+      "elapsed_ms": 2.3
     },
     {
       "request": "/api/compare",
       "status": 200,
       "bytes": 4096,
-      "elapsed_ms": 4.9
+      "elapsed_ms": 55.3
     },
     {
       "request": "/api/series?station=..%2Fkr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month",
@@ -77,7 +77,7 @@
       "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=year",
       "status": 400,
       "bytes": 78,
-      "elapsed_ms": 0.4
+      "elapsed_ms": 0.5
     },
     {
       "request": "/api/series?station=kr1&param=soil_05&start=2024-01-01&end=2024-12-31&grain=month",
@@ -95,13 +95,13 @@
       "request": "/api/series?station=kr1&param=pressure_hpa&start=2025-01-01&end=2024-12-31&grain=month",
       "status": 400,
       "bytes": 78,
-      "elapsed_ms": 0.4
+      "elapsed_ms": 0.3
     },
     {
       "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2021",
       "status": 400,
       "bytes": 91,
-      "elapsed_ms": 0.4
+      "elapsed_ms": 0.3
     },
     {
       "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_end=bad",
@@ -113,7 +113,7 @@
       "request": "/missing",
       "status": 404,
       "bytes": 50,
-      "elapsed_ms": 0.9
+      "elapsed_ms": 0.3
     }
   ],
   "note": "Время одного локального прогона, миллисекунды."

@@ -99,7 +99,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 172
+            "elapsedMs": 144
           }
         },
         {
@@ -394,7 +394,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 161
+            "elapsedMs": 136
           }
         },
         {

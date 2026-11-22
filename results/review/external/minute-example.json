@@ -1,0 +1,188 @@
+{
+  "query": {
+    "station": "kr1",
+    "param": "t_air",
+    "start": "2024-04-15",
+    "end": "2024-04-15",
+    "filters": "hampel",
+    "timezone": "Europe/Moscow",
+    "fill": "1",
+    "subhour": "interpolate"
+  },
+  "observation": {
+    "time": "2024-04-15 15:32",
+    "line": 5035,
+    "source": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+    "original": {
+      "datetime": "2024-04-15 15:32",
+      "t_air": "8.4",
+      "rh": "97",
+      "wind_speed": "1.28",
+      "wind_gust": "6.37",
+      "wind_dir": "261",
+      "pressure_hpa": "770.1",
+      "qc_flag": "pressure_hpa:range"
+    },
+    "value": 8.4,
+    "keep": false,
+    "official_keep": true,
+    "reasons": [
+      "Хэмпел: отклонение 3.23 от локальной медианы 5.17 превышает порог 3.00."
+    ],
+    "reason_codes": [
+      "hampel"
+    ],
+    "official_reasons": [],
+    "official_status": "kept",
+    "conflict": false,
+    "synthetic": false,
+    "estimate": 5.97,
+    "estimate_sources": "ERA5 + MERRA-2 · интерполяция к минуте",
+    "provenance": {
+      "source_count": 2,
+      "unit": "°C",
+      "sources": [
+        {
+          "id": "era5",
+          "name": "Open-Meteo",
+          "model": "ERA5",
+          "url": "https://archive-api.open-meteo.com/v1/archive?latitude=56.52&longitude=32.87&start_date=2024-03-31&end_date=2024-05-01&hourly=temperature_2m%2Crelative_humidity_2m%2Csurface_pressure&timezone=GMT&models=era5",
+          "retrieved_at": "2026-11-22T10:07:03+00:00",
+          "variable": "temperature_2m",
+          "source_unit": "°C",
+          "description": "ERA5, мгновенные снимки на границах часа",
+          "unit": "°C",
+          "samples": [
+            {
+              "time_utc": "2024-04-15T12:00:00+00:00",
+              "value": 6.7,
+              "anchor_utc": "2024-04-15T12:00:00+00:00"
+            },
+            {
+              "time_utc": "2024-04-15T13:00:00+00:00",
+              "value": 6.6,
+              "anchor_utc": "2024-04-15T13:00:00+00:00"
+            }
+          ],
+          "value": 6.6466666666666665
+        },
+        {
+          "id": "merra2",
+          "name": "NASA POWER",
+          "model": "MERRA-2",
+          "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CPS&community=SB&longitude=32.87&latitude=56.52&start=20240331&end=20240501&format=JSON&time-standard=UTC",
+          "retrieved_at": "2026-11-22T10:13:38+00:00",
+          "variable": "T2M",
+          "source_unit": "C",
+          "description": "MERRA-2, среднее за час",
+          "unit": "°C",
+          "samples": [
+            {
+              "time_utc": "2024-04-15T12:00:00+00:00",
+              "value": 5.3,
+              "anchor_utc": "2024-04-15T12:30:00+00:00"
+            },
+            {
+              "time_utc": "2024-04-15T13:00:00+00:00",
+              "value": 5.17,
+              "anchor_utc": "2024-04-15T13:30:00+00:00"
+            }
+          ],
+          "value": 5.2956666666666665
+        }
+      ],
+      "pressure_reference": null,
+      "kind": "subhour_reanalysis",
+      "time_utc": "2024-04-15T12:32:00+00:00",
+      "method": "arithmetic_mean_of_linear_model_interpolations"
+    },
+    "estimate_status": "estimated",
+    "estimate_reason": null
+  },
+  "counts": {
+    "raw_n": 47,
+    "kept": 45,
+    "official_kept": 47,
+    "restored": 0,
+    "excluded": 2,
+    "rejected": 2,
+    "official_rejected": 0
+  },
+  "external": {
+    "status": "estimated",
+    "timezone": "Europe/Moscow",
+    "parameter": "t_air",
+    "unit": "°C",
+    "reason": null,
+    "min_sources": 2,
+    "requested_sources": [
+      "era5",
+      "merra2"
+    ],
+    "grid_minutes": 60,
+    "subhour": "interpolate",
+    "estimated_count": 2,
+    "unavailable_count": 0,
+    "synthetic_count": 0,
+    "sources": [
+      {
+        "id": "era5",
+        "name": "Open-Meteo",
+        "model": "ERA5",
+        "description": "ERA5, мгновенные снимки на границах часа",
+        "kind": "reanalysis",
+        "url": "https://archive-api.open-meteo.com/v1/archive?latitude=56.52&longitude=32.87&start_date=2024-03-31&end_date=2024-05-01&hourly=temperature_2m%2Crelative_humidity_2m%2Csurface_pressure&timezone=GMT&models=era5",
+        "mode": "snapshot",
+        "start_utc": "2024-03-31",
+        "end_utc": "2024-05-01",
+        "timezone": "UTC",
+        "variable_units": {
+          "temperature_2m": "°C",
+          "relative_humidity_2m": "%",
+          "surface_pressure": "hPa"
+        },
+        "requested_coordinates": {
+          "latitude": 56.52,
+          "longitude": 32.87
+        },
+        "retrieved_at": "2026-11-22T10:07:03+00:00",
+        "status": "available",
+        "coordinates": {
+          "latitude": 56.5,
+          "longitude": 32.75,
+          "elevation_m": 250.0
+        },
+        "count": 2
+      },
+      {
+        "id": "merra2",
+        "name": "NASA POWER",
+        "model": "MERRA-2",
+        "description": "MERRA-2, среднее за час",
+        "kind": "reanalysis",
+        "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CPS&community=SB&longitude=32.87&latitude=56.52&start=20240331&end=20240501&format=JSON&time-standard=UTC",
+        "mode": "snapshot",
+        "start_utc": "2024-03-31",
+        "end_utc": "2024-05-01",
+        "timezone": "UTC",
+        "variable_units": {
+          "T2M": "C",
+          "RH2M": "%",
+          "PS": "kPa"
+        },
+        "requested_coordinates": {
+          "latitude": 56.52,
+          "longitude": 32.87
+        },
+        "retrieved_at": "2026-11-22T10:13:38+00:00",
+        "status": "available",
+        "coordinates": {
+          "latitude": 56.52,
+          "longitude": 32.87,
+          "elevation_m": 237.92
+        },
+        "count": 2
+      }
+    ]
+  }
+}

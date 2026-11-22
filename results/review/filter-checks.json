@@ -1,0 +1,73 @@
+{
+  "tests": 15,
+  "failures": 0,
+  "archive_conflict": {
+    "date": "1993-04-02",
+    "lines": [
+      8802,
+      8803
+    ],
+    "counts": {
+      "raw_n": 97,
+      "kept": 95,
+      "official_kept": 95,
+      "restored": 0,
+      "excluded": 0,
+      "rejected": 2,
+      "official_rejected": 2
+    },
+    "default_counts": {
+      "raw_n": 97,
+      "kept": 97,
+      "official_kept": 95,
+      "restored": 2,
+      "excluded": 0,
+      "rejected": 0,
+      "official_rejected": 2
+    }
+  },
+  "off_grid_records": 4909,
+  "official_sqlite": {
+    "days": 366,
+    "months": 12
+  },
+  "archive_pressure": {
+    "extended_april": {
+      "raw_n": 1389,
+      "kept": 118,
+      "official_kept": 117,
+      "restored": 1,
+      "excluded": 0,
+      "rejected": 1271,
+      "official_rejected": 1272
+    },
+    "restored_observation": [
+      5643,
+      "2024-04-28 16:37",
+      1100.0
+    ],
+    "stuck_april_1": {
+      "raw_n": 48,
+      "kept": 0,
+      "official_kept": 38,
+      "restored": 0,
+      "excluded": 38,
+      "rejected": 48,
+      "official_rejected": 10
+    }
+  },
+  "source_sha256": {
+    "archive": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+    "database": "3f6495f6ffee9e7e9d6e2c522b7655488bcc4f9285fa681d039484cf0b4111c9"
+  },
+  "unrestricted_period": {
+    "start": "2023-01-01",
+    "end": "2024-06-01",
+    "days": 518
+  },
+  "full_ame60_archive": {
+    "rows": 805561,
+    "days": 10958,
+    "months": 360
+  }
+}

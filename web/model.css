@@ -1,0 +1,61 @@
+.model-shell .page-actions { flex: none; }
+.model-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  padding-bottom: 11px;
+}
+.model-filters[data-manual="true"] { grid-template-columns: repeat(5, minmax(0, 1fr)) auto; }
+.model-hint {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: .8rem;
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: 15px;
+}
+.model-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 17px;
+  margin: 0;
+  padding: 11px 15px 13px;
+  background: var(--green-tint);
+  border-block: 1px solid var(--line);
+}
+.model-readings dt { color: var(--muted); font-size: .77rem; font-weight: 650; }
+.model-readings dd {
+  margin: 3px 0 0;
+  color: var(--forest);
+  font-size: 1.28rem;
+  line-height: 1.1;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.model-inputs { padding: 12px 15px 14px; }
+.model-inputs h3 { font-size: .84rem; }
+.model-inputs ul { padding-left: 18px; margin: 4px 0 0; font-size: .84rem; }
+.model-test-date { display: block; color: var(--muted); font-size: .74rem; white-space: normal; }
+.model-test-selected { background: var(--green-tint); }
+.model-test-note { border-top: 1px solid var(--line); padding: 10px 15px; font-size: .82rem; color: var(--muted); }
+.model-method { padding: 11px 15px; font-size: .86rem; }
+.model-method summary { color: var(--forest); font-weight: 650; }
+.model-method p { max-width: 75ch; margin-top: 7px; }
+
+@media (max-width: 1000px) {
+  .model-filters[data-manual="true"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .model-grid { grid-template-columns: 1fr; gap: 0; }
+}
+@media (max-width: 750px) {
+  .model-shell .page-heading { align-items: start; flex-direction: column; gap: 10px; }
+  .model-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .model-filters[data-manual="true"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .model-filters[data-manual="true"] .model-submit { grid-column: 2; }
+  .model-validation th, .model-validation td { padding-inline: 5px; }
+  .model-validation tr > :first-child { padding-left: 10px; }
+  .model-validation tr > :last-child { padding-right: 10px; }
+  .model-validation thead th { white-space: normal; }
+}

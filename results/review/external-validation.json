@@ -1,0 +1,437 @@
+{
+  "parameter": "t_air",
+  "unit": "°C",
+  "archive_period": {
+    "start": "2024-04-01",
+    "end": "2024-04-30"
+  },
+  "run": "python3 -m checks.validate_external",
+  "input_sha256": {
+    "meteo_hack_dataset.zip": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+    "era5-april-2024.json": "45d680a335d73780d7e18d9e398a327fa9c7dba6954ebb878525657b4efded03",
+    "merra2-april-2024.json": "c9d5ad9789641d7501e3dff1208ad0f7e5c8f2d5dddbadadd2420a1586c67110"
+  },
+  "sample_hours": {
+    "calendar": 720,
+    "both_models_by_timezone": {
+      "UTC": 720,
+      "Europe/Moscow": 720
+    },
+    "both_models_both_timezones": 720,
+    "both_stations_both_models_both_timezones": 652
+  },
+  "method": {
+    "reference_filters": [
+      "conflicts",
+      "hampel",
+      "spike",
+      "stuck"
+    ],
+    "reference": "Строки проходят правила кейса и указанные фильтры. Среднее за [H:00, H+1:00) рассчитано интегрированием линейной связи соседних измерений. Требуется полное покрытие интервала. Удалённые сроки, повторы и длинные разрывы не соединяются.",
+    "max_observation_gap_minutes": 45,
+    "prediction": "На пустом месяце вызван external_fill.apply_estimates. Отдельные значения взяты из происхождения оценки, среднее взято из результата оператора с производственным округлением. Замеры используются только для сравнения, веса и смещение не подгонялись.",
+    "comparison": "Для обоих источников и обеих трактовок использованы одни и те же архивные интервалы. common_station_hours дополнительно ограничен часами с эталоном обеих станций.",
+    "bias": "Оценка минус измеренное среднее за час. Положительное смещение соответствует завышению температуры.",
+    "rapid_change": "Модуль изменения между границами часа не меньше заданного порога. Это признак быстрого изменения температуры без диагностики погодных фронтов.",
+    "rapid_change_threshold_c": 3
+  },
+  "limits": [
+    "Архивный часовой пояс требует подтверждения. Сравнение ошибок помогает оценить две трактовки на этом месяце.",
+    "Модельные ячейки не разрешают микроклимат станций. Фронты и другие быстрые изменения могут быть сглажены или сдвинуты относительно рядов станций.",
+    "Вычисленный часовой эталон зависит от частоты записи и линейной аппроксимации между замерами. На часы без пригодных замеров, другие месяцы, давление и влажность эти метрики напрямую не переносятся."
+  ],
+  "stations": {
+    "kr1": {
+      "reference_hours": 678,
+      "metrics": {
+        "UTC": {
+          "station_hours": {
+            "n": 678,
+            "era5": {
+              "mae_c": 2.58,
+              "bias_c": 0.98
+            },
+            "merra2": {
+              "mae_c": 2.64,
+              "bias_c": -0.21
+            },
+            "mean": {
+              "mae_c": 2.49,
+              "bias_c": 0.38
+            }
+          },
+          "common_station_hours": {
+            "n": 652,
+            "era5": {
+              "mae_c": 2.59,
+              "bias_c": 0.93
+            },
+            "merra2": {
+              "mae_c": 2.68,
+              "bias_c": -0.3
+            },
+            "mean": {
+              "mae_c": 2.5,
+              "bias_c": 0.32
+            }
+          },
+          "rapid_change_hours": {
+            "n": 40,
+            "era5": {
+              "mae_c": 4.16,
+              "bias_c": 2.89
+            },
+            "merra2": {
+              "mae_c": 3.84,
+              "bias_c": 1.08
+            },
+            "mean": {
+              "mae_c": 3.83,
+              "bias_c": 1.99
+            }
+          },
+          "other_hours": {
+            "n": 638,
+            "era5": {
+              "mae_c": 2.48,
+              "bias_c": 0.86
+            },
+            "merra2": {
+              "mae_c": 2.57,
+              "bias_c": -0.3
+            },
+            "mean": {
+              "mae_c": 2.4,
+              "bias_c": 0.28
+            }
+          }
+        },
+        "Europe/Moscow": {
+          "station_hours": {
+            "n": 678,
+            "era5": {
+              "mae_c": 1.69,
+              "bias_c": 0.98
+            },
+            "merra2": {
+              "mae_c": 1.79,
+              "bias_c": -0.22
+            },
+            "mean": {
+              "mae_c": 1.5,
+              "bias_c": 0.38
+            }
+          },
+          "common_station_hours": {
+            "n": 652,
+            "era5": {
+              "mae_c": 1.73,
+              "bias_c": 1.0
+            },
+            "merra2": {
+              "mae_c": 1.81,
+              "bias_c": -0.21
+            },
+            "mean": {
+              "mae_c": 1.53,
+              "bias_c": 0.4
+            }
+          },
+          "rapid_change_hours": {
+            "n": 40,
+            "era5": {
+              "mae_c": 2.11,
+              "bias_c": 1.61
+            },
+            "merra2": {
+              "mae_c": 1.78,
+              "bias_c": -0.79
+            },
+            "mean": {
+              "mae_c": 1.48,
+              "bias_c": 0.41
+            }
+          },
+          "other_hours": {
+            "n": 638,
+            "era5": {
+              "mae_c": 1.66,
+              "bias_c": 0.94
+            },
+            "merra2": {
+              "mae_c": 1.79,
+              "bias_c": -0.18
+            },
+            "mean": {
+              "mae_c": 1.5,
+              "bias_c": 0.38
+            }
+          }
+        }
+      },
+      "examples": {
+        "fastest_observed_change": {
+          "archive_hour": "2024-04-02 10:00",
+          "observed_hour_mean_c": 16.38,
+          "observed_end_minus_start_c": 6.0,
+          "observation_csv_lines": [
+            4401,
+            4402,
+            4403,
+            4404
+          ],
+          "predictions": {
+            "UTC": {
+              "start_utc": "2024-04-02T10:00:00+00:00",
+              "era5": 22.9,
+              "merra2": 16.88,
+              "mean": 19.89
+            },
+            "Europe/Moscow": {
+              "start_utc": "2024-04-02T07:00:00+00:00",
+              "era5": 15.6,
+              "merra2": 11.42,
+              "mean": 13.51
+            }
+          }
+        },
+        "largest_mean_error_by_timezone": {
+          "UTC": {
+            "archive_hour": "2024-04-26 06:00",
+            "observed_hour_mean_c": -0.4,
+            "observed_end_minus_start_c": 1.7,
+            "observation_csv_lines": [
+              5531,
+              5532,
+              5533,
+              5534
+            ],
+            "predictions": {
+              "UTC": {
+                "start_utc": "2024-04-26T06:00:00+00:00",
+                "era5": 10.0,
+                "merra2": 11.4,
+                "mean": 10.7
+              }
+            }
+          },
+          "Europe/Moscow": {
+            "archive_hour": "2024-04-11 02:00",
+            "observed_hour_mean_c": 7.98,
+            "observed_end_minus_start_c": -0.3,
+            "observation_csv_lines": [
+              4817,
+              4818,
+              4819,
+              4820
+            ],
+            "predictions": {
+              "Europe/Moscow": {
+                "start_utc": "2024-04-10T23:00:00+00:00",
+                "era5": 14.5,
+                "merra2": 14.47,
+                "mean": 14.48
+              }
+            }
+          }
+        }
+      }
+    },
+    "kr2": {
+      "reference_hours": 691,
+      "metrics": {
+        "UTC": {
+          "station_hours": {
+            "n": 691,
+            "era5": {
+              "mae_c": 2.48,
+              "bias_c": 0.57
+            },
+            "merra2": {
+              "mae_c": 2.69,
+              "bias_c": -0.54
+            },
+            "mean": {
+              "mae_c": 2.45,
+              "bias_c": 0.01
+            }
+          },
+          "common_station_hours": {
+            "n": 652,
+            "era5": {
+              "mae_c": 2.4,
+              "bias_c": 0.59
+            },
+            "merra2": {
+              "mae_c": 2.64,
+              "bias_c": -0.63
+            },
+            "mean": {
+              "mae_c": 2.38,
+              "bias_c": -0.02
+            }
+          },
+          "rapid_change_hours": {
+            "n": 24,
+            "era5": {
+              "mae_c": 6.6,
+              "bias_c": 4.07
+            },
+            "merra2": {
+              "mae_c": 5.07,
+              "bias_c": 3.01
+            },
+            "mean": {
+              "mae_c": 5.83,
+              "bias_c": 3.54
+            }
+          },
+          "other_hours": {
+            "n": 667,
+            "era5": {
+              "mae_c": 2.33,
+              "bias_c": 0.44
+            },
+            "merra2": {
+              "mae_c": 2.6,
+              "bias_c": -0.67
+            },
+            "mean": {
+              "mae_c": 2.32,
+              "bias_c": -0.11
+            }
+          }
+        },
+        "Europe/Moscow": {
+          "station_hours": {
+            "n": 691,
+            "era5": {
+              "mae_c": 1.13,
+              "bias_c": 0.66
+            },
+            "merra2": {
+              "mae_c": 1.63,
+              "bias_c": -0.47
+            },
+            "mean": {
+              "mae_c": 1.1,
+              "bias_c": 0.1
+            }
+          },
+          "common_station_hours": {
+            "n": 652,
+            "era5": {
+              "mae_c": 1.14,
+              "bias_c": 0.67
+            },
+            "merra2": {
+              "mae_c": 1.61,
+              "bias_c": -0.54
+            },
+            "mean": {
+              "mae_c": 1.09,
+              "bias_c": 0.06
+            }
+          },
+          "rapid_change_hours": {
+            "n": 24,
+            "era5": {
+              "mae_c": 1.61,
+              "bias_c": 1.06
+            },
+            "merra2": {
+              "mae_c": 2.25,
+              "bias_c": -0.25
+            },
+            "mean": {
+              "mae_c": 1.65,
+              "bias_c": 0.41
+            }
+          },
+          "other_hours": {
+            "n": 667,
+            "era5": {
+              "mae_c": 1.11,
+              "bias_c": 0.64
+            },
+            "merra2": {
+              "mae_c": 1.61,
+              "bias_c": -0.47
+            },
+            "mean": {
+              "mae_c": 1.08,
+              "bias_c": 0.08
+            }
+          }
+        }
+      },
+      "examples": {
+        "fastest_observed_change": {
+          "archive_hour": "2024-04-29 07:00",
+          "observed_hour_mean_c": 8.08,
+          "observed_end_minus_start_c": 7.14,
+          "observation_csv_lines": [
+            5646,
+            5647,
+            5648,
+            5649
+          ],
+          "predictions": {
+            "UTC": {
+              "start_utc": "2024-04-29T07:00:00+00:00",
+              "era5": 17.1,
+              "merra2": 16.66,
+              "mean": 16.88
+            },
+            "Europe/Moscow": {
+              "start_utc": "2024-04-29T04:00:00+00:00",
+              "era5": 8.35,
+              "merra2": 9.42,
+              "mean": 8.88
+            }
+          }
+        },
+        "largest_mean_error_by_timezone": {
+          "UTC": {
+            "archive_hour": "2024-04-29 06:00",
+            "observed_hour_mean_c": 1.87,
+            "observed_end_minus_start_c": 4.24,
+            "observation_csv_lines": [
+              5644,
+              5645,
+              5646,
+              5647
+            ],
+            "predictions": {
+              "UTC": {
+                "start_utc": "2024-04-29T06:00:00+00:00",
+                "era5": 15.0,
+                "merra2": 15.21,
+                "mean": 15.11
+              }
+            }
+          },
+          "Europe/Moscow": {
+            "archive_hour": "2024-04-09 11:00",
+            "observed_hour_mean_c": 10.37,
+            "observed_end_minus_start_c": 1.45,
+            "observation_csv_lines": [
+              4711,
+              4712,
+              4713,
+              4714
+            ],
+            "predictions": {
+              "Europe/Moscow": {
+                "start_utc": "2024-04-09T08:00:00+00:00",
+                "era5": 18.0,
+                "merra2": 12.78,
+                "mean": 15.39
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

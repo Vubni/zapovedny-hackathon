@@ -1,0 +1,88 @@
+.precip-page { max-width: 1140px; padding-bottom: 36px; }
+.precip-panel {
+  margin-top: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.precip-time {
+  display: grid;
+  grid-template-columns: 1fr minmax(240px, .85fr);
+  gap: 20px;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.precip-period { margin-top: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.precip-timeline label { font-size: .79rem; font-weight: 650; color: var(--muted); }
+.precip-stepper { display: flex; gap: 10px; align-items: center; }
+.precip-stepper .button { min-width: 40px; padding: 0; font-size: 1.1rem; }
+.precip-stepper .button:hover:enabled { background: var(--green-tint); }
+.precip-stepper input { flex: 1; width: 100%; min-width: 0; height: 34px; margin: 0; accent-color: var(--green); }
+.precip-time-labels { display: flex; justify-content: space-between; gap: 8px; padding-inline: 50px; color: var(--muted); font-size: .72rem; white-space: nowrap; }
+.precip-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; }
+.precip-figure { margin: 0; padding: 18px 22px 20px; }
+.precip-figure figcaption { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.precip-figure figcaption, .precip-axis { color: var(--muted); font-size: .77rem; font-weight: 650; }
+.precip-axis { text-align: center; margin-left: 54px; }
+.precip-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 3px; }
+.precip-grid th, .precip-grid td { padding: 0; border: 0; background: none; }
+.precip-grid th[scope="row"] { width: 51px; text-align: left; }
+.precip-grid th { color: var(--muted); font-size: .74rem; font-weight: 630; text-align: center; }
+.precip-grid td { position: relative; }
+.precip-grid button, .precip-swatch { background: var(--precip-color); color: var(--precip-text, #18382e); }
+.precip-grid button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: 104px;
+  aspect-ratio: 1.08;
+  border: 1px solid #162e2b22;
+  border-radius: 4px;
+  font-size: clamp(.8rem, 1.7vw, 1.1rem);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.precip-grid button:hover, .precip-grid button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--precip-text, #18382e);
+}
+.precip-grid button:focus-visible { position: relative; z-index: 1; }
+.precip-marker {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 2px solid #53340d;
+  border-radius: 50%;
+  background: #f8c758;
+  box-shadow: 0 0 0 1px #fffefa;
+}
+.precip-grid .precip-marker { position: absolute; left: 46%; top: 18%; transform: translate(-50%, -50%); pointer-events: none; }
+.precip-notes { padding: 19px 18px; border-inline-start: 1px solid var(--line); }
+.precip-notes h3 { font-size: .9rem; }
+.precip-legend { display: grid; gap: 7px; margin: 10px 0 16px; padding: 0; list-style: none; }
+.precip-legend li, .precip-reserve { display: flex; align-items: center; gap: 9px; font-size: .82rem; }
+.precip-swatch { width: 22px; height: 15px; border: 1px solid #162e2b22; border-radius: 3px; }
+[data-level="0"] { --precip-color: #eef0e7; }
+[data-level="1"] { --precip-color: #c4e3df; }
+[data-level="2"] { --precip-color: #8bc7cd; }
+[data-level="3"] { --precip-color: #337d9d; --precip-text: #fff; }
+[data-level="4"] { --precip-color: #233a72; --precip-text: #fff; }
+[data-level="missing"] { --precip-color: repeating-linear-gradient(-45deg, #f0ece2 0 4px, #dfd8c9 4px 6px); }
+.precip-selection { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+.precip-selection p { margin-top: 4px; color: var(--muted); font-size: .8rem; }
+.precip-source { display: grid; gap: 5px; margin-top: 14px; color: var(--muted); font-size: .82rem; }
+@media (max-width: 740px) {
+  .precip-time, .precip-layout { grid-template-columns: 1fr; }
+  .precip-time { gap: 8px; }
+  .precip-notes { border-inline-start: 0; border-top: 1px solid var(--line); }
+  .precip-legend { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 420px) {
+  .precip-time, .precip-figure, .precip-notes { padding-inline: 10px; }
+  .precip-grid { border-spacing: 2px; }
+  .precip-grid th[scope="row"] { width: 43px; }
+  .precip-grid th { font-size: .62rem; }
+  .precip-axis { margin-left: 45px; }
+  .precip-time-labels { padding-inline: 0; }
+}

@@ -68,10 +68,18 @@ def pack(destination):
         check(project, ["import_station.py", "--station", "kr1", "--year", "2024", "--input",
                         "results/examples/kr1-station-2024-04-01.json", "--output-dir", "trial-import"],
               "Прочитано строк: 48")
+        check(project, ["-c", "from review_service import create_report, report_excel; "
+                        "q = dict(station='kr1', param='pressure_hpa', start='2024-04-01', end='2024-04-01', filters='stuck'); "
+                        "r = create_report(q, b'', ''); "
+                        "print(r['counts']['excluded'], report_excel(r)[1][:2])"], "38 b'PK'")
+        check(project, ["station_model.py", "--output", "trial-model.json"], "Кр1")
         for rel in ("web/index.html", "web/app.js", "web/import.html", "web/import.js",
                     "web/events.html", "web/events.js", "web/forecast.html", "web/forecast.js",
                     "web/forecast-example.json", "web/calendar.html", "web/calendar.js",
-                    "web/calendar.css", "docs/Защита-exeCUtor.pdf"):
+                    "web/calendar.css", "web/review.html", "web/review.js", "web/review.css",
+                    "web/model.html", "web/precip.html", "web/precip-example.json",
+                    "results/review/review-example.xlsx", "results/review/external-validation.json",
+                    "docs/Защита-exeCUtor.pdf"):
             if not (project / rel).is_file():
                 raise ValueError(f"Отсутствует файл для показа {rel}")
         sha = hashlib.sha256(packet.read_bytes()).hexdigest()
@@ -81,6 +89,7 @@ def pack(destination):
             f"Проверено файлов {file_count}, Python {sys.version.split()[0]}.\n"
             "В отдельной папке проверены CRC, SHA-256 комплектной базы, запуск с базой и повторная сборка из исходного ZIP, воспроизведение исследования и месячного расчёта, сверка "
             "со всеми 31 исходными строками 29 апреля и импорт 48 наблюдений за 1 апреля.\n"
+            "Проверены отбор 38 записей по залипанию, выгрузка XLSX и обучение модели станции из распакованной копии.\n"
             "Отчёт фактического браузерного прогона этой версии находится в results/browser/acceptance.json.\n",
             encoding="utf-8")
         os.replace(packet, destination)

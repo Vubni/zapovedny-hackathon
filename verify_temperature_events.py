@@ -157,7 +157,9 @@ def check_http(values):
                 equal("HTTP / CSV Content-Disposition", response.headers["Content-Disposition"],
                       'attachment; filename="temperature_crossings_all_2024-04-01_2024-04-30.csv"')
                 rows = list(csv.DictReader(io.StringIO(exported.decode("utf-8-sig")), delimiter=";"))
-                for row, event in zip(rows, values["april_2024"]["events"], strict=True):
+                events = values["april_2024"]["events"]
+                equal("HTTP / CSV число событий", len(rows), len(events))
+                for row, event in zip(rows, events):
                     equal("HTTP / CSV станция", row["Станция"], event["station"])
                     equal("HTTP / CSV дата", row["Дата перехода"], event["day"])
                     equal("HTTP / CSV среднее", float(row["Среднее после перехода (°C)"].replace(",", ".")),

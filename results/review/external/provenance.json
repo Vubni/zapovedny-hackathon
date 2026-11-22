@@ -1,0 +1,182 @@
+{
+  "models": [
+    {
+      "id": "era5",
+      "name": "Open-Meteo",
+      "model": "ERA5",
+      "description": "ERA5, мгновенные снимки на границах часа",
+      "kind": "reanalysis",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=56.52&longitude=32.87&start_date=2024-03-31&end_date=2024-05-01&hourly=temperature_2m%2Crelative_humidity_2m%2Csurface_pressure&timezone=GMT&models=era5",
+      "mode": "snapshot",
+      "start_utc": "2024-03-31",
+      "end_utc": "2024-05-01",
+      "timezone": "UTC",
+      "variable_units": {
+        "temperature_2m": "°C",
+        "relative_humidity_2m": "%",
+        "surface_pressure": "hPa"
+      },
+      "requested_coordinates": {
+        "latitude": 56.52,
+        "longitude": 32.87
+      },
+      "retrieved_at": "2026-11-22T10:07:03+00:00",
+      "file": "era5-april-2024.json",
+      "sha256": "45d680a335d73780d7e18d9e398a327fa9c7dba6954ebb878525657b4efded03",
+      "coordinates": {
+        "latitude": 56.5,
+        "longitude": 32.75,
+        "elevation_m": 250.0
+      },
+      "count_by_parameter": {
+        "t_air": 768,
+        "rh": 768,
+        "pressure_hpa": 768
+      }
+    },
+    {
+      "id": "merra2",
+      "name": "NASA POWER",
+      "model": "MERRA-2",
+      "description": "MERRA-2, среднее за час",
+      "kind": "reanalysis",
+      "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CPS&community=SB&longitude=32.87&latitude=56.52&start=20240331&end=20240501&format=JSON&time-standard=UTC",
+      "mode": "snapshot",
+      "start_utc": "2024-03-31",
+      "end_utc": "2024-05-01",
+      "timezone": "UTC",
+      "variable_units": {
+        "T2M": "C",
+        "RH2M": "%",
+        "PS": "kPa"
+      },
+      "requested_coordinates": {
+        "latitude": 56.52,
+        "longitude": 32.87
+      },
+      "retrieved_at": "2026-11-22T10:13:38+00:00",
+      "file": "merra2-april-2024.json",
+      "sha256": "c9d5ad9789641d7501e3dff1208ad0f7e5c8f2d5dddbadadd2420a1586c67110",
+      "coordinates": {
+        "latitude": 56.52,
+        "longitude": 32.87,
+        "elevation_m": 237.92
+      },
+      "count_by_parameter": {
+        "t_air": 768,
+        "rh": 768,
+        "pressure_hpa": 768
+      }
+    }
+  ],
+  "station_check": {
+    "dataset": "NOAA/NCEI Global Hourly (Integrated Surface Database)",
+    "kind": "surface_observations",
+    "inventory_url": "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.csv",
+    "closest_checked": {
+      "station": "26488099999",
+      "name": "Лесной Заповедник",
+      "retrieved_at": "2026-11-22T10:07:01+00:00",
+      "rows": 0,
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=26488099999&startDate=2024-03-31&endDate=2024-05-01&format=csv",
+      "s3_url": "https://noaa-global-hourly-pds.s3.amazonaws.com/2024/26488099999.csv",
+      "s3_status": 404
+    },
+    "nearby_checked": {
+      "url": "https://www.ncei.noaa.gov/access/services/data/v1?dataset=global-hourly&stations=26389099999,26585099999,26479099999&startDate=2024-04-01&endDate=2024-04-30&format=csv",
+      "retrieved_at": "2026-11-22T10:10:34+00:00",
+      "stations": [
+        {
+          "station": "26389099999",
+          "name": "OSTASKOV, RS",
+          "latitude": 57.1333333,
+          "longitude": 33.1166666,
+          "elevation_m": 218.0,
+          "count": 40,
+          "report_types": [
+            "FM-12"
+          ],
+          "hours_utc": [
+            0,
+            3,
+            6,
+            9,
+            12,
+            15,
+            18,
+            21
+          ],
+          "first_date": "2024-04-01T18:00:00",
+          "last_date": "2024-04-21T06:00:00",
+          "sample": {
+            "DATE": "2024-04-01T18:00:00",
+            "TMP": "+0140,1",
+            "DEW": "+0074,1",
+            "SLP": "10017,1",
+            "MA1": "99999,9,09766,1",
+            "REPORT_TYPE": "FM-12"
+          }
+        },
+        {
+          "station": "26585099999",
+          "name": "BELYJ, RS",
+          "latitude": 55.85,
+          "longitude": 32.95,
+          "elevation_m": 222.0,
+          "count": 43,
+          "report_types": [
+            "FM-12"
+          ],
+          "hours_utc": [
+            0,
+            3,
+            6,
+            9,
+            12,
+            15,
+            18,
+            21
+          ],
+          "first_date": "2024-04-01T18:00:00",
+          "last_date": "2024-04-28T00:00:00",
+          "sample": {
+            "DATE": "2024-04-01T18:00:00",
+            "TMP": "+0133,1",
+            "DEW": "+0097,1",
+            "SLP": "10041,1",
+            "MA1": "99999,9,09780,1",
+            "REPORT_TYPE": "FM-12"
+          }
+        },
+        {
+          "station": "26479099999",
+          "name": "TOROPEC, RS",
+          "latitude": 56.4833333,
+          "longitude": 31.6333333,
+          "elevation_m": 187.0,
+          "count": 42,
+          "report_types": [
+            "FM-12"
+          ],
+          "hours_utc": [
+            3,
+            6,
+            12,
+            15,
+            18
+          ],
+          "first_date": "2024-04-03T03:00:00",
+          "last_date": "2024-04-25T18:00:00",
+          "sample": {
+            "DATE": "2024-04-03T03:00:00",
+            "TMP": "+0112,1",
+            "DEW": "+0071,1",
+            "SLP": "09832,1",
+            "MA1": "99999,9,09613,1",
+            "REPORT_TYPE": "FM-12"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "example": {
+    "query": {
+      "station": "kr1",
+      "param": "pressure_hpa",
+      "start": "2024-04-01",
+      "end": "2024-04-30",
+      "filters": "conflicts",
+      "pressure_max": "1050",
+      "fill": "1",
+      "timezone": "UTC",
+      "pressure_reference": "surface"
+    },
+    "original_rows": 1389,
+    "original_fields": 8,
+    "workbook_rows": 1410,
+    "working_result": {
+      "Исходное": 117,
+      "Исключено": 1272,
+      "Внешняя оценка": 21
+    },
+    "sheets": [
+      "Управление",
+      "Сроки",
+      "Сутки · снимок",
+      "Месяцы · снимок"
+    ],
+    "xlsx_bytes": 280656,
+    "elapsed_export_ms": 35.6,
+    "recalculated_counts": [
+      117,
+      21,
+      1272,
+      1272
+    ],
+    "recalculated_formula_errors": 0
+  },
+  "leap_year": {
+    "query": {
+      "station": "ame60",
+      "param": "t_air",
+      "start": "2004-01-01",
+      "end": "2004-12-31",
+      "filters": "conflicts"
+    },
+    "original_rows": 35022,
+    "original_fields": 10,
+    "workbook_rows": 35022,
+    "working_result": {
+      "Исходное": 35021,
+      "Нет значения": 1
+    },
+    "sheets": [
+      "Управление",
+      "Сроки",
+      "Сутки · снимок",
+      "Месяцы · снимок"
+    ],
+    "xlsx_bytes": 6788785,
+    "elapsed_export_ms": 766.8
+  },
+  "note": "Исходные сроки, номера строк и значения сверены с CSV из ZIP. Годовая книга создана только для проверки. Замеры экспорта выполнены локально.",
+  "copied_workbook": {
+    "verification": "checks.test_review_excel.OriginalWorkbookTest",
+    "unchanged_source_sheet_data": true,
+    "unchanged_other_sheet_xml": true,
+    "same_source_value_and_number_format": true,
+    "recalculated_colours_from_libreoffice_pdf": [
+      "по алгоритму",
+      "ручной возврат",
+      "массовое исключение"
+    ],
+    "returned_non_numeric_as_text": "=1+1"
+  },
+  "minute_provenance": {
+    "time_utc": "2024-04-01T19:02:00+00:00",
+    "estimate": 974.12,
+    "models": {
+      "ERA5": 973.4833333333333,
+      "MERRA-2": 974.7533333333334
+    }
+  },
+  "xlsx_max_rows": 60744
+}

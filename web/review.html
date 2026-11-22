@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#173e32">
+  <title>Фильтрация наблюдений · Урочище «Красное»</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/review.css">
+  <script defer src="/review.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">К форме фильтрации</a>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <a class="brand" href="/" aria-label="Метеожурнал, главная">
+        <svg width="35" height="35" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="34" height="34" rx="8" stroke="currentColor" opacity=".55"/>
+          <path d="M9 23h18M12 23l5-10 3 6 2-4 4 8M9 26h18" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="23.5" cy="10.5" r="2" stroke="currentColor" stroke-width="1.35"/>
+        </svg>
+        <span>Урочище «Красное»<small>Архив метеонаблюдений</small></span>
+      </a>
+      <nav class="review-nav" aria-label="Разделы метеожурнала">
+        <a class="nav-button" href="/">Метеожурнал</a>
+        <span class="nav-button" aria-current="page">Фильтрация</span>
+        <a class="nav-button" href="/import">Импорт</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="shell review-main" id="content">
+    <header class="page-heading">
+      <div>
+        <h1>Фильтрация наблюдений</h1>
+        <p>Проверьте измерения, сравните рабочий расчёт с официальным и сохраните результат в Excel. Фильтры применяются к рабочей копии.</p>
+      </div>
+    </header>
+
+    <form id="review-form" class="review-panel" aria-label="Настройки фильтрации">
+      <fieldset id="review-fields" class="review-fields" disabled>
+        <div class="review-section review-source">
+          <fieldset class="review-source-select">
+            <legend>Источник данных</legend>
+            <div class="review-segmented">
+              <label><input type="radio" name="source" value="archive" checked><span>Архив</span></label>
+              <label><input type="radio" name="source" value="file"><span>Свой файл</span></label>
+            </div>
+          </fieldset>
+          <div class="filter" id="review-file-field" hidden>
+            <label for="review-file">Файл наблюдений</label>
+            <input type="file" id="review-file" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-describedby="review-file-hint">
+            <p class="review-hint" id="review-file-hint">CSV в UTF-8, JSON или XLSX, до 12 МиБ. В Excel ищем первую таблицу со столбцом datetime.</p>
+          </div>
+          <div class="review-scope">
+            <div class="filter">
+              <label for="review-station">Станция</label>
+              <select id="review-station" required><option value="">Загрузка…</option></select>
+            </div>
+            <div class="filter">
+              <label for="review-param">Параметр</label>
+              <select id="review-param" required><option value="">Загрузка…</option></select>
+            </div>
+            <div class="filter">
+              <label for="review-start">С даты</label>
+              <input type="date" id="review-start" aria-describedby="review-period-hint" required>
+            </div>
+            <div class="filter">
+              <label for="review-end">По дату</label>
+              <input type="date" id="review-end" aria-describedby="review-period-hint" required>
+            </div>
+          </div>
+          <p class="review-hint" id="review-period-hint">До 60 000 исходных строк в детальной книге.</p>
+        </div>
+
+        <div class="review-section">
+          <fieldset class="review-rule-fieldset" aria-describedby="review-rules-hint">
+            <legend class="review-section-title">Фильтры рабочей копии</legend>
+            <p class="review-hint" id="review-rules-hint">Выберите нужные проверки независимо друг от друга. Без дополнительных фильтров действует базовая проверка значений и флагов качества.</p>
+            <div class="review-checks">
+              <label class="review-check">
+                <input type="checkbox" name="filter" value="conflicts">
+                <span><strong>Конфликты</strong><small>Повторяющиеся записи или флаг конфликта срока.</small></span>
+              </label>
+              <label class="review-check">
+                <input type="checkbox" name="filter" value="hampel">
+                <span><strong>Фильтр Хэмпеля</strong><small>Выбросы относительно соседних измерений.</small></span>
+              </label>
+              <label class="review-check">
+                <input type="checkbox" name="filter" value="spike">
+                <span><strong>Скачок с возвратом</strong><small>Резкое отклонение с возвратом к прежнему уровню.</small></span>
+              </label>
+              <label class="review-check">
+                <input type="checkbox" name="filter" value="stuck">
+                <span><strong>Залипание</strong><small>Одинаковые значения в длинном ряду измерений.</small></span>
+              </label>
+              <label class="review-check">
+                <input type="checkbox" name="filter" value="buddy" disabled>
+                <span><strong>Поляна и поле</strong><small>Сравнение температуры воздуха на Кр1 и Кр2 в архиве.</small></span>
+              </label>
+            </div>
+          </fieldset>
+          <p class="review-hint" id="review-wind-hint" hidden>Для направления ветра учитывается переход через 360°. Поиск временных аномалий пропускает записи со скоростью ветра 0 м/с.</p>
+
+          <div class="review-rule-options">
+            <div class="filter" id="review-conflict-field">
+              <label for="review-conflict">При конфликте</label>
+              <select id="review-conflict" aria-describedby="review-conflict-hint" disabled>
+                <option value="all">Исключить все значения</option>
+                <option value="best">Оставить однозначного кандидата</option>
+              </select>
+              <p class="review-hint" id="review-conflict-hint">Включите фильтр «Конфликты», чтобы применить это правило.</p>
+            </div>
+            <div class="filter" id="review-pressure-field">
+              <label for="review-pressure">Верхняя граница давления</label>
+              <select id="review-pressure" aria-describedby="review-pressure-hint">
+                <option value="1050">1050 гПа</option>
+                <option value="1550">1550 гПа</option>
+              </select>
+              <p class="review-hint" id="review-pressure-hint">В официальном расчёте граница составляет 1050 гПа.</p>
+            </div>
+          </div>
+        </div>
+
+        <details class="review-section review-estimate-options" id="review-estimate-options">
+          <summary>Оценки для пропусков<span id="review-fill-active" hidden> · включены</span></summary>
+          <div class="review-estimate-fields">
+            <label class="review-check">
+              <input type="checkbox" id="review-fill">
+              <span><strong>Подобрать внешние оценки</strong><small>Для температуры воздуха, влажности и давления за период до 31 суток. Часовая оценка — среднее двух источников, ERA5 и NASA POWER / MERRA‑2.</small></span>
+            </label>
+            <div class="filter">
+              <label for="review-timezone">Часовой пояс измерений</label>
+              <select id="review-timezone" aria-describedby="review-timezone-hint" disabled>
+                <option value="">Выберите часовой пояс</option>
+                <option value="UTC">UTC</option>
+                <option value="Europe/Moscow">Москва (UTC+3)</option>
+              </select>
+              <p class="review-hint" id="review-timezone-hint">Нужен для сопоставления с внешними данными на тот же час.</p>
+            </div>
+          </div>
+          <label class="review-check review-estimate-detail" id="review-subhour-field" hidden>
+            <input type="checkbox" id="review-subhour" disabled>
+            <span><strong>Оценивать промежуточные минуты по соседним часам</strong><small>Только для записанных сроков с пустым или исключённым значением. Оба источника должны покрывать соседние часы.</small></span>
+          </label>
+          <label class="review-check review-estimate-detail" id="review-pressure-reference-field" hidden>
+            <input type="checkbox" id="review-pressure-reference" disabled>
+            <span><strong>Исходное давление измерено на высоте станции</strong><small>Подтвердите, что данные без приведения к уровню моря. Станция и модель могут находиться на разной высоте.</small></span>
+          </label>
+          <div class="review-estimate-example">
+            <button class="button secondary" id="review-fill-example" type="button">Открыть пример с оценкой</button>
+            <p class="review-hint">Температура на Кр1, 21 апреля 2024 года. Для примера принимаем московское время.</p>
+          </div>
+        </details>
+
+        <div class="review-section review-submit">
+          <button class="button primary" id="review-submit" type="submit">Отфильтровать</button>
+        </div>
+      </fieldset>
+    </form>
+
+    <p class="status" id="review-status" role="status">Загружаем список станций…</p>
+    <section class="review-results" id="review-results" aria-labelledby="review-title" hidden>
+      <div class="review-result-heading">
+        <div>
+          <h2 id="review-title" tabindex="-1">Результат фильтрации</h2>
+          <p id="review-context"></p>
+        </div>
+        <div class="review-result-actions">
+          <a class="button secondary" id="review-download" download>Скачать Excel</a>
+          <a class="button secondary" id="review-download-original" download hidden>Скачать исходную книгу с отметками</a>
+          <a href="#review-excel" class="review-hint">Режимы Excel</a>
+        </div>
+      </div>
+      <p class="status" id="review-download-status" role="status"></p>
+      <p class="review-stale" id="review-stale" hidden>Настройки изменились. Показан предыдущий расчёт.</p>
+      <dl class="metrics review-metrics" id="review-metrics" aria-label="Сводка фильтрации"></dl>
+      <ul class="review-warnings" id="review-warnings" aria-label="Примечания к результату" hidden></ul>
+
+      <section class="ledger" aria-labelledby="review-rows-title">
+        <div class="ledger-heading">
+          <div>
+            <h3 id="review-rows-title">Журнал измерений</h3>
+            <p>Исходное значение, решение фильтра и вклад строки в рабочий расчёт.</p>
+          </div>
+          <p class="review-scroll-hint">Прокрутите вправо, чтобы увидеть все столбцы.</p>
+        </div>
+        <div class="table-wrap review-table-wrap" tabindex="0" role="region" aria-label="Журнал измерений">
+          <table class="review-rows-table">
+            <thead>
+              <tr>
+                <th scope="col">Дата и время</th>
+                <th scope="col" class="num" id="review-original-heading">Исходное</th>
+                <th scope="col">Решение</th>
+                <th scope="col" class="num" id="review-working-heading">Рабочее значение</th>
+                <th scope="col">Причина</th>
+                <th scope="col">Официально</th>
+                <th scope="col" id="review-estimate-heading" hidden>Внешняя оценка</th>
+                <th scope="col">Источник</th>
+              </tr>
+            </thead>
+            <tbody id="review-rows"></tbody>
+          </table>
+        </div>
+        <div class="pager review-pager" aria-label="Страницы журнала">
+          <span id="review-page" aria-live="polite"></span>
+          <button class="button secondary" id="review-prev" type="button" disabled>Назад</button>
+          <button class="button secondary" id="review-next" type="button" disabled>Далее</button>
+        </div>
+        <p class="status review-page-status" id="review-page-status" role="status"></p>
+      </section>
+
+      <section class="ledger" aria-labelledby="review-summary-title">
+        <div class="ledger-heading review-summary-heading">
+          <div>
+            <h3 id="review-summary-title">Сводка по периодам</h3>
+            <p>Покрытие и статистика рабочей копии и официального расчёта.</p>
+          </div>
+          <div class="segmented" role="group" aria-label="Период сводки">
+            <button class="segment" id="review-daily" type="button" aria-pressed="true">Сутки</button>
+            <button class="segment" id="review-monthly" type="button" aria-pressed="false">Месяцы</button>
+          </div>
+        </div>
+        <div class="table-wrap review-table-wrap" tabindex="0" role="region" aria-label="Сводка по периодам">
+          <table class="review-summary-table">
+            <thead>
+              <tr>
+                <th scope="col" id="review-period-heading">Дата</th>
+                <th scope="col" class="num">Исходных строк</th>
+                <th scope="col">Рабочая копия</th>
+                <th scope="col">Официальный расчёт</th>
+              </tr>
+            </thead>
+            <tbody id="review-summaries"></tbody>
+          </table>
+        </div>
+        <details class="review-explainer">
+          <summary>Как считается покрытие</summary>
+          <p>Для Кр1 и Кр2 нужно не меньше 18 разных часов с пригодными измерениями. Например, при покрытии 15 из 18 необходимых часов сутки считаются неполными. Для АМЕ-60 нужно не меньше 72 разных сроков.</p>
+          <p>Целый календарный месяц проходит проверку, если неполных суток не больше 10, а подряд не больше четырёх. Для части месяца показано только покрытие выбранного периода.</p>
+          <p>Покрытие, среднее, минимум и максимум рассчитываются по принятым измерениям. Внешние оценки приведены отдельно.</p>
+        </details>
+      </section>
+
+      <details class="review-panel review-excel" id="review-excel">
+        <summary>Что сохраняется в Excel</summary>
+        <p>На листе «Сроки» сохраняются дата и время, источник, номера строк, исходные столбцы, рабочее значение, решение алгоритма, официальный статус, причины с флагами и внешняя оценка с источником. Суточная и месячная сводки фиксируют результаты расчёта на момент выгрузки.</p>
+        <p>В листе «Управление» можно вернуть все исходные значения или исключить их массово. В режиме «По алгоритму» столбец «Режим строки» позволяет вернуть, исключить или заменить отдельное значение оценкой. Зелёный цвет отмечает принятое исходное значение, красный — исключённое.</p>
+        <p id="review-excel-original" hidden>Отдельно можно скачать копию исходной книги с отметками рядом с обработанными значениями.</p>
+        <p><a href="/review-example.xlsx" download>Скачать готовый пример Excel</a></p>
+      </details>
+    </section>
+    <noscript><p class="status">Включите JavaScript, чтобы выбрать наблюдения и применить фильтры.</p></noscript>
+  </main>
+
+  <footer class="footer shell">
+    <span>Метеонаблюдения урочища «Красное»</span>
+    <a href="/">К архиву наблюдений</a>
+  </footer>
+</body>
+</html>
