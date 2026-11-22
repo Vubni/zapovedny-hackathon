@@ -1,0 +1,167 @@
+"""Сформировать отдельный отчёт из одного CSV или JSON со сроками наблюдений."""
+
+import argparse
+import json
+import sqlite3
+from contextlib import closing
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from build_data import SCHEMA, STATIONS, export_csv, read_csv, read_records, sha256, validate_headers, write_year
+
+
+REPORT_FORMAT = "weather-station-report-v1"
+EXPORTS = {
+    "daily.csv": ("daily", "station, param, day"),
+    "monthly.csv": ("monthly", "station, param, month"),
+    "station_coverage.csv": ("station_monthly", "station, month"),
+}
+
+
+class JSONObject(list):
+    """Preserve JSON field names through validation, including repeated names."""
+
+
+def json_records(file, source, station):
+    try:
+        data = json.load(file, object_pairs_hook=JSONObject, parse_constant=lambda _: object())
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{source}:{error.lineno}:{error.colno}: некорректный JSON: {error.msg}") from None
+    if type(data) is not list:
+        raise ValueError(f"{source}: ожидается JSON-массив объектов наблюдений")
+    for index, entry in enumerate(data, 1):
+        location = f"{source}: элемент {index}"
+        if not isinstance(entry, JSONObject):
+            raise ValueError(f"{location}: ожидается объект наблюдения")
+        validate_headers([name for name, _ in entry], location, station)
+        row = {}
+        for name, value in entry:
+            if name in {"datetime", "qc_flag"}:
+                if not isinstance(value, str):
+                    raise ValueError(f"{location}: {name} должен быть строкой")
+                row[name] = value
+            elif value is None:
+                row[name] = ""
+            elif type(value) in (int, float, str):
+                row[name] = str(value)
+            else:
+                raise ValueError(f"{location}: {name} должен быть числом, числовой строкой или null")
+        yield location, row
+
+
+def read_input(source, station, year):
+    suffix = source.suffix.lower()
+    if suffix not in {".csv", ".json"}:
+        raise ValueError(f"{source}: поддерживаются расширения .csv и .json")
+    try:
+        with source.open(encoding="utf-8-sig", newline="") as file:
+            if suffix == ".csv":
+                observations, counts = read_csv(file, source, station, year)
+            else:
+                observations, counts = read_records(json_records(file, source, station), station, year)
+    except UnicodeDecodeError:
+        raise ValueError(f"{source}: файл должен быть в кодировке UTF-8") from None
+    if not counts["raw_rows"]:
+        raise ValueError(f"{source}: нет строк наблюдений")
+    return observations, counts
+
+
+def existing_report(path):
+    files = {*EXPORTS, "manifest.json"}
+    if path.is_symlink() or not path.is_dir() or {child.name for child in path.iterdir()} != files:
+        return False
+    if any((path / name).is_symlink() or not (path / name).is_file() for name in files):
+        return False
+    try:
+        data = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return False
+    return isinstance(data, dict) and data.get("format") == REPORT_FORMAT
+
+
+def publish(report, output, replace):
+    lock = output.with_name(f".{output.name}.station-import.lock")
+    try:
+        lock.mkdir()
+    except FileExistsError:
+        raise ValueError(f"{output}: папка занята другим импортом ({lock.name})") from None
+    try:
+        exists = output.exists() or output.is_symlink()
+        if exists and not replace:
+            raise ValueError(f"{output}: папка уже существует. Для замены отчёта добавьте --replace")
+        if exists and not existing_report(output):
+            raise ValueError(f"{output}: замена доступна только для полной папки отчёта этого импортера")
+        previous = report.with_name("previous")
+        try:
+            if exists:
+                output.rename(previous)
+            report.rename(output)
+        except BaseException:
+            if previous.exists() and not output.exists():
+                previous.rename(output)
+            raise
+    finally:
+        lock.rmdir()
+
+
+def import_station(source, output, station_id, year, replace=False):
+    station = STATIONS[station_id]
+    if not 1 <= year <= 9999:
+        raise ValueError("Укажите календарный год от 1 до 9999")
+
+    source_hash = sha256(source)
+    observations, counts = read_input(source, station, year)
+    if sha256(source) != source_hash:
+        raise ValueError(f"{source}: файл изменился во время чтения")
+
+    output = output.absolute()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "format": REPORT_FORMAT,
+        "source": source.name,
+        "source_sha256": source_hash,
+        "station": station_id,
+        "year": year,
+        "slot_minutes": station.slot_minutes,
+        "minimum_slots": station.minimum_slots,
+        **counts,
+        "files": {},
+    }
+    with TemporaryDirectory(prefix=".station-import-", dir=output.parent) as stage:
+        report = Path(stage) / "report"
+        report.mkdir()
+        with closing(sqlite3.connect(":memory:")) as db:
+            db.executescript(SCHEMA)
+            with db:
+                write_year(db, station_id, station, year, observations)
+            for filename, (table, order) in EXPORTS.items():
+                path = report / filename
+                export_csv(db, path, f"SELECT * FROM {table} ORDER BY {order}")
+                manifest["files"][filename] = {
+                    "rows": db.execute(f"SELECT count(*) FROM {table}").fetchone()[0],
+                    "sha256": sha256(path),
+                }
+        (report / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        publish(report, output, replace)
+    return manifest
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--station", required=True, choices=STATIONS, help="станция из схемы архива")
+    parser.add_argument("--year", required=True, type=int, help="календарный год всех наблюдений")
+    parser.add_argument("--input", required=True, type=Path, help="исходный CSV или JSON")
+    parser.add_argument("--output-dir", required=True, type=Path, help="отдельная папка отчёта")
+    parser.add_argument("--replace", action="store_true", help="заменить существующий отчёт этого импортера")
+    args = parser.parse_args()
+    try:
+        manifest = import_station(args.input, args.output_dir, args.station, args.year, args.replace)
+    except (OSError, ValueError) as error:
+        parser.exit(2, f"Ошибка импорта. {error}\n")
+    print(f"Отчёт сохранён в {args.output_dir.absolute()}. Прочитано строк: {manifest['raw_rows']}.")
+
+
+if __name__ == "__main__":
+    main()

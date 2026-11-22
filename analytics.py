@@ -260,7 +260,7 @@ def raw_day(query):
                 source = None
     signals = []
     if param == "pressure_hpa" and d["valid"] and d["min"] == d["max"]:
-        signals.append({"code":"constant_pressure", "n":d["n"], "value":d["mean"],
+        signals.append({"code":"constant_pressure", "n":d["n"], "value":d["min"],
                         "description":"Все пригодные значения давления за сутки одинаковы. Проверьте исходные сроки и соседнюю станцию."})
     return {"station": station, "param": param, "day": day, "source": source, "signals":signals,
             "rows": rows, "threshold": 72 if station == "ame60" else 18,

@@ -1,0 +1,106 @@
+{
+  "official_input": {
+    "member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+    "source_sha256": "233ab2222912ab32e8d49994ec712dbd4a79fcb7b771b7effd5924d14dc23fdc",
+    "raw_rows": 17247,
+    "csv_rows_matching_database": {
+      "daily.csv": 2196,
+      "monthly.csv": 72,
+      "station_coverage.csv": 12
+    },
+    "kr1_pressure_2024_04": {
+      "station": "kr1",
+      "param": "pressure_hpa",
+      "month": "2024-04",
+      "days": "30",
+      "valid_days": "2",
+      "longest_gap": "28",
+      "valid": "0",
+      "mean": "",
+      "min": "",
+      "max": ""
+    }
+  },
+  "json_fixture": {
+    "year": 2026,
+    "raw_rows": 39,
+    "conflicts": 2,
+    "checked_days": [
+      {
+        "parameter": "t_air",
+        "day": "2026-02-01",
+        "n": "18",
+        "slots": "18",
+        "station_slots": "18",
+        "raw_n": "19",
+        "flagged": "0",
+        "missing": "1",
+        "conflicts": "0",
+        "valid": "1",
+        "mean": "18.5"
+      },
+      {
+        "parameter": "pressure_hpa",
+        "day": "2026-02-01",
+        "n": "17",
+        "slots": "17",
+        "station_slots": "18",
+        "raw_n": "19",
+        "flagged": "1",
+        "missing": "1",
+        "conflicts": "0",
+        "valid": "0",
+        "mean": ""
+      },
+      {
+        "parameter": "t_air",
+        "day": "2026-02-02",
+        "n": "18",
+        "slots": "9",
+        "station_slots": "9",
+        "raw_n": "20",
+        "flagged": "0",
+        "missing": "0",
+        "conflicts": "2",
+        "valid": "0",
+        "mean": ""
+      }
+    ],
+    "station_february": {
+      "station": "kr1",
+      "month": "2026-02",
+      "days": "28",
+      "valid_days": "1",
+      "longest_gap": "27",
+      "valid": "0"
+    },
+    "temperature_february": {
+      "station": "kr1",
+      "param": "t_air",
+      "month": "2026-02",
+      "days": "28",
+      "valid_days": "1",
+      "longest_gap": "27",
+      "valid": "0",
+      "mean": "",
+      "min": "",
+      "max": ""
+    }
+  },
+  "file_safety": {
+    "existing_report_without_replace": "Ошибка импорта. real-report: папка уже существует. Для замены отчёта добавьте --replace",
+    "explicit_replacement_same_hashes": true,
+    "invalid_replacement_preserved_previous_report": true,
+    "nonreport_preserved_with_replace": true,
+    "no_partial_report": true,
+    "archive_and_database_sha256_unchanged": {
+      "data/meteo_hack_dataset.zip": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+      "results/weather.sqlite": "3f6495f6ffee9e7e9d6e2c522b7655488bcc4f9285fa681d039484cf0b4111c9"
+    }
+  },
+  "error_cases": {
+    "invalid_date": "Ошибка импорта. invalid-date.json: элемент 2: некорректный срок '2026-02-30 00:00'",
+    "unmarked_duplicate": "Ошибка импорта. duplicate.csv:3: повтор срока без dup_conflict",
+    "unflagged_range": "Ошибка импорта. invalid-range.csv:2: pressure_hpa=900 за диапазоном без флага"
+  }
+}

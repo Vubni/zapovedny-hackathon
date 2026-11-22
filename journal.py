@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
-from analytics import analyze, export_csv, raw_day
+from analytics import PARAMS, STATIONS, analyze, export_csv, raw_day
 from server import ready
 
 
@@ -33,20 +33,27 @@ def main():
             if args.csv:
                 parser.error("--csv используется для сводной таблицы. Исходный день сохраняется через --json.")
             report = raw_day(dict(query, day=args.raw_day))
+            label, unit = PARAMS[report["param"]]
+            print(f"{report['day']} · {STATIONS[report['station']][0]} · {label}, {unit}")
             print(report["source"] or "Архив не содержит строк этого дня")
             print("Строка  Срок                  Значение  Статус и исходные флаги")
             for r in report["rows"]:
                 print(f"{r['line']:>6}  {r['time']}  {display(r['value']):>12}  {r['status']}  {r['flags']}")
             print(f"Пригодных измерений {report['n']}. Покрытие {report['slots']} при пороге {report['threshold']}. "
-                  f"Среднее {display(report['mean'])}.")
+                  f"Среднее {display(report['mean'])} {unit}.")
+            for signal in report["signals"]:
+                print(signal["description"])
         else:
             report = analyze(query)
             print(f"{report['label']}, {report['unit']} · {report['station']} · {report['start']} — {report['end']}")
-            print("Период                 Среднее       Мин.      Макс.    Сутки     Откл.   Лет*")
+            monthly = report["grain"] == "month"
+            print("Период                 Среднее       Мин.      Макс.    Сутки" + ("     Откл.   Лет*" if monthly else ""))
             for r in report["rows"]:
                 days = f"{r['valid_days']}/{r['days']}"
                 line = (f"{r['label']:<20} {display(r['mean']):>9} {display(r['min']):>10} {display(r['max']):>10}"
-                        f" {days:>8} {display(r['anomaly']):>9} {r['years']:>6}" )
+                        f" {days:>8}")
+                if monthly:
+                    line += f" {display(r['anomaly']):>9} {r['years']:>6}"
                 print(line if r["valid"] else line + "  " + r["reason"])
             s = report["stats"]
             print(f"Пригодных суток {s['valid_days']}/{s['days']}, в итоговом среднем {s['used_days']} сут. "

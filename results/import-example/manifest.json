@@ -1,0 +1,25 @@
+{
+  "format": "weather-station-report-v1",
+  "source": "kr1-station-2024-04-01.json",
+  "source_sha256": "55674c4a57af6f76e3751148cb8c4050422b0ce51475f963e4e3530807d6fd7a",
+  "station": "kr1",
+  "year": 2024,
+  "slot_minutes": 60,
+  "minimum_slots": 18,
+  "raw_rows": 48,
+  "conflicts": 0,
+  "files": {
+    "daily.csv": {
+      "rows": 2196,
+      "sha256": "44e20efdc6a8986707bad8a88e1eabeb3251475cc93229334660f5d4af91609d"
+    },
+    "monthly.csv": {
+      "rows": 72,
+      "sha256": "9dba0f64872f58777c557207deb8ad7c3c2e255fa8f9c71e18ea753a6f15a5b2"
+    },
+    "station_coverage.csv": {
+      "rows": 12,
+      "sha256": "9f197d78b78b52111c29e295b5482dafc30a50b21538538e55af3cbd7ea9d99d"
+    }
+  }
+}

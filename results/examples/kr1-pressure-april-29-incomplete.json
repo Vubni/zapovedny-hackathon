@@ -3,6 +3,7 @@
   "param": "pressure_hpa",
   "day": "2024-04-29",
   "source": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+  "signals": [],
   "rows": [
     {
       "time": "2024-04-29 09:03",

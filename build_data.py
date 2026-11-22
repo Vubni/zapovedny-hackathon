@@ -128,69 +128,92 @@ def archive_text(archive, member):
     return io.TextIOWrapper(archive.open(member), encoding="utf-8-sig", newline="")
 
 
-def read_year(archive, member, station, year):
+def validate_headers(headers, source, station):
+    if (
+        len(set(headers)) != len(headers)
+        or not {"datetime", "qc_flag"} <= set(headers)
+        or set(headers) - {"datetime", "qc_flag", *station.params}
+    ):
+        raise ValueError(f"{source}: некорректные заголовки столбцов: {headers}")
+
+
+def read_records(records, station, year):
     days = defaultdict(Observations)
     timestamps = {}
     conflicts = 0
     raw_rows = 0
-    with archive_text(archive, member) as file:
-        reader = csv.DictReader(file)
-        headers = reader.fieldnames or []
-        if (
-            len(set(headers)) != len(headers)
-            or not {"datetime", "qc_flag"} <= set(headers)
-            or set(headers) - {"datetime", "qc_flag", *station.params}
-        ):
-            raise ValueError(f"{member}: некорректные заголовки столбцов: {headers}")
-        for row in reader:
-            location = f"{member}:{reader.line_num}"
-            if None in row or None in row.values():
-                raise ValueError(f"{location}: число колонок расходится с заголовком")
-            timestamp = row["datetime"]
+    for location, row in records:
+        if None in row or None in row.values():
+            raise ValueError(f"{location}: число колонок расходится с заголовком")
+        timestamp = row["datetime"]
+        try:
             parsed = datetime.fromisoformat(timestamp)
-            if parsed.year != year or parsed.isoformat(" ", timespec="minutes") != timestamp:
-                raise ValueError(f"{location}: некорректный срок {timestamp!r}")
-            day = days[timestamp[:10]]
-            day.raw_n += 1
-            raw_rows += 1
+        except ValueError:
+            raise ValueError(f"{location}: некорректный срок {timestamp!r}") from None
+        if parsed.isoformat(" ", timespec="minutes") != timestamp or parsed.tzinfo is not None:
+            raise ValueError(f"{location}: ожидается срок ГГГГ-ММ-ДД ЧЧ:ММ, получен {timestamp!r}")
+        if parsed.year != year:
+            raise ValueError(f"{location}: срок {timestamp!r} должен относиться к {year} году")
+        day = days[timestamp[:10]]
+        day.raw_n += 1
+        raw_rows += 1
 
-            flags = row["qc_flag"].split(";") if row["qc_flag"] else []
-            conflict = "dup_conflict" in flags
-            if timestamp in timestamps and not (conflict and timestamps[timestamp]):
-                raise ValueError(f"{location}: повтор срока без dup_conflict")
-            timestamps[timestamp] = conflict
-            if conflict:
-                day.conflicts += 1
-                conflicts += 1
+        flags = row["qc_flag"].split(";") if row["qc_flag"] else []
+        conflict = "dup_conflict" in flags
+        if timestamp in timestamps and not (conflict and timestamps[timestamp]):
+            raise ValueError(f"{location}: повтор срока без dup_conflict")
+        timestamps[timestamp] = conflict
+        flagged_params = set()
+        for flag in flags:
+            if flag == "dup_conflict":
                 continue
+            param, _, reason = flag.partition(":")
+            if param not in station.params or reason not in {"range", "fault"}:
+                raise ValueError(f"{location}: неизвестный флаг {flag!r}")
+            flagged_params.add(param)
+        if conflict:
+            day.conflicts += 1
+            conflicts += 1
+            continue
 
-            flagged_params = set()
-            for flag in flags:
-                param, _, reason = flag.partition(":")
-                if param not in station.params or reason not in {"range", "fault"}:
-                    raise ValueError(f"{location}: неизвестный флаг {flag!r}")
-                flagged_params.add(param)
-
-            minute = parsed.hour * 60 + parsed.minute
-            slot = minute // station.slot_minutes
-            day.slots.add(slot)
-            for param in station.params:
-                values = day.values[param]
-                if param in flagged_params:
-                    values.flagged += 1
-                    continue
-                value = row.get(param, "").strip()
-                if not value:
-                    values.missing += 1
-                    continue
+        minute = parsed.hour * 60 + parsed.minute
+        slot = minute // station.slot_minutes
+        day.slots.add(slot)
+        for param in station.params:
+            values = day.values[param]
+            if param in flagged_params:
+                values.flagged += 1
+                continue
+            value = row.get(param, "").strip()
+            if not value:
+                values.missing += 1
+                continue
+            try:
                 sample = float(value)
-                lower, upper = LIMITS[param]
-                if not lower <= sample <= upper:
-                    raise ValueError(f"{location}: {param}={value} за диапазоном без флага")
-                values.add(slot, sample)
+            except ValueError:
+                raise ValueError(f"{location}: {param}={value!r}, ожидается число") from None
+            lower, upper = LIMITS[param]
+            if not lower <= sample <= upper:
+                raise ValueError(f"{location}: {param}={value} за диапазоном без флага")
+            values.add(slot, sample)
 
-    metadata = {"member": member, "raw_rows": raw_rows, "conflicts": conflicts}
-    return days, metadata
+    return days, {"raw_rows": raw_rows, "conflicts": conflicts}
+
+
+def read_csv(file, source, station, year):
+    reader = csv.DictReader(file, strict=True)
+    try:
+        validate_headers(reader.fieldnames or [], f"{source}:1", station)
+        records = ((f"{source}:{reader.line_num}", row) for row in reader)
+        return read_records(records, station, year)
+    except csv.Error as error:
+        raise ValueError(f"{source}:{reader.line_num}: некорректный CSV: {error}") from None
+
+
+def read_year(archive, member, station, year):
+    with archive_text(archive, member) as file:
+        days, counts = read_csv(file, member, station, year)
+    return days, {"member": member, **counts}
 
 
 def circular_sums(degrees):

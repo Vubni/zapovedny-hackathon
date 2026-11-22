@@ -2,100 +2,100 @@
 <!DOCTYPE svg
   PUBLIC '-//W3C//DTD SVG 1.0//EN'
   'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
-<svg width="1060" height="487" preserveAspectRatio="xMinYMin meet" viewBox="0 0 1060 487" xmlns="http://www.w3.org/2000/svg" version="1.0" fill-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink">
-	<title>...</title>
-	<desc>...</desc>
+<svg width="1060" height="487" preserveAspectRatio="xMinYMin meet" viewBox="0 0 1060 487" xmlns="http://www.w3.org/2000/svg" version="1.0" fill-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink" role="img">
+	<title>Покрытие Кр1 в апреле 2024 года</title>
+	<desc>Часы наблюдений станции и пригодного давления по дням. Порог валидности суток показан пунктирной линией.</desc>
 	<clipPath id="clip">
 		<rect x="0" y="0" width="1060" height="487"/>
 	</clipPath>
 	<g id="group" transform="scale(1,-1) translate(0,-487)" style="clip-path: url(#clip)">
 		<g transform="">
 			<rect x="0" y="0" width="1060" height="487" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
-			<text x="38" y="443" style="font-family: Helvetica-Bold; font-size: 27px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,886) scale(1,-1)">Покрытие Кр1 в апреле 2024 года</text>
+			<text x="38" y="443" style="font-family: Arial, sans-serif; font-weight: 700; font-size: 27px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,886) scale(1,-1)">Покрытие Кр1 в апреле 2024 года</text>
 			<rect x="39" y="399" width="14" height="14" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="61" y="401" style="font-family: Helvetica; font-size: 13px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,802) scale(1,-1)">Часы с записями станции</text>
+			<text x="61" y="401" style="font-family: Arial, sans-serif; font-size: 13px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,802) scale(1,-1)">Часы с записями станции</text>
 			<rect x="271" y="399" width="14" height="14" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(7%,42%,40%); fill-rule: evenodd;"/>
-			<text x="293" y="401" style="font-family: Helvetica; font-size: 13px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,802) scale(1,-1)">Часы с пригодным значением давления</text>
+			<text x="293" y="401" style="font-family: Arial, sans-serif; font-size: 13px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,802) scale(1,-1)">Часы с пригодным значением давления</text>
 			<path d="M 599,406 L 630,406 Z" style="stroke: rgb(60%,25%,9%); stroke-linecap: butt; stroke-width: 1.6; stroke-dasharray: 6, 4;"/>
-			<text x="639" y="401" style="font-family: Helvetica; font-size: 13px;fill: rgb(60%,25%,9%); stroke:none;" transform="translate(0,802) scale(1,-1)">Порог валидности суток · 18 из 24</text>
-			<text x="38" y="377" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,754) scale(1,-1)">Часы</text>
+			<text x="639" y="401" style="font-family: Arial, sans-serif; font-size: 13px;fill: rgb(60%,25%,9%); stroke:none;" transform="translate(0,802) scale(1,-1)">Порог валидности суток · 18 из 24</text>
+			<text x="38" y="377" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,754) scale(1,-1)">Часы</text>
 			<path d="M 74,120 L 1021,120 Z" style="stroke: rgb(86%,89%,91%); stroke-linecap: butt; stroke-width: 1;"/>
-			<text x="56.328" y="116.0" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,232) scale(1,-1)">0</text>
+			<text x="56.328" y="116.0" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,232) scale(1,-1)">0</text>
 			<path d="M 74,180 L 1021,180 Z" style="stroke: rgb(86%,89%,91%); stroke-linecap: butt; stroke-width: 1;"/>
-			<text x="56.328" y="176.0" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,352) scale(1,-1)">6</text>
+			<text x="56.328" y="176.0" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,352) scale(1,-1)">6</text>
 			<path d="M 74,240 L 1021,240 Z" style="stroke: rgb(86%,89%,91%); stroke-linecap: butt; stroke-width: 1;"/>
-			<text x="49.656" y="236.0" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,472) scale(1,-1)">12</text>
+			<text x="49.656" y="236.0" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,472) scale(1,-1)">12</text>
 			<path d="M 74,300 L 1021,300 Z" style="stroke: rgb(86%,89%,91%); stroke-linecap: butt; stroke-width: 1;"/>
-			<text x="49.656" y="296.0" style="font-family: Helvetica-Bold; font-size: 12px;fill: rgb(60%,25%,9%); stroke:none;" transform="translate(0,592) scale(1,-1)">18</text>
+			<text x="49.656" y="296.0" style="font-family: Arial, sans-serif; font-weight: 700; font-size: 12px;fill: rgb(60%,25%,9%); stroke:none;" transform="translate(0,592) scale(1,-1)">18</text>
 			<path d="M 74,360 L 1021,360 Z" style="stroke: rgb(86%,89%,91%); stroke-linecap: butt; stroke-width: 1;"/>
-			<text x="49.656" y="356.0" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,712) scale(1,-1)">24</text>
+			<text x="49.656" y="356.0" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,712) scale(1,-1)">24</text>
 			<rect x="77.78333333333333" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
 			<rect x="90.78333333333333" y="120" width="11.0" height="190.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(7%,42%,40%); fill-rule: evenodd;"/>
-			<text x="86.58633333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">1</text>
+			<text x="86.58633333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">1</text>
 			<rect x="109.35" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="118.15299999999999" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">2</text>
+			<text x="118.15299999999999" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">2</text>
 			<rect x="140.91666666666669" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="149.71966666666668" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">3</text>
+			<text x="149.71966666666668" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">3</text>
 			<rect x="172.48333333333335" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="181.28633333333335" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">4</text>
+			<text x="181.28633333333335" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">4</text>
 			<rect x="204.05" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="212.853" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">5</text>
+			<text x="212.853" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">5</text>
 			<rect x="235.61666666666667" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="244.41966666666667" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">6</text>
+			<text x="244.41966666666667" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">6</text>
 			<rect x="267.18333333333334" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="275.98633333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">7</text>
+			<text x="275.98633333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">7</text>
 			<rect x="298.75" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="307.553" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">8</text>
+			<text x="307.553" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">8</text>
 			<rect x="330.31666666666666" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="339.11966666666666" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">9</text>
+			<text x="339.11966666666666" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">9</text>
 			<rect x="361.8833333333333" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="367.4893333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">10</text>
+			<text x="367.4893333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">10</text>
 			<rect x="393.45" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="399.056" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">11</text>
+			<text x="399.056" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">11</text>
 			<rect x="425.01666666666665" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="430.62266666666665" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">12</text>
+			<text x="430.62266666666665" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">12</text>
 			<rect x="456.5833333333333" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="462.1893333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">13</text>
+			<text x="462.1893333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">13</text>
 			<rect x="488.15" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="493.756" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">14</text>
+			<text x="493.756" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">14</text>
 			<rect x="519.7166666666667" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="525.3226666666667" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">15</text>
+			<text x="525.3226666666667" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">15</text>
 			<rect x="551.2833333333333" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="556.8893333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">16</text>
+			<text x="556.8893333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">16</text>
 			<rect x="582.85" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="588.456" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">17</text>
+			<text x="588.456" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">17</text>
 			<rect x="614.4166666666666" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="620.0226666666666" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">18</text>
+			<text x="620.0226666666666" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">18</text>
 			<rect x="645.9833333333333" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="651.5893333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">19</text>
+			<text x="651.5893333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">19</text>
 			<rect x="677.55" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="683.156" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">20</text>
+			<text x="683.156" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">20</text>
 			<rect x="709.1166666666667" y="120" width="11.0" height="230.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="714.7226666666667" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">21</text>
+			<text x="714.7226666666667" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">21</text>
 			<rect x="740.6833333333333" y="120" width="11.0" height="210.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="746.2893333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">22</text>
+			<text x="746.2893333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">22</text>
 			<rect x="772.25" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="777.856" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">23</text>
+			<text x="777.856" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">23</text>
 			<rect x="803.8166666666666" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="809.4226666666666" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">24</text>
+			<text x="809.4226666666666" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">24</text>
 			<rect x="835.3833333333333" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="840.9893333333333" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">25</text>
+			<text x="840.9893333333333" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">25</text>
 			<rect x="866.95" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="872.556" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">26</text>
+			<text x="872.556" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">26</text>
 			<rect x="898.5166666666667" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="904.1226666666666" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">27</text>
+			<text x="904.1226666666666" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">27</text>
 			<rect x="930.0833333333334" y="120" width="11.0" height="160.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
-			<text x="935.6893333333334" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">28</text>
+			<text x="935.6893333333334" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">28</text>
 			<rect x="961.65" y="120" width="11.0" height="150.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
 			<rect x="974.65" y="120" width="11.0" height="150.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(7%,42%,40%); fill-rule: evenodd;"/>
-			<text x="967.256" y="98" style="font-family: Helvetica-Bold; font-size: 11.5px;fill: rgb(7%,42%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">29</text>
+			<text x="967.256" y="98" style="font-family: Arial, sans-serif; font-weight: 700; font-size: 11.5px;fill: rgb(7%,42%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">29</text>
 			<rect x="993.2166666666667" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(66%,74%,81%); fill-rule: evenodd;"/>
 			<rect x="1006.2166666666667" y="120" width="11.0" height="240.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(7%,42%,40%); fill-rule: evenodd;"/>
-			<text x="998.8226666666667" y="98" style="font-family: Helvetica; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">30</text>
+			<text x="998.8226666666667" y="98" style="font-family: Arial, sans-serif; font-size: 11.5px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,196) scale(1,-1)">30</text>
 			<path d="M 74,300 L 1021,300 Z" style="stroke: rgb(60%,25%,9%); stroke-linecap: butt; stroke-width: 1.6; stroke-dasharray: 6, 4;"/>
-			<text x="500.172" y="74" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,148) scale(1,-1)">День апреля</text>
-			<text x="39" y="48" style="font-family: Helvetica-Bold; font-size: 13px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,96) scale(1,-1)">29 апреля · 31 измерение давления за 15 часов</text>
-			<text x="39" y="26" style="font-family: Helvetica; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,52) scale(1,-1)">Источник — архив организаторов, kr1_2024.csv. Часы посчитаны по записанному времени.</text>
+			<text x="500.172" y="74" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,148) scale(1,-1)">День апреля</text>
+			<text x="39" y="48" style="font-family: Arial, sans-serif; font-weight: 700; font-size: 13px;fill: rgb(9%,14%,18%); stroke:none;" transform="translate(0,96) scale(1,-1)">29 апреля · 31 измерение давления за 15 часов</text>
+			<text x="39" y="26" style="font-family: Arial, sans-serif; font-size: 12px;fill: rgb(25%,33%,40%); stroke:none;" transform="translate(0,52) scale(1,-1)">Источник — архив организаторов, kr1_2024.csv. Часы посчитаны по записанному времени.</text>
 		</g>
 	</g>
 </svg>

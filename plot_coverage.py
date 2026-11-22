@@ -18,6 +18,7 @@ INK = HexColor("#182630")
 MUTED = HexColor("#405566")
 GRID = HexColor("#DCE4EA")
 MIN_HOURS = 18
+TITLE = "Покрытие Кр1 в апреле 2024 года"
 
 
 def pressure_days(db):
@@ -48,7 +49,7 @@ def chart(rows):
     width, height = 1060, 487
     drawing = Drawing(width, height)
     drawing.add(Rect(0, 0, width, height, strokeColor=None, fillColor=white))
-    text(drawing, 38, 443, "Покрытие Кр1 в апреле 2024 года", 27, bold=True)
+    text(drawing, 38, 443, TITLE, 27, bold=True)
 
     swatch(drawing, 39, 401, STATION, "Часы с записями станции")
     swatch(drawing, 271, 401, PRESSURE, "Часы с пригодным значением давления")
@@ -94,7 +95,13 @@ def main():
     args = parser.parse_args()
     drawing = chart(pressure_days(args.db))
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    renderSVG.drawToFile(drawing, str(args.out), title="Покрытие Кр1 в апреле 2024 года")
+    svg = renderSVG.drawToString(drawing, svgAttrs={"role": "img"})
+    svg = svg.replace("<title>...</title>", f"<title>{TITLE}</title>")
+    svg = svg.replace("<desc>...</desc>", "<desc>Часы наблюдений станции и пригодного давления "
+                      "по дням. Порог валидности суток показан пунктирной линией.</desc>")
+    svg = svg.replace("font-family: Helvetica-Bold;", "font-family: Arial, sans-serif; font-weight: 700;")
+    svg = svg.replace("font-family: Helvetica;", "font-family: Arial, sans-serif;")
+    args.out.write_text(svg, encoding="utf-8")
 
 
 if __name__ == "__main__":
