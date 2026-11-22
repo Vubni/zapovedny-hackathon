@@ -172,7 +172,7 @@ function stationLocation(id) {
   const coordinate = (value) => String(value).replace(".", ",").replace("-", "−") + "°";
   const location = `${coordinate(station.latitude)}, ${coordinate(station.longitude)}`;
   return station.location_precision === "area"
-    ? `Ориентир «Красное» · ${location} · для архивных наблюдений` : `Координаты станции · ${location}`;
+    ? `Ориентир «${station.location_label}» · ${location} · для архивных наблюдений` : `Координаты станции · ${location}`;
 }
 
 function filesUrl(endpoint = "", params = {}) {

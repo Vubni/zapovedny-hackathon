@@ -20,13 +20,14 @@ class StationCatalogContract:
     def test_archive_terrain_and_persisted_registration(self):
         archive = {station["id"]: station for station in catalog()}
         self.assertEqual({key: item["terrain"] for key, item in archive.items()},
-                         {"kr1": "clearing", "kr2": "field", "ame60": "unknown"})
+                         {"kr1": "clearing", "kr2": "field", "ame60": "clearing"})
         self.assertEqual(len({item["color"] for item in archive.values()}), 3)
         self.assertEqual({item["location_precision"] for item in archive.values()}, {"area"})
-        self.assertEqual({(item["latitude"], item["longitude"]) for item in archive.values()},
-                         {(56.464310, 32.970290)})
-        self.assertEqual({(item["location_label"], item["location_reference"]) for item in archive.values()},
-                         {("Красное", "Точка сбора 26.07.2019")})
+        self.assertEqual({key: (item["latitude"], item["longitude"]) for key, item in archive.items()},
+                         {"kr1": (56.464310, 32.970290), "kr2": (56.463800, 32.970370),
+                          "ame60": (56.464310, 32.970290)})
+        self.assertEqual(archive["kr2"]["location_label"], "Дорога на Красное")
+        self.assertIn("1992", archive["ame60"]["location_reference"])
 
         station = register_station({"id": "test-forest", "label": "Лесной кордон", "terrain": "forest",
                                     "latitude": 56.31, "longitude": 32.94})["station"]

@@ -6,6 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
@@ -31,6 +32,16 @@ class GapFillChecks(unittest.TestCase):
 
     def review(self, options):
         return create_report(dict(options, filename="station.csv"), CSV, "text/csv")
+
+    def test_external_sources_request_field_and_clearing_separately(self):
+        for station, latitude, longitude in (("kr1", 56.464310, 32.970290), ("kr2", 56.463800, 32.970370)):
+            with self.subTest(station=station):
+                external = self.review(dict(COMBINED, station=station))["external"]
+                self.assertEqual(external["requested_coordinates"], {"latitude": latitude, "longitude": longitude})
+                self.assertEqual({source["id"] for source in external["sources"]}, {"era5", "merra2"})
+                for source in external["sources"]:
+                    point = parse_qs(urlsplit(source["url"]).query)
+                    self.assertEqual((float(point["latitude"][0]), float(point["longitude"][0])), (latitude, longitude))
 
     def test_review_switches_and_legacy_modes(self):
         expected = {
@@ -105,8 +116,9 @@ class GapFillChecks(unittest.TestCase):
             provider = report["external"]["t_air"]
             self.assertEqual(provider["target_start"], "2024-04-21")
             self.assertEqual(provider["target_end"], "2024-04-21")
-            self.assertEqual(provider["location"], {"precision": "area", "label": "Красное",
-                                                      "reference": "Точка сбора 26.07.2019"})
+            self.assertEqual(provider["location"]["precision"], "area")
+            self.assertEqual(provider["location"]["label"], "Красное")
+            self.assertIn("26.07.2019", provider["location"]["reference"])
             self.assertEqual(provider["requested_coordinates"], {"latitude": 56.46431, "longitude": 32.97029})
             self.assertEqual(report["stats"]["parameters"]["rh"]["filled"], 0)
             self.assertEqual({row["time"] for row in report["timeline"]}, {"2024-03-01", "2024-04-21", "2024-06-01"})

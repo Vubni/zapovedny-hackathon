@@ -11,9 +11,15 @@ from observations_db import connection
 
 COLORS = ("#2b7650", "#426583", "#735579", "#945320", "#507f76", "#854f64")
 ARCHIVE_COLORS = dict(kr1=COLORS[0], kr2=COLORS[1], ame60=COLORS[2])
-ARCHIVE_TERRAIN = {"kr1": "clearing", "kr2": "field"}
+ARCHIVE_TERRAIN = {"ame60": "clearing", "kr1": "clearing", "kr2": "field"}
 TERRAIN_TYPES = {"clearing", "field", "forest", "wetland", "settlement", "other", "unknown"}
 AREA = (56.464310, 32.970290)
+ARCHIVE_LOCATIONS = {
+    "ame60": (AREA, "Красное", "Лесная поляна урочища Красное, установка в 1992 г. Маркер обозначает район."),
+    "kr1": (AREA, "Красное", "Ориентир поляны по точке сбора 26.07.2019. Координаты прибора не подтверждены."),
+    "kr2": ((56.463800, 32.970370), "Дорога на Красное",
+            "Ориентир поля по точке сбора 26.07.2019. Координаты прибора не подтверждены."),
+}
 
 
 def parameter_options(params=PARAMS):
@@ -25,11 +31,12 @@ def catalog():
     for item in stations:
         key = item["id"]
         passport = STATIONS[key]
+        (latitude, longitude), location_label, location_reference = ARCHIVE_LOCATIONS[key]
         item.update(profile=key, archive=True, color=ARCHIVE_COLORS[key],
-                    terrain=ARCHIVE_TERRAIN.get(key, "unknown"),
+                    terrain=ARCHIVE_TERRAIN[key],
                     minimum_slots=passport.minimum_slots, slot_minutes=passport.slot_minutes,
-                    latitude=AREA[0], longitude=AREA[1], location_precision="area",
-                    location_label="Красное", location_reference="Точка сбора 26.07.2019")
+                    latitude=latitude, longitude=longitude, location_precision="area",
+                    location_label=location_label, location_reference=location_reference)
     with connection() as db:
         if db is None:
             return stations
