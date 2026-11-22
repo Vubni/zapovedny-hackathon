@@ -1,0 +1,121 @@
+{
+  "date_moscow": "2026-11-22",
+  "automated_checks": {
+    "python_unittest_discover": {
+      "passed": 141,
+      "databases": [
+        "SQLite",
+        "PostgreSQL 15"
+      ],
+      "result": "OK"
+    },
+    "external_fill_unit": {
+      "passed": 12
+    },
+    "chromium": [
+      {
+        "viewport": {
+          "width": 1280,
+          "height": 900
+        },
+        "passed_steps": 13
+      },
+      {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "passed_steps": 13
+      }
+    ]
+  },
+  "local_servers": {
+    "8766": "Docker Compose, PostgreSQL",
+    "8765": "автономный сервер, SQLite",
+    "healthz": "оба HTTP 200",
+    "compatibility_redirects_303": {
+      "/operator": "/files",
+      "/review": "/files",
+      "/import": "/files?source=upload",
+      "/model": "/forecast"
+    },
+    "maps": "оба экземпляра выдают две подложки WebP"
+  },
+  "storage": {
+    "environment": "отдельный проект Docker Compose с томом PostgreSQL",
+    "after_recreate": {
+      "station_and_source_preserved": true,
+      "published_temperature_c": 9,
+      "access_to_original_without_login": true
+    }
+  },
+  "json_import": {
+    "original": "../examples/kr1-station-2024-04-01.json",
+    "station": "kr1",
+    "date": "2024-04-01",
+    "raw_rows": 48,
+    "accepted_pressure_values": 38,
+    "flagged_pressure_values": 10,
+    "hours_with_accepted_pressure": 19,
+    "mean_hpa": 1005.45,
+    "original_download_byte_equal": true,
+    "browser_check": "checks/files.cjs"
+  },
+  "archived_outlier": {
+    "station": "kr1",
+    "time_as_recorded": "2024-04-28 16:37",
+    "pressure_hpa": 1100,
+    "source_flag": "pressure_hpa:range",
+    "checked_in": [
+      "исходный CSV",
+      "предпросмотр",
+      "лист исключений Excel"
+    ],
+    "factual_chart_unchanged": true,
+    "regression_test": "checks/test_observation_selection.py"
+  },
+  "official_archive_comparison": {
+    "station_monthly": {
+      "calculated_rows": 456,
+      "database_keys": 456,
+      "different_rows": 0,
+      "missing_rows": 0
+    },
+    "monthly": {
+      "calculated_rows": 3456,
+      "database_keys": 3456,
+      "different_rows": 0,
+      "missing_rows": 0
+    },
+    "daily": {
+      "calculated_rows": 105196,
+      "database_keys": 105196,
+      "different_rows": 0,
+      "missing_rows": 0
+    }
+  },
+  "observations": {
+    "dates": "../observations/timeline-periods.json",
+    "exports": "../observations/chart-exports.json",
+    "pdf_pages_rendered_across_three_downloads": 18,
+    "maps": "../browser/station-raster.json",
+    "forecast": "../browser/forecast.json",
+    "last_five": "checks/recent-days.cjs"
+  },
+  "historical_gap_validation": "../review/ПРОВЕРКА-ВОССТАНОВЛЕНИЯ.md",
+  "design_findings": {
+    "check": "impeccable detect --json --no-config",
+    "pages": [
+      "index",
+      "calendar",
+      "events",
+      "forecast",
+      "files-page",
+      "observations"
+    ],
+    "low_contrast": 0,
+    "cramped_padding": 0,
+    "tiny_text": 0,
+    "existing_calendar_exception": "Штриховка обозначает исключённые сутки. Новых исключений при выпуске не добавлено."
+  }
+}

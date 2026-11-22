@@ -53,6 +53,7 @@ const datePair = (start, end) => `${start}:${end}`;
     const expected = [datePair(newStart, newEnd), datePair(originalStart, archiveEnd)];
     await page.goto(`${root}/?stations=&start=${originalStart}&end=${archiveEnd}&charts=air`);
     const add = page.getByRole("button", { name: "Добавить интервал", exact: true });
+    await page.locator("#add-date-interval:enabled").waitFor();
     await add.focus();
     await add.press("Enter");
     assert.equal(await timeline.locator("[data-interval]").inputValue(), "0");
