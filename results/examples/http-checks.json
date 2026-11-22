@@ -1,0 +1,114 @@
+{
+  "passed_requests": 18,
+  "requests": [
+    {
+      "request": "/api/meta",
+      "status": 200,
+      "bytes": 1975,
+      "elapsed_ms": 2.9
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month",
+      "status": 200,
+      "bytes": 6549,
+      "elapsed_ms": 3.1
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=day",
+      "status": 200,
+      "bytes": 13279,
+      "elapsed_ms": 0.9
+    },
+    {
+      "request": "/api/series?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month",
+      "status": 200,
+      "bytes": 957,
+      "elapsed_ms": 0.7
+    },
+    {
+      "request": "/api/series?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month",
+      "status": 200,
+      "bytes": 978,
+      "elapsed_ms": 0.6
+    },
+    {
+      "request": "/api/raw?station=kr1&param=pressure_hpa&day=2024-04-01&download=1",
+      "status": 200,
+      "bytes": 5548,
+      "elapsed_ms": 5.4
+    },
+    {
+      "request": "/api/raw?station=kr1&param=pressure_hpa&day=2024-04-29&download=1",
+      "status": 200,
+      "bytes": 3476,
+      "elapsed_ms": 6.5
+    },
+    {
+      "request": "/api/raw?station=ame60&param=wind_dir&day=1993-04-02",
+      "status": 200,
+      "bytes": 10232,
+      "elapsed_ms": 9.8
+    },
+    {
+      "request": "/api/export?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month",
+      "status": 200,
+      "bytes": 4284,
+      "elapsed_ms": 2.0
+    },
+    {
+      "request": "/api/compare",
+      "status": 200,
+      "bytes": 4096,
+      "elapsed_ms": 53.7
+    },
+    {
+      "request": "/api/series?station=..%2Fkr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month",
+      "status": 400,
+      "bytes": 50,
+      "elapsed_ms": 0.5
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=year",
+      "status": 400,
+      "bytes": 78,
+      "elapsed_ms": 0.3
+    },
+    {
+      "request": "/api/series?station=kr1&param=soil_05&start=2024-01-01&end=2024-12-31&grain=month",
+      "status": 400,
+      "bytes": 85,
+      "elapsed_ms": 0.3
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-02-30&end=2024-12-31&grain=month",
+      "status": 400,
+      "bytes": 73,
+      "elapsed_ms": 0.3
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2025-01-01&end=2024-12-31&grain=month",
+      "status": 400,
+      "bytes": 78,
+      "elapsed_ms": 0.3
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2021",
+      "status": 400,
+      "bytes": 91,
+      "elapsed_ms": 0.2
+    },
+    {
+      "request": "/api/series?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_end=bad",
+      "status": 400,
+      "bytes": 88,
+      "elapsed_ms": 0.2
+    },
+    {
+      "request": "/missing",
+      "status": 404,
+      "bytes": 50,
+      "elapsed_ms": 0.2
+    }
+  ],
+  "note": "Время одного локального прогона, миллисекунды."
+}

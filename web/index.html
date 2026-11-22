@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#173e32">
+  <title>Метеожурнал · Урочище «Красное»</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">К данным наблюдений</a>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <a class="brand" href="./" aria-label="Метеожурнал, главная">
+        <svg width="35" height="35" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="34" height="34" rx="8" stroke="currentColor" opacity=".55"/>
+          <path d="M9 23h18M12 23l5-10 3 6 2-4 4 8M9 26h18" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="23.5" cy="10.5" r="2" stroke="currentColor" stroke-width="1.35"/>
+        </svg>
+        <span>Урочище «Красное»<small>Архив метеонаблюдений</small></span>
+      </a>
+      <nav aria-label="Разделы метеожурнала">
+        <button class="nav-button" type="button" data-view="journal" aria-current="page">Метеожурнал</button>
+        <button class="nav-button" type="button" data-view="compare">Поляна и поле</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="shell" id="content">
+    <section id="journal-view" aria-labelledby="journal-title">
+      <header class="page-heading">
+        <div>
+          <h1 id="journal-title">Метеожурнал</h1>
+          <p>Наблюдения двух станций урочища «Красное»</p>
+        </div>
+        <a class="button secondary" id="export" aria-disabled="true">
+          <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v10m-4-4 4 4 4-4m-10 5v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Скачать CSV
+        </a>
+      </header>
+
+      <form id="filters" class="filters" aria-label="Фильтры наблюдений">
+        <div class="filter station-filter">
+          <label for="station">Станция</label>
+          <select id="station" name="station" disabled><option>Загрузка…</option></select>
+        </div>
+        <div class="filter metric-filter">
+          <label for="param">Параметр</label>
+          <select id="param" name="param" disabled><option>Загрузка…</option></select>
+        </div>
+        <div class="filter">
+          <label for="start">С даты</label>
+          <input id="start" name="start" type="date" value="2024-01-01" required>
+        </div>
+        <div class="filter">
+          <label for="end">По дату</label>
+          <input id="end" name="end" type="date" value="2024-12-31" required>
+        </div>
+        <div class="filter">
+          <label for="grain">Шаг</label>
+          <select id="grain" name="grain">
+            <option value="day">По дням</option>
+            <option value="dekad">По декадам</option>
+            <option value="month" selected>По месяцам</option>
+          </select>
+        </div>
+        <button class="button primary apply" id="apply" type="submit" disabled>Показать</button>
+        <details id="baseline-options" class="baseline-options">
+          <summary>База сравнения <span id="baseline-caption">2022–2025</span></summary>
+          <div class="baseline-form">
+            <div class="filter">
+              <label for="base-start">Первый год</label>
+              <input id="base-start" name="base_start" type="number" inputmode="numeric" step="1" value="2022" required>
+            </div>
+            <div class="filter">
+              <label for="base-end">Последний год</label>
+              <input id="base-end" name="base_end" type="number" inputmode="numeric" step="1" value="2025" required>
+            </div>
+            <p>База строится для каждого календарного месяца по годам, прошедшим контроль качества.</p>
+          </div>
+        </details>
+      </form>
+
+      <p class="status" id="journal-status" role="status">Загружаем архив…</p>
+      <div id="journal-data" hidden>
+        <dl class="metrics" id="metrics" aria-label="Сводка наблюдений"></dl>
+
+        <div class="analysis-grid">
+          <section class="chart-card" aria-labelledby="chart-title">
+            <div class="chart-heading">
+              <div>
+                <h2 id="chart-title">Динамика наблюдений</h2>
+                <p id="chart-subtitle"></p>
+              </div>
+              <div class="segmented" id="chart-modes" aria-label="Режим графика">
+                <button class="segment" type="button" data-mode="series" aria-pressed="true">Ряд</button>
+                <button class="segment" type="button" data-mode="anomaly" aria-pressed="false">Отклонения</button>
+              </div>
+            </div>
+            <div class="plot" id="series-chart"></div>
+            <div class="chart-legend" id="series-legend" aria-label="Легенда"></div>
+          </section>
+
+          <aside class="quality-card" aria-labelledby="quality-title">
+            <div class="quality-heading">
+              <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 2.7 16.5 5v4.5c0 3.5-2.3 6.1-6.5 7.8-4.2-1.7-6.5-4.3-6.5-7.8V5L10 2.7Z" stroke="currentColor" stroke-width="1.45"/><path d="m7 10 2 2 4-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.45"/></svg>
+              <h2 id="quality-title">Качество данных</h2>
+            </div>
+            <div id="quality"></div>
+          </aside>
+        </div>
+
+        <section class="ledger" aria-labelledby="ledger-title">
+          <div class="ledger-heading">
+            <div>
+              <h2 id="ledger-title">Таблица наблюдений</h2>
+              <p>Откройте период, чтобы проверить покрытие и исходные сроки.</p>
+            </div>
+            <span class="muted" id="row-count"></span>
+          </div>
+          <div class="table-wrap" id="ledger-table"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="compare-view" aria-labelledby="compare-title" hidden>
+      <header class="page-heading">
+        <div>
+          <h1 id="compare-title">Поляна и поле</h1>
+          <p>Разница температуры между Кр1 и Кр2 в совпадающие сроки</p>
+        </div>
+      </header>
+      <p class="status" id="compare-status" role="status"></p>
+      <div id="compare-data" hidden>
+        <dl class="metrics comparison-metrics" id="compare-metrics" aria-label="Сводка сравнения"></dl>
+        <section class="chart-card compare-card" aria-labelledby="compare-chart-title">
+          <div class="chart-heading">
+            <div>
+              <h2 id="compare-chart-title">Разница температуры</h2>
+              <p id="compare-chart-subtitle"></p>
+            </div>
+            <div class="segmented" id="compare-modes" aria-label="Группировка сравнения">
+              <button class="segment" type="button" data-compare="months" aria-pressed="true">По месяцам</button>
+              <button class="segment" type="button" data-compare="hours" aria-pressed="false">По часам</button>
+            </div>
+          </div>
+          <div class="plot" id="compare-chart"></div>
+          <div class="chart-legend">
+            <span><i class="legend-mark positive"></i> Кр1 теплее</span>
+            <span><i class="legend-mark negative"></i> Кр2 теплее</span>
+          </div>
+        </section>
+        <section class="ledger" aria-labelledby="compare-table-title">
+          <div class="ledger-heading">
+            <div>
+              <h2 id="compare-table-title">Парные наблюдения</h2>
+              <p>Средние температуры и число совпадающих сроков с допустимыми измерениями на обеих станциях.</p>
+            </div>
+          </div>
+          <div class="table-wrap" id="compare-table"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="detail-dialog" id="detail" aria-labelledby="detail-title">
+    <div class="detail-header">
+      <button class="button text-button" id="detail-back" type="button" hidden>
+        <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16 10H4m5-5-5 5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        К периоду
+      </button>
+      <button class="button close-button" id="detail-close" type="button" aria-label="Закрыть подробности">
+        <svg class="icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5 5 10 10m0-10L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <h2 id="detail-title" tabindex="-1">Подробности наблюдений</h2>
+    <p id="detail-context" class="muted detail-context"></p>
+    <div id="detail-content" aria-live="polite"></div>
+  </dialog>
+
+  <footer class="footer shell">
+    <span>Метеонаблюдения урочища «Красное»</span>
+    <span id="archive-range"></span>
+  </footer>
+
+  <noscript><p class="status shell">Включите JavaScript, чтобы открыть архив наблюдений.</p></noscript>
+</body>
+</html>

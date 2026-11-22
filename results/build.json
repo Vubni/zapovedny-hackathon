@@ -1,0 +1,208 @@
+{
+  "source": "meteo_hack_dataset.zip",
+  "source_sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+  "sources": {
+    "ame60": {
+      "1992": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1992.csv",
+        "raw_rows": 16996,
+        "conflicts": 0
+      },
+      "1993": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1993.csv",
+        "raw_rows": 35002,
+        "conflicts": 12
+      },
+      "1994": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1994.csv",
+        "raw_rows": 31136,
+        "conflicts": 2
+      },
+      "1995": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1995.csv",
+        "raw_rows": 33183,
+        "conflicts": 10
+      },
+      "1996": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1996.csv",
+        "raw_rows": 30097,
+        "conflicts": 2
+      },
+      "1997": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1997.csv",
+        "raw_rows": 34125,
+        "conflicts": 2
+      },
+      "1998": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1998.csv",
+        "raw_rows": 33586,
+        "conflicts": 0
+      },
+      "1999": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_1999.csv",
+        "raw_rows": 217,
+        "conflicts": 0
+      },
+      "2003": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2003.csv",
+        "raw_rows": 12991,
+        "conflicts": 0
+      },
+      "2004": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2004.csv",
+        "raw_rows": 35022,
+        "conflicts": 0
+      },
+      "2005": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2005.csv",
+        "raw_rows": 34839,
+        "conflicts": 2
+      },
+      "2006": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2006.csv",
+        "raw_rows": 33570,
+        "conflicts": 0
+      },
+      "2007": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2007.csv",
+        "raw_rows": 33787,
+        "conflicts": 4
+      },
+      "2008": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2008.csv",
+        "raw_rows": 34721,
+        "conflicts": 4
+      },
+      "2009": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2009.csv",
+        "raw_rows": 35010,
+        "conflicts": 2
+      },
+      "2010": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2010.csv",
+        "raw_rows": 34921,
+        "conflicts": 2
+      },
+      "2011": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2011.csv",
+        "raw_rows": 32991,
+        "conflicts": 6
+      },
+      "2012": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2012.csv",
+        "raw_rows": 34347,
+        "conflicts": 8
+      },
+      "2013": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2013.csv",
+        "raw_rows": 31443,
+        "conflicts": 0
+      },
+      "2014": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2014.csv",
+        "raw_rows": 35017,
+        "conflicts": 2
+      },
+      "2015": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2015.csv",
+        "raw_rows": 35017,
+        "conflicts": 6
+      },
+      "2016": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2016.csv",
+        "raw_rows": 35097,
+        "conflicts": 2
+      },
+      "2017": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2017.csv",
+        "raw_rows": 32350,
+        "conflicts": 2
+      },
+      "2018": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2018.csv",
+        "raw_rows": 31105,
+        "conflicts": 0
+      },
+      "2019": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2019.csv",
+        "raw_rows": 25581,
+        "conflicts": 4
+      },
+      "2020": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2020.csv",
+        "raw_rows": 18781,
+        "conflicts": 0
+      },
+      "2021": {
+        "member": "meteo_clgz_hackathon/data/ame60/ame60_2021.csv",
+        "raw_rows": 24629,
+        "conflicts": 0
+      }
+    },
+    "kr1": {
+      "2022": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2022.csv",
+        "raw_rows": 4258,
+        "conflicts": 0
+      },
+      "2023": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2023.csv",
+        "raw_rows": 2737,
+        "conflicts": 0
+      },
+      "2024": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+        "raw_rows": 17247,
+        "conflicts": 0
+      },
+      "2025": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+        "raw_rows": 12302,
+        "conflicts": 0
+      }
+    },
+    "kr2": {
+      "2022": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2022.csv",
+        "raw_rows": 2540,
+        "conflicts": 0
+      },
+      "2023": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2023.csv",
+        "raw_rows": 623,
+        "conflicts": 0
+      },
+      "2024": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2024.csv",
+        "raw_rows": 17300,
+        "conflicts": 0
+      },
+      "2025": {
+        "member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+        "raw_rows": 11992,
+        "conflicts": 0
+      }
+    }
+  },
+  "official_coverage_rows_verified": 420,
+  "kr1_pressure_2024": {
+    "raw_rows": 17247,
+    "station_valid_days": 363,
+    "station_valid_months": 12,
+    "valid_days": 334,
+    "valid_months": 11,
+    "flagged": 1362,
+    "april": {
+      "days": 30,
+      "valid_days": 2,
+      "longest_gap": 28,
+      "valid": 0
+    }
+  },
+  "rows": {
+    "daily": 105196,
+    "monthly": 3456,
+    "station_monthly": 456
+  },
+  "database_sha256": "3f6495f6ffee9e7e9d6e2c522b7655488bcc4f9285fa681d039484cf0b4111c9"
+}

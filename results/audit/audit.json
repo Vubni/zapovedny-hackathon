@@ -1,0 +1,278 @@
+{
+  "archive_file": "meteo_hack_dataset.zip",
+  "archive_sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+  "archive_counts": {
+    "raw_rows": 874560,
+    "conflict_times": 36,
+    "conflict_rows": 72,
+    "ame60_offgrid_times": 5022,
+    "observation_files": 35,
+    "ame60_2018_offgrid_times": 4909,
+    "published_station_months_matched": 420
+  },
+  "known_flags": {
+    "soil_2016_fault": 3055,
+    "wind_2021_range": 23877,
+    "wind_2021_fault": 752
+  },
+  "ame60_wind_dir_eligible_observations": {
+    "1998": 0,
+    "2021": 0
+  },
+  "controls": {
+    "kr1_2024_pressure": {
+      "raw_n": 17247,
+      "flagged": 1362,
+      "valid_days": 334,
+      "valid_months": 11
+    },
+    "kr1_april_station": {
+      "days": 30,
+      "valid_days": 28,
+      "longest_gap": 2,
+      "valid": true
+    },
+    "kr1_april_pressure": {
+      "days": 30,
+      "valid_days": 2,
+      "longest_gap": 28,
+      "valid": false,
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    "kr1_april_air": {
+      "days": 30,
+      "valid_days": 28,
+      "longest_gap": 2,
+      "valid": true,
+      "mean": 7.612257521661504,
+      "min": -4.1,
+      "max": 26.89
+    },
+    "kr2_april_pressure": {
+      "days": 30,
+      "valid_days": 30,
+      "longest_gap": 0,
+      "valid": true,
+      "mean": 980.1604053779931,
+      "min": 953.67,
+      "max": 1001.43
+    },
+    "kr1_may_pressure": {
+      "days": 31,
+      "valid_days": 31,
+      "longest_gap": 0,
+      "valid": true,
+      "mean": 988.6941551465625,
+      "min": 974.37,
+      "max": 1002.81
+    },
+    "kr1_april_01_pressure": {
+      "n": 38,
+      "slots": 19,
+      "station_slots": 24,
+      "raw_n": 48,
+      "flagged": 10,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": true,
+      "mean": 1005.45,
+      "min": 1005.45,
+      "max": 1005.45,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "kr1_april_02_pressure": {
+      "n": 0,
+      "slots": 0,
+      "station_slots": 24,
+      "raw_n": 48,
+      "flagged": 48,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": false,
+      "mean": null,
+      "min": null,
+      "max": null,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "kr1_april_02_air": {
+      "n": 48,
+      "slots": 24,
+      "station_slots": 24,
+      "raw_n": 48,
+      "flagged": 0,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": true,
+      "mean": 12.572916666666666,
+      "min": 4.32,
+      "max": 23.97,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "kr1_april_28_air": {
+      "n": 30,
+      "slots": 16,
+      "station_slots": 16,
+      "raw_n": 30,
+      "flagged": 0,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": false,
+      "mean": null,
+      "min": null,
+      "max": null,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "kr1_april_29_pressure": {
+      "n": 31,
+      "slots": 15,
+      "station_slots": 15,
+      "raw_n": 31,
+      "flagged": 0,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": false,
+      "mean": null,
+      "min": null,
+      "max": null,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "kr1_april_30_pressure": {
+      "n": 48,
+      "slots": 24,
+      "station_slots": 24,
+      "raw_n": 48,
+      "flagged": 0,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": true,
+      "mean": 999.685,
+      "min": 996.57,
+      "max": 1001.76,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "kr1_february_20_pressure": {
+      "n": 28,
+      "slots": 14,
+      "station_slots": 24,
+      "raw_n": 48,
+      "flagged": 20,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": false,
+      "mean": null,
+      "min": null,
+      "max": null,
+      "sin_sum": null,
+      "cos_sum": null
+    },
+    "soil_fault_example": {
+      "date": "2016-09-11",
+      "soil_05": {
+        "n": 95,
+        "slots": 95,
+        "station_slots": 96,
+        "raw_n": 96,
+        "flagged": 1,
+        "missing": 0,
+        "conflicts": 0,
+        "valid": true,
+        "mean": -13.243157894736843,
+        "min": -15.0,
+        "max": 12.8,
+        "sin_sum": null,
+        "cos_sum": null
+      },
+      "soil_10": {
+        "n": 96,
+        "slots": 96,
+        "station_slots": 96,
+        "raw_n": 96,
+        "flagged": 0,
+        "missing": 0,
+        "conflicts": 0,
+        "valid": true,
+        "mean": 12.248958333333333,
+        "min": 11.8,
+        "max": 12.8,
+        "sin_sum": null,
+        "cos_sum": null
+      },
+      "t_air": {
+        "n": 96,
+        "slots": 96,
+        "station_slots": 96,
+        "raw_n": 96,
+        "flagged": 0,
+        "missing": 0,
+        "conflicts": 0,
+        "valid": true,
+        "mean": 14.082291666666666,
+        "min": 7.4,
+        "max": 24.5,
+        "sin_sum": null,
+        "cos_sum": null
+      }
+    },
+    "ame60_november_1992_station": {
+      "days": 30,
+      "valid_days": 25,
+      "longest_gap": 5,
+      "valid": false
+    },
+    "ame60_february_2017_soil": {
+      "days": 28,
+      "valid_days": 16,
+      "longest_gap": 4,
+      "valid": false,
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    "ame60_offgrid_day": {
+      "n": 96,
+      "slots": 96,
+      "station_slots": 96,
+      "raw_n": 96,
+      "flagged": 0,
+      "missing": 0,
+      "conflicts": 0,
+      "valid": true,
+      "mean": 10.753125,
+      "min": -1.6,
+      "max": 21.7,
+      "sin_sum": null,
+      "cos_sum": null
+    }
+  },
+  "database_comparison": {
+    "tables": {
+      "station_monthly": {
+        "calculated_rows": 456,
+        "database_keys": 456,
+        "different_rows": 0,
+        "missing_rows": 0
+      },
+      "monthly": {
+        "calculated_rows": 3456,
+        "database_keys": 3456,
+        "different_rows": 0,
+        "missing_rows": 0
+      },
+      "daily": {
+        "calculated_rows": 105196,
+        "database_keys": 105196,
+        "different_rows": 0,
+        "missing_rows": 0
+      }
+    },
+    "errors": []
+  }
+}

@@ -1,0 +1,39 @@
+station,year,file,observations,offgrid_times,columns,flags
+ame60,1992,meteo_clgz_hackathon/data/ame60/ame60_1992.csv,16996,98,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,
+ame60,1993,meteo_clgz_hackathon/data/ame60/ame60_1993.csv,35002,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=12 soil_10:range=1 soil_20:range=2
+ame60,1994,meteo_clgz_hackathon/data/ame60/ame60_1994.csv,31136,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 soil_10:range=1
+ame60,1995,meteo_clgz_hackathon/data/ame60/ame60_1995.csv,33183,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=10
+ame60,1996,meteo_clgz_hackathon/data/ame60/ame60_1996.csv,30097,2,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 rh:range=1 soil_05:range=1
+ame60,1997,meteo_clgz_hackathon/data/ame60/ame60_1997.csv,34125,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 wind_gust:range=1
+ame60,1998,meteo_clgz_hackathon/data/ame60/ame60_1998.csv,33586,1,rh soil_05 soil_10 soil_20 t_air wind_gust wind_speed,rh:range=1 soil_10:range=1
+ame60,1999,meteo_clgz_hackathon/data/ame60/ame60_1999.csv,217,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,
+ame60,2000,,0,0,,
+ame60,2001,,0,0,,
+ame60,2002,,0,0,,
+ame60,2003,meteo_clgz_hackathon/data/ame60/ame60_2003.csv,12991,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,rh:range=1 wind_dir:range=2
+ame60,2004,meteo_clgz_hackathon/data/ame60/ame60_2004.csv,35022,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,soil_20:range=1 wind_dir:range=1
+ame60,2005,meteo_clgz_hackathon/data/ame60/ame60_2005.csv,34839,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 soil_20:range=1
+ame60,2006,meteo_clgz_hackathon/data/ame60/ame60_2006.csv,33570,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,soil_10:range=1 wind_gust:range=1
+ame60,2007,meteo_clgz_hackathon/data/ame60/ame60_2007.csv,33787,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=4 rh:range=1 wind_gust:range=80
+ame60,2008,meteo_clgz_hackathon/data/ame60/ame60_2008.csv,34721,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=4 rh:range=1
+ame60,2009,meteo_clgz_hackathon/data/ame60/ame60_2009.csv,35010,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 wind_dir:range=1
+ame60,2010,meteo_clgz_hackathon/data/ame60/ame60_2010.csv,34921,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 wind_dir:range=1 wind_gust:range=2
+ame60,2011,meteo_clgz_hackathon/data/ame60/ame60_2011.csv,32991,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=6 soil_10:range=1
+ame60,2012,meteo_clgz_hackathon/data/ame60/ame60_2012.csv,34347,3,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=8 soil_05:fault=1 wind_gust:range=1
+ame60,2013,meteo_clgz_hackathon/data/ame60/ame60_2013.csv,31443,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,rh:range=1
+ame60,2014,meteo_clgz_hackathon/data/ame60/ame60_2014.csv,35017,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 soil_20:range=2
+ame60,2015,meteo_clgz_hackathon/data/ame60/ame60_2015.csv,35017,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=6 rh:range=2 wind_gust:range=1
+ame60,2016,meteo_clgz_hackathon/data/ame60/ame60_2016.csv,35097,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 soil_05:fault=3055 wind_dir:range=1 wind_gust:range=1
+ame60,2017,meteo_clgz_hackathon/data/ame60/ame60_2017.csv,32350,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=2 rh:range=1 soil_05:fault=9360 soil_05:range=86 soil_10:range=1 wind_dir:range=1
+ame60,2018,meteo_clgz_hackathon/data/ame60/ame60_2018.csv,31105,4909,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,
+ame60,2019,meteo_clgz_hackathon/data/ame60/ame60_2019.csv,25581,1,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,dup_conflict=4 rh:range=1 soil_10:range=1
+ame60,2020,meteo_clgz_hackathon/data/ame60/ame60_2020.csv,18781,2,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,soil_10:range=1 wind_dir:range=2
+ame60,2021,meteo_clgz_hackathon/data/ame60/ame60_2021.csv,24629,0,rh soil_05 soil_10 soil_20 t_air wind_dir wind_gust wind_speed,rh:range=1 wind_dir:fault=752 wind_dir:range=23877 wind_gust:range=1
+kr1,2022,meteo_clgz_hackathon/data/sokol_m1/kr1_2022.csv,4258,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,
+kr1,2023,meteo_clgz_hackathon/data/sokol_m1/kr1_2023.csv,2737,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,
+kr1,2024,meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv,17247,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,pressure_hpa:range=1362
+kr1,2025,meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv,12302,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,
+kr2,2022,meteo_clgz_hackathon/data/sokol_m1/kr2_2022.csv,2540,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,pressure_hpa:range=491
+kr2,2023,meteo_clgz_hackathon/data/sokol_m1/kr2_2023.csv,623,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,pressure_hpa:range=130
+kr2,2024,meteo_clgz_hackathon/data/sokol_m1/kr2_2024.csv,17300,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,
+kr2,2025,meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv,11992,0,pressure_hpa rh t_air wind_dir wind_gust wind_speed,
