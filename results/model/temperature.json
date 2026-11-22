@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "source": "meteo_hack_dataset.zip",
+  "source_sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+  "database_sha256": "3f6495f6ffee9e7e9d6e2c522b7655488bcc4f9285fa681d039484cf0b4111c9",
+  "target": "next_calendar_day_mean_air_temperature",
+  "unit": "°C",
+  "method": "ordinary_least_squares",
+  "features": [
+    "intercept",
+    "today_c",
+    "today_minus_yesterday_c",
+    "annual_sin",
+    "annual_cos"
+  ],
+  "baseline": "last_observed_daily_mean",
+  "stations": [
+    {
+      "id": "ame60",
+      "label": "АМЕ-60",
+      "coefficients": [
+        0.927288959909978,
+        0.799798560514201,
+        0.17727212768030398,
+        -0.45386030247536874,
+        -2.4564944599381806
+      ],
+      "training": {
+        "days": 8000,
+        "first_target_day": "1992-07-03",
+        "last_target_day": "2020-10-31"
+      },
+      "test": {
+        "days": 249,
+        "first_target_day": "2021-01-07",
+        "last_target_day": "2021-11-05",
+        "window_start": "2021-01-01",
+        "window_end": "2021-12-31",
+        "calendar_days": 365,
+        "model_mae_c": 1.792528509586822,
+        "baseline_mae_c": 1.887049778059607
+      },
+      "archive": {
+        "first_source_day": "2020-12-31",
+        "last_source_day": "2021-11-05",
+        "default_source_day": "2021-11-04"
+      }
+    },
+    {
+      "id": "kr1",
+      "label": "Кр1 · поляна",
+      "coefficients": [
+        1.8573505048979082,
+        0.6961405696709031,
+        0.2904894327448752,
+        -0.8826134338259711,
+        -3.6874475267168827
+      ],
+      "training": {
+        "days": 639,
+        "first_target_day": "2022-05-04",
+        "last_target_day": "2024-12-31"
+      },
+      "test": {
+        "days": 365,
+        "first_target_day": "2025-01-01",
+        "last_target_day": "2025-12-31",
+        "window_start": "2025-01-01",
+        "window_end": "2025-12-31",
+        "calendar_days": 365,
+        "model_mae_c": 1.730951882940219,
+        "baseline_mae_c": 1.7260424429223744
+      },
+      "archive": {
+        "first_source_day": "2024-12-31",
+        "last_source_day": "2025-12-31",
+        "default_source_day": "2025-12-30"
+      }
+    },
+    {
+      "id": "kr2",
+      "label": "Кр2 · поле",
+      "coefficients": [
+        1.9650123640478943,
+        0.7116193746649617,
+        0.3021681179618186,
+        -0.7563820896050614,
+        -3.6762196252138986
+      ],
+      "training": {
+        "days": 488,
+        "first_target_day": "2022-07-26",
+        "last_target_day": "2024-12-31"
+      },
+      "test": {
+        "days": 353,
+        "first_target_day": "2025-01-01",
+        "last_target_day": "2025-12-31",
+        "window_start": "2025-01-01",
+        "window_end": "2025-12-31",
+        "calendar_days": 365,
+        "model_mae_c": 1.7437250801107356,
+        "baseline_mae_c": 1.706366160960649
+      },
+      "archive": {
+        "first_source_day": "2024-12-31",
+        "last_source_day": "2025-12-31",
+        "default_source_day": "2025-12-30"
+      }
+    }
+  ]
+}
