@@ -57,6 +57,20 @@ async function dragHandle(page, name, offset) {
 async function screenshot(page, name, fullPage = false) {
   if (process.env.METEO_CAPTURE_OBSERVATIONS !== "1") return;
   await fs.mkdir(screenshotDir, { recursive: true });
+  if (name === "observations") {
+    try {
+      const embedded = await page.locator("#station-overview iframe").elementHandle({timeout: 2500});
+      const provider = await embedded.contentFrame();
+      await provider.waitForFunction(() => {
+        const tiles = performance.getEntriesByType("resource")
+          .filter(resource => resource.name.includes("renderer-tiles.maps.yandex"));
+        return tiles.length >= 4 && performance.now() - Math.max(...tiles.map(tile => tile.responseEnd)) > 700;
+      }, null, {timeout: 12000});
+    } catch {
+      await page.locator('#station-overview [data-provider="local"]').click();
+      await page.locator("#station-overview .station-map-marker").first().waitFor();
+    }
+  }
   await page.screenshot({ path: path.join(screenshotDir, `${name}.png`), fullPage });
 }
 
@@ -82,6 +96,81 @@ async function assertDownload(page, trigger, extension, header) {
   const bytes = await fs.readFile(await download.path());
   assert.ok(bytes.length > 20);
   assert.ok(header(bytes), `Недопустимое содержимое ${extension}`);
+  return download.suggestedFilename();
+}
+
+async function checkDisjointIntervals(browser) {
+  const page = await browser.newPage({ viewport: { width: 320, height: 844 }, locale: "ru-RU" });
+  const show = () => page.getByRole("button", { name: "Показать", exact: true }).click();
+  const chartId = "air";
+  const first = "2025-07-01:2025-07-03";
+  const second = "2025-07-08:2025-07-10";
+  try {
+    await page.goto(`${root}/?stations=kr1&start=2025-07-01&end=2025-07-03&grain=day&charts=air`);
+    await hasPlot(page, chartId);
+    const fields = page.locator('[data-date-interval] input[type="date"]');
+    for (const field of await fields.all()) assert.ok((await field.boundingBox()).width >= 125);
+
+    await page.getByRole("button", { name: "Добавить интервал", exact: true }).click();
+    const row = page.getByRole("group", { name: "Интервал 2", exact: true });
+    await show();
+    await page.getByText("Интервал 2. Введите обе даты.", { exact: true }).waitFor();
+    await row.getByLabel("Дата с", { exact: true }).fill("2025-07-08");
+    await row.getByLabel("Дата по", { exact: true }).fill("2025-07-07");
+    await page.getByText("Интервал 2. Дата начала должна быть раньше даты окончания или совпадать с ней.", { exact: true }).waitFor();
+    await row.getByLabel("Дата по", { exact: true }).fill("2025-07-10");
+    const data = await getChart(page, show, { chart: chartId, intervals: `${first},${second}`, start: "2025-07-01", end: "2025-07-10" });
+    assert.deepEqual(data.intervals.map(interval => `${interval.start}:${interval.end}`), [first, second]);
+    assert.deepEqual(data.series.flatMap(series => series.points.map(point => point.x)), [
+      "2025-07-01", "2025-07-02", "2025-07-03", "2025-07-08", "2025-07-09", "2025-07-10",
+    ]);
+    await hasPlot(page, chartId);
+    assert.equal(await page.locator(".date-range-band").count(), 2);
+    assert.equal(await page.getByRole("slider").count(), 0);
+    assert.equal(new URL(page.url()).searchParams.get("intervals"), `${first},${second}`);
+    await page.locator("#observation-summary").getByText("08.07.2025 — 10.07.2025", { exact: true }).waitFor();
+    await assertDownload(page, () => chart(page, chartId).locator('[data-chart-action="csv"]').click(), "csv", bytes => {
+      const table = bytes.toString("utf8");
+      return table.includes("Начало выбранного интервала") && table.includes("2025-07-01;2025-07-01;") &&
+        table.includes("2025-07-08;2025-07-08;") && !table.includes("2025-07-04");
+    });
+    const dateToken = "2025-07-01_2025-07-03__2025-07-08_2025-07-10";
+    await chart(page, chartId).locator('[data-chart-action="download"]').click();
+    const svgName = await assertDownload(page, () => chart(page, chartId).locator('[data-chart-format="svg"]').click(), "svg", bytes => {
+      const image = bytes.toString("utf8");
+      return image.includes("01.07.2025 – 03.07.2025") && image.includes("08.07.2025 – 10.07.2025");
+    });
+    assert.ok(svgName.includes(dateToken));
+    await page.getByRole("button", { name: "Скачать все графики", exact: true }).click();
+    const zipDialog = page.getByRole("dialog", { name: "Скачать все графики", exact: true });
+    const zipName = await assertDownload(page, () => zipDialog.getByRole("button", { name: "SVG", exact: true }).click(),
+      "zip", bytes => bytes.subarray(0, 2).toString() === "PK");
+    assert.ok(zipName.includes(dateToken));
+
+    const shared = await browser.newPage({ viewport: { width: 1440, height: 960 }, locale: "ru-RU" });
+    await shared.goto(page.url());
+    await hasPlot(shared, chartId);
+    assert.deepEqual(await shared.locator('[data-date-interval] input[type="date"]').evaluateAll(inputs => inputs.map(input => input.value)), [
+      "2025-07-01", "2025-07-03", "2025-07-08", "2025-07-10",
+    ]);
+    await shared.close();
+
+    await page.getByRole("button", { name: "Убрать интервал 2", exact: true }).click();
+    await assertDates(page, "2025-07-01", "2025-07-03");
+    assert.equal(new URL(page.url()).searchParams.has("intervals"), false);
+    await page.getByRole("button", { name: "Добавить интервал", exact: true }).click();
+    await row.getByLabel("Дата с", { exact: true }).fill("2025-07-04");
+    await row.getByLabel("Дата по", { exact: true }).fill("2025-07-05");
+    await show();
+    await page.getByText("Смежные и пересекающиеся интервалы объединены.", { exact: true }).waitFor();
+    await assertDates(page, "2025-07-01", "2025-07-05");
+    assert.equal(await page.locator("[data-date-interval]").count(), 1);
+    await page.getByRole("button", { name: "Сбросить даты", exact: true }).click();
+    await assertDates(page, originalStart, originalEnd);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
+  } finally {
+    await page.close();
+  }
 }
 
 async function run() {
@@ -235,8 +324,9 @@ async function run() {
     assert.equal(await freshPage.locator(".station-chip").count(), 0);
     await assertDates(freshPage, "2025-01-01", "2025-12-31");
     await freshPage.close();
+    await checkDisjointIntervals(browser);
     assert.deepEqual(pageErrors, []);
-    console.log("Наблюдения: стартовые данные, диапазон 2005–2015, АМЕ-60, ползунки мышью и клавиатурой, пустой выбор, сравнение, режимы, экспорт, ссылки журнала, общий URL, 390 и 320 px.");
+    console.log("Наблюдения: стартовые данные, диапазон 2005–2015, АМЕ-60, ползунки мышью и клавиатурой, пустой выбор, сравнение, режимы, экспорт, ссылки журнала, общий URL, отдельные интервалы и объединение соседних дат, 390 и 320 px.");
   } finally {
     await browser.close();
   }

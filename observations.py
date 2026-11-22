@@ -55,6 +55,7 @@ ROLES = {"min": "минимум", "max": "максимум", "trend": "трен�
 GRAINS = {"day", "decade", "month", "year"}
 MODES = {"modern", "togu", "semenov"}
 MAX_POINTS = 200_000
+MAX_INTERVALS = 12
 PAIR = ("kr1", "kr2")
 DIFFERENCE = {"id": "kr2-kr1", "label": "Кр2 − Кр1", "color": "#a74937"}
 CALM_LIMIT = 0.5
@@ -110,11 +111,19 @@ def calendar_days(start, end):
 
 
 def period_budget(start, end, grain, series_count):
+    interval_budget(((start, end),), grain, series_count)
+
+
+def period_count(start, end, grain):
     month_count = (end.year - start.year) * 12 + end.month - start.month + 1
     counts = {"day": (end - start).days + 1, "decade": month_count * 3,
               "month": month_count, "year": end.year - start.year + 1}
+    return counts[grain]
+
+
+def interval_budget(intervals, grain, series_count):
     # This protects the JSON response without discarding individual points or altering the date filter.
-    if counts[grain] * series_count > MAX_POINTS:
+    if sum(period_count(start, end, grain) for start, end in intervals) * series_count > MAX_POINTS:
         raise ValueError("Слишком много точек для одного графика. Выберите более крупную группировку или меньше станций.")
 
 
@@ -134,6 +143,64 @@ def periods(start, end, grain):
 
 def station_params(station):
     return {param["id"] for param in station["params"]}
+
+
+def query_dates(query):
+    first = parse_day(query.get("start", "2025-01-01"))
+    last = parse_day(query.get("end", "2025-12-31"))
+    if first > last:
+        raise ValueError("Начало периода должно предшествовать его окончанию")
+    return first, last
+
+
+def query_intervals(query):
+    """Return distinct non-adjacent inclusive ranges, ordered by start date."""
+    if "intervals" not in query:
+        return (query_dates(query),)
+    raw = query["intervals"]
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("Укажите интервалы в формате ГГГГ-ММ-ДД:ГГГГ-ММ-ДД через запятую")
+    parts = raw.split(",", MAX_INTERVALS)
+    if len(parts) > MAX_INTERVALS:
+        raise ValueError(f"Можно выбрать до {MAX_INTERVALS} интервалов")
+    ranges = []
+    for part in parts:
+        dates = part.strip().split(":")
+        if len(dates) != 2:
+            raise ValueError("Укажите интервалы в формате ГГГГ-ММ-ДД:ГГГГ-ММ-ДД через запятую")
+        first, last = map(parse_day, dates)
+        if first > last:
+            raise ValueError("Начало периода должно предшествовать его окончанию")
+        ranges.append((first, last))
+
+    merged = []
+    for first, last in sorted(ranges):
+        if merged and (first - merged[-1][1]).days <= 1:
+            merged[-1] = (merged[-1][0], max(last, merged[-1][1]))
+        else:
+            merged.append((first, last))
+    return tuple(merged)
+
+
+def interval_details(first, last):
+    start, end = first.isoformat(), last.isoformat()
+    label = f"{first.day:02}.{first.month:02}.{first.year:04}"
+    if first != last:
+        label += f" — {last.day:02}.{last.month:02}.{last.year:04}"
+    return {
+        "id": f"{start}:{end}", "start": start, "end": end, "days": (last - first).days + 1,
+        "label": label,
+    }
+
+
+def query_stations(query):
+    station_ids = list(dict.fromkeys(name.strip() for name in query.get("stations", "").split(",") if name.strip()))
+    if not station_ids:
+        return []
+    catalog = {station["id"]: station for station in station_catalog.catalog()}
+    if set(station_ids) - catalog.keys():
+        raise ValueError("Неизвестная станция")
+    return [catalog[station] for station in station_ids]
 
 
 def archive_rows(archive, station, year, start, end):
@@ -274,6 +341,13 @@ def slot(timestamp, station):
     return (int(timestamp[11:13]) * 60 + int(timestamp[14:16])) // minutes
 
 
+def observed_slots(rows, station, param=None):
+    return len({
+        slot(timestamp, station) for timestamp, row in rows.items()
+        if not row.get("synthetic") and (param is None or row.get(param) is not None)
+    })
+
+
 def load_daily(station, params, start, end, station_valid=None, working=None):
     allowed = tuple(param for param in params if param in station_params(station))
     daily = {param: {} for param in params}
@@ -301,7 +375,7 @@ def load_daily(station, params, start, end, station_valid=None, working=None):
                 if estimate:
                     working[param][day] = estimate
         if station_valid is not None:
-            if len({slot(timestamp, station) for timestamp, row in rows.items() if not row.get("synthetic")}) >= station["minimum_slots"]:
+            if observed_slots(rows, station) >= station["minimum_slots"]:
                 station_valid.add(day)
             else:
                 station_valid.discard(day)
@@ -328,6 +402,104 @@ def valid_months(start, end, valid):
         if start <= lo and hi <= end and build_data.coverage([day in valid for day in calendar_days(lo, hi)])[-1]:
             output.add(month)
     return output
+
+
+def overview_slots(station, start, end, param):
+    """Read archived daily slot counts and refresh only dates touched by published rows."""
+    station_id = station["id"]
+    archive = build_data.STATIONS.get(station_id)
+    slots = {}
+    if archive:
+        column = "slots" if param else "station_slots"
+        archive_param = param or archive.params[0]
+        with closing(analytics.database()) as connection:
+            slots.update(connection.execute(
+                f"SELECT day, {column} FROM daily WHERE station=? AND param=? AND day BETWEEN ? AND ?",
+                (station_id, archive_param, start, end),
+            ))
+    parameters = (param,) if param else ()
+    for day, rows in raw_days(station, start, end, parameters, imports_only=True, count_all_slots=param is None):
+        slots[day] = observed_slots(rows, station, param)
+    return slots
+
+
+def overview_grain(windows):
+    months = set()
+    for first, last in windows:
+        lo, hi = first.year * 12 + first.month, last.year * 12 + last.month
+        if hi - lo >= 24:
+            return "year"
+        months.update(range(lo, hi + 1))
+        if len(months) > 24:
+            return "year"
+    return "month"
+
+
+def overview_periods(windows, grain, station_count):
+    grouped = {}
+    for first, last in windows:
+        for part in periods(first, last, grain):
+            item = grouped.setdefault(part.start, {
+                "id": part.start, "start": part.first, "end": part.last, "total_days": 0, "intervals": [],
+            })
+            item["end"] = part.last
+            item["total_days"] += part.length
+            item["intervals"].append({"start": part.first, "end": part.last})
+            if len(grouped) * station_count > MAX_POINTS:
+                raise ValueError("Слишком много ячеек покрытия. Сократите периоды или число станций.")
+    return list(grouped.values())
+
+
+def coverage_overview(query):
+    """Summarize the selected calendar interval by station and coverage measure."""
+    windows = query_intervals(query)
+    selected_windows = [(first.isoformat(), last.isoformat()) for first, last in windows]
+    start, end = selected_windows[0][0], selected_windows[-1][1]
+    grain = overview_grain(windows)
+    requested = query.get("parameter", "all")
+    if requested != "all" and requested not in analytics.PARAMS:
+        raise ValueError("Выберите доступный параметр покрытия")
+
+    stations = query_stations(query)
+    available = {param for station in stations for param in station_params(station)}
+    parameters = [{"id": "all", "label": "Общее покрытие"}]
+    parameters.extend({"id": param, "label": label} for param, (label, _) in analytics.PARAMS.items()
+                      if param in available)
+    selected = requested if requested in available else "all"
+    result = {"start": start, "end": end, "grain": grain, "parameter": selected,
+              "parameters": parameters, "periods": [], "rows": [],
+              "intervals": [{"start": lo, "end": hi} for lo, hi in selected_windows]}
+    if not stations:
+        return result
+
+    result["periods"] = overview_periods(selected_windows, grain, len(stations))
+    selected_days = sum(item["total_days"] for item in result["periods"])
+    for station in stations:
+        supported = selected == "all" or selected in station_params(station)
+        counts = {}
+        if supported:
+            for first, last in selected_windows:
+                counts.update(overview_slots(station, first, last, None if selected == "all" else selected))
+        observed = sorted(day for day, count in counts.items() if count)
+        valid = sorted(day for day, count in counts.items() if count >= station["minimum_slots"])
+        cells = []
+        for item in result["periods"]:
+            valid_days = sum(bisect_right(valid, part["end"]) - bisect_left(valid, part["start"])
+                             for part in item["intervals"])
+            observed_days = sum(bisect_right(observed, part["end"]) - bisect_left(observed, part["start"])
+                                for part in item["intervals"])
+            total_days = item["total_days"]
+            cells.append({
+                "period": item["id"], "valid_days": valid_days, "observed_days": observed_days,
+                "total_days": total_days, "ratio": valid_days / total_days if supported else None,
+            })
+        result["rows"].append({
+            "station": station["id"], "label": station["label"], "color": station.get("color"),
+            "minimum_slots": station["minimum_slots"], "slot_minutes": station["slot_minutes"],
+            "supported": supported, "valid_days": len(valid), "observed_days": len(observed),
+            "total_days": selected_days, "cells": cells,
+        })
+    return result
 
 
 def coverage(station, start, end, daily, allowed, param, *, valid=None):
@@ -516,36 +688,84 @@ def estimated_series(chart, station, daily, working, intervals, start, end, grai
     return output
 
 
+def station_statistics(station, param, daily, days):
+    valid = [(day, row) for day, row in sorted(daily.items()) if row.valid]
+    min_day, minimum = min(valid, key=lambda item: item[1].minimum, default=(None, None))
+    max_day, maximum = max(valid, key=lambda item: item[1].maximum, default=(None, None))
+    label, unit = analytics.PARAMS[param]
+    return {
+        "station": station["id"], "label": station["label"], "parameter": param,
+        "parameter_label": label, "unit": unit, "valid_days": len(valid), "total_days": days,
+        "n": sum(row.n for _, row in valid), "mean": fmean(row.mean for _, row in valid) if valid else None,
+        "min": minimum.minimum if minimum else None, "max": maximum.maximum if maximum else None,
+        "min_day": min_day, "max_day": max_day,
+    }
+
+
 def chart_data(query):
-    """Return a chart for the inclusive region and explicit station selection."""
+    """Return independent chart series for each normalized inclusive interval."""
     chart_id, grain, mode = (query.get("chart", "air"), query.get("grain", "month"),
                              query.get("mode", "modern"))
     if chart_id not in CHARTS or grain not in GRAINS or mode not in MODES:
         raise ValueError("Выберите доступный график, группировку и режим отображения")
-    first = parse_day(query.get("start", "2025-01-01"))
-    last = parse_day(query.get("end", "2025-12-31"))
-    if first > last:
-        raise ValueError("Начало периода должно предшествовать его окончанию")
-    start, end = first.isoformat(), last.isoformat()
-
+    ranges = query_intervals(query)
+    stations = query_stations(query)
     chart = CHARTS[chart_id]
-    result = {"title": chart.title, "unit": chart.unit, "kind": chart.kind, "axis": chart.axis,
-              "series": [], "coverage": [], "notes": [], "start": start, "end": end,
-              "grain": grain, "mode": mode, "chart": chart_id}
-    station_ids = list(dict.fromkeys(name.strip() for name in query.get("stations", "").split(",") if name.strip()))
-    if not station_ids:
-        result["notes"].append("Выберите хотя бы одну станцию")
-        return result
-    catalog = {station["id"]: station for station in station_catalog.catalog()}
-    if set(station_ids) - catalog.keys():
-        raise ValueError("Неизвестная станция")
-    stations = [catalog[station] for station in station_ids]
-
     working_supported = chart.axis == "time" and all(role in {"mean", "min", "max"} for _, role in chart.fields)
-    if chart.axis == "time":
+    if stations and chart.axis == "time":
         series_count = len(stations) * len(chart.fields)
         series_count += series_count * working_supported + (chart_id == "temp_difference")
-        period_budget(first, last, grain, series_count)
+        interval_budget(ranges, grain, series_count)
+
+    sections = (_chart_interval(query, chart_id, grain, mode, stations, first, last, working_supported)
+                for first, last in ranges)
+    if "intervals" not in query:
+        return next(sections)
+    details = [interval_details(first, last) for first, last in ranges]
+    if len(ranges) == 1 or not stations:
+        return dict(next(sections), start=details[0]["start"], end=details[-1]["end"], intervals=details)
+    return _combine_intervals(sections, details)
+
+
+def _combine_intervals(sections, details):
+    combined = None
+    for result, detail in zip(sections, details):
+        if combined is None:
+            combined = dict(result, start=details[0]["start"], end=details[-1]["end"], intervals=details,
+                            series=[], coverage=[], statistics=[], notes=[])
+            if "calm_by_station" in combined:
+                del combined["calm_by_station"]
+                combined["calm_by_interval"] = {}
+        interval = {"interval": detail["id"], "interval_start": detail["start"],
+                    "interval_end": detail["end"], "interval_label": detail["label"]}
+        for series in result["series"]:
+            series.update(interval)
+            series["base_id"] = series["id"]
+            series["id"] += f"@{detail['id']}"
+            series["label"] += f" · {detail['label']}"
+            if result["axis"] == "time":
+                for point in series["points"]:
+                    point["x"] = max(point["x"], detail["start"])
+                    point["x_end"] = min(point["x_end"], detail["end"])
+        combined["series"].extend(result["series"])
+        combined["coverage"].extend(dict(item, **interval) for item in result["coverage"])
+        combined["statistics"].extend(dict(item, **interval) for item in result["statistics"])
+        combined["notes"].extend(result["notes"])
+        if "calm_by_station" in result:
+            combined["calm_by_interval"][detail["id"]] = result["calm_by_station"]
+    combined["notes"] = list(dict.fromkeys(combined["notes"]))
+    return combined
+
+
+def _chart_interval(query, chart_id, grain, mode, stations, first, last, working_supported):
+    start, end = first.isoformat(), last.isoformat()
+    chart = CHARTS[chart_id]
+    result = {"title": chart.title, "unit": chart.unit, "kind": chart.kind, "axis": chart.axis,
+              "series": [], "coverage": [], "statistics": [], "notes": [], "start": start, "end": end,
+              "grain": grain, "mode": mode, "chart": chart_id}
+    if not stations:
+        result["notes"].append("Выберите хотя бы одну станцию")
+        return result
     intervals = tuple(periods(start, end, grain)) if chart.axis == "time" else ()
     if grain in {"decade", "month"} and any(not period.full for period in intervals):
         result["notes"].append("На границах диапазона неполные календарные периоды показаны пропусками.")
@@ -564,7 +784,11 @@ def chart_data(query):
     baseline = selected_baseline(query, start, end) if chart_id == "air_anomaly" else (start, end)
     scalar = CHARTS["air"] if chart_id == "temp_difference" else chart
     for station in stations:
-        series, details, notes = scalar_series(chart_id, scalar, station, daily[station["id"]],
+        station_daily = daily[station["id"]]
+        if chart_id not in {"air_anomaly", "air_trend"}:
+            result["statistics"].extend(station_statistics(station, param, station_daily[param], (last - first).days + 1)
+                                        for param in parameters)
+        series, details, notes = scalar_series(chart_id, scalar, station, station_daily,
                                                intervals, start, end, grain, baseline)
         if "pressure_hpa" in station_params(station) and station["id"] in station_valid:
             overall = station_valid[station["id"]]

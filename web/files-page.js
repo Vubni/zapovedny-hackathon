@@ -1,5 +1,6 @@
 const main = document.querySelector(".files-main");
 const picker = document.getElementById("fileInput");
+const correctedPicker = document.getElementById("correctedCsvInput");
 const dialog = document.getElementById("files-dialog");
 const numberFormats = [0, 1, 2].map((digits) => new Intl.NumberFormat("ru-RU", {
   minimumFractionDigits: digits, maximumFractionDigits: digits,
@@ -175,7 +176,9 @@ function historyRow(file) {
     <td><div class="row">${icon("file")}<div class="file-name">${escapeHtml(file.filename)}${bytes ? `<p class="muted small">${bytes}</p>` : ""}</div></div></td>
     <td>${escapeHtml(stationName(file.confirmed?.settings.station ?? file.station))}</td>
     <td>${spanLabel(file.start, file.end)}</td>
-    <td>${fileStatus(file)}${file.preview ? `<p class="muted small file-message">Готов предпросмотр</p>` : ""}</td>
+    <td>${fileStatus(file)}
+      ${file.preview ? `<p class="muted small file-message">Готов предпросмотр</p>` : ""}
+      ${file.confirmed?.manual ? `<p class="muted small file-message">С ручными правками</p>` : ""}</td>
     <td><div class="history-actions">
       ${sourceButton(file, true)}
       ${button(file.confirmed ? "Изменить фильтрацию" : "Обработать снова", "edit", { id: file.id })}
@@ -190,7 +193,8 @@ function filesPage() {
   const history = all.filter((file) => file.version).sort((first, last) =>
     (last.start ?? "").localeCompare(first.start ?? "") || (last.created_at ?? "").localeCompare(first.created_at ?? ""));
   const queueLength = queue.length + state.transfers.length;
-  return `${heading("Файлы и импорт", "Загрузка наблюдений, проверка и учёт в общих графиках", link("Расширенный аудит", "/review"))}
+  return `${heading("Файлы и импорт", "Загрузка наблюдений, проверка и учёт в общих графиках",
+    `<div class="row heading-actions">${link("Расширенный аудит", "/review")}${link("Доступ оператора", "/operator")}</div>`)}
     <div class="split">
       ${card(`${cardTitle("Загрузить новые файлы", "Выберите один или несколько CSV или XLSX. Обработка выполняется по одному файлу.")}
         <div class="upload" id="dropzone">
@@ -265,8 +269,10 @@ function editorPage(editor) {
   const active = editor.done ? "В общих графиках" : editor.preview ? "Проверка результата" : "Настройка фильтрации";
   const statusText = busy === "restore" ? "Загрузка предпросмотра…" :
     busy === "preview" ? "Обработка файла…" :
+    busy === "corrected" ? "Проверка исправленного CSV…" :
     busy === "confirm" ? "Сохранение результата…" :
-    editor.preview && !checked ? "Настройки изменились. Запустите фильтрацию повторно." : "";
+    editor.preview && !checked ? "Настройки изменились. Запустите фильтрацию повторно." :
+    editor.preview?.manual ? "Повторная фильтрация обработает исходник и заменит ручные правки в черновике." : "";
   return `${heading("Обработка файла", "", button("К файлам", "list", { glyph: "back" }))}
     ${card(`<div class="between file-context"><div class="row"><span class="file-symbol">${icon("file", 19)}</span>
         <div><h2>${escapeHtml(file.filename)}</h2><p class="muted">${spanLabel(file.start, file.end)} · ${countLabel(file.rows, "строка", "строки", "строк")}</p></div>
@@ -305,8 +311,8 @@ function colorFor(key) {
   return parameterColors[key] ?? "#ab4d32";
 }
 
-function outlierChip(label, key, count, current, color = "") {
-  return `<button type="button" class="outlier-chip" data-file-action="outlier" data-file-id="${escapeHtml(key)}" aria-pressed="${key === current}">
+function outlierChip(label, key, count, active, color = "") {
+  return `<button type="button" class="outlier-chip" data-file-action="outlier" data-file-id="${escapeHtml(key)}" aria-pressed="${active}">
     ${color ? `<i class="swatch" style="--dot:${color}"></i>` : ""}${escapeHtml(label)}<strong>${fmt(count)}</strong></button>`;
 }
 
@@ -321,34 +327,116 @@ function table(headers, rows) {
   </div>`;
 }
 
+const timelineLayers = {
+  marked: { label: "Исходные выбросы", color: "#ab4d32" },
+  filled: { label: "Замены и заполнения", color: "#227790" },
+  manual: { label: "Ручные правки", color: "#735579" },
+};
+
+function previewEvents(parameters, points) {
+  const events = [];
+  for (const parameter of parameters) {
+    const filledTimes = new Set();
+    const manualTimes = new Set();
+    for (const point of points[parameter.id] ?? []) {
+      if (point.marked) events.push({ ...point, parameter, kind: "marked" });
+      if (point.estimate && !filledTimes.has(point.time)) {
+        filledTimes.add(point.time);
+        events.push({ ...point, parameter, kind: "filled" });
+      }
+      if (point.manual && !manualTimes.has(point.time)) {
+        manualTimes.add(point.time);
+        events.push({ ...point, parameter, kind: "manual" });
+      }
+    }
+  }
+  return events;
+}
+
+function eventTable(events, total) {
+  if (!events.length) {
+    return `<p class="caption">${total ? "Подробности отмеченных сроков доступны в XLSX." : "В выбранном диапазоне нет отмеченных событий."}</p>`;
+  }
+  const rows = events.slice().sort((first, last) => first.time.localeCompare(last.time)).slice(0, 30);
+  return `${table(["Дата и время", "Параметр", "До изменения", "Результат", "Причина или способ"],
+    rows.map(({ time, parameter, value, estimate, reasons, kind, previous_value, manual_value }) => {
+      const reading = (number) => Number.isFinite(number) ? `${fmt(number, 2)} ${parameter.unit}` : "—";
+      if (kind === "manual") {
+        return [time, parameter.label, reading(previous_value),
+          manual_value == null ? "Очищено" : reading(manual_value), "Исправлено в загруженном CSV"];
+      }
+      const method = { model: "Локальная модель", external: "Внешние погодные источники", manual: "Ручная правка" }[estimate?.method];
+      return [
+        time, parameter.label, reading(value), kind === "marked" ? "К удалению" : reading(estimate.value),
+        kind === "marked" ? (reasons?.join(" ") || "Отмечено проверкой") :
+          [method, estimate.source, reasons?.join(" ")].filter(Boolean).join(" · "),
+      ];
+    }))}
+    ${rows.length < total ? `<p class="caption">Показано ${fmt(rows.length)} из ${fmt(total)} событий. Полные результаты доступны в XLSX.</p>` : ""}`;
+}
+
+function manualCsvControls(file, preview, editor, ready) {
+  const csvUrl = filesUrl("csv", { id: file.id, revision: preview.revision });
+  return `<div class="manual-csv">
+    <div><h3>Ручная правка CSV</h3>
+      <p class="muted small">Исправьте значения в скачанном CSV, сохранив столбцы и время наблюдений.</p></div>
+    ${preview.manual ? `<p class="row manual-csv-file">${tag("Исправленный CSV")}<strong>${escapeHtml(preview.manual.filename)}</strong></p>` : ""}
+    <div class="row">
+      ${ready ? link("Скачать CSV для правки", csvUrl, { glyph: "download" }) :
+        button("Скачать CSV для правки", "download-csv", { glyph: "download", disabled: true })}
+      ${button(editor.busy === "corrected" ? "Проверка CSV…" : "Загрузить исправленный CSV", "corrected-browse",
+        { glyph: "upload", disabled: !ready })}
+    </div>
+  </div>`;
+}
+
 function previewCard(editor, checked, file) {
-  const { preview, metric } = editor;
+  const { preview, parameters, hiddenLayers, focusEvent } = editor;
   const { params, points, stats } = preview;
-  const selected = params.find(({ id }) => id === metric);
-  const chosen = selected ? [selected] : params;
-  const visibleCount = selected ? stats.parameters[metric]?.marked ?? 0 : stats.marked;
-  const shown = chosen.flatMap((parameter) => (points[parameter.id] ?? [])
-    .filter((point) => point.marked).slice(0, 30).map((point) => ({ ...point, parameter })))
-    .sort((first, last) => first.time.localeCompare(last.time)).slice(0, 30);
-  const chart = selected ? outlierTrace(points[metric] ?? [], selected) : outlierTimeline(preview, file);
+  const chosen = parameters.size ? params.filter(({ id }) => parameters.has(id)) : params;
+  const selected = parameters.size === 1 ? chosen[0] : null;
+  const layers = Object.keys(timelineLayers).filter((kind) => kind !== "manual" || preview.manual?.changed);
+  const enabled = layers.filter((kind) => !hiddenLayers.has(kind));
+  const events = previewEvents(chosen, points);
+  const totals = { marked: 0, filled: 0, manual: 0 };
+  for (const { id } of chosen) {
+    totals.marked += stats.parameters[id]?.marked ?? 0;
+    totals.filled += stats.parameters[id]?.filled ?? 0;
+    totals.manual += preview.manual?.parameters?.[id] ?? 0;
+  }
+  const timeline = timelineData(preview, file, chosen, events, totals);
+  const focus = focusEvent ? timeline.groups.get(focusEvent.bucket)?.[focusEvent.kind] : null;
+  const eventCount = focus ? sumCounts(focus) : enabled.reduce((sum, kind) => sum + totals[kind], 0);
+  const visible = events.filter(({ kind, time }) => focus
+    ? kind === focusEvent.kind && timeline.indexFor(time) === focusEvent.bucket
+    : enabled.includes(kind));
   const download = filesUrl("excel", { id: file.id, revision: preview.revision });
-  return card(`${cardTitle("Выбросы к удалению", "Предпросмотр после первичной проверки и выбранных дополнительных методов.",
+  return card(`${cardTitle("Выбросы и заполнения", "Общая шкала изменений после выбранных методов.",
       tag(file.confirmed ? "Текущая версия остаётся в графиках" : "В общую базу не добавлено", "neutral"))}
-    <div class="outlier-top"><div><span class="eyebrow">Всего</span><div class="outlier-number">${countLabel(stats.marked)}</div></div>
-      ${selected ? `<div class="metric selected-count"><span class="small">${escapeHtml(selected.label)}</span><strong>${countLabel(visibleCount)}</strong></div>` : ""}
-      ${stats.filled ? `<div class="metric selected-count"><span class="small">Заполнено</span><strong>${fmt(selected ? stats.parameters[metric]?.filled ?? 0 : stats.filled)}</strong></div>` : ""}
+    <div class="outlier-top"><div><span class="eyebrow">${parameters.size ? "Выбранные параметры" : "Всего"}</span>
+      <div class="outlier-number">${countLabel(totals.marked)}</div></div>
+      <div class="metric selected-count"><span class="small">Заменено или заполнено</span><strong>${fmt(totals.filled)}</strong></div>
+      ${preview.manual?.changed ? `<div class="metric selected-count"><span class="small">Ручные правки</span><strong>${fmt(totals.manual)}</strong></div>` : ""}
     </div>
-    <div class="outlier-tabs" role="group" aria-label="Выбросы по параметрам">
-      ${outlierChip("Все", "all", stats.marked, metric)}
-      ${params.map(({ id, label }) => outlierChip(label, id, stats.parameters[id]?.marked ?? 0, metric, colorFor(id))).join("")}
+    <div class="outlier-tabs" role="group" aria-label="Параметры шкалы">
+      ${outlierChip("Все", "all", stats.marked, !parameters.size)}
+      ${params.map(({ id, label }) => outlierChip(label, id, stats.parameters[id]?.marked ?? 0, parameters.has(id), colorFor(id))).join("")}
     </div>
-    <div class="outlier-chart">${chart}</div>
-    ${shown.length ? `<details class="outlier-details"><summary>Показать отмеченные ячейки</summary>
-      ${table(["Дата и время", "Параметр", "Исходное значение"], shown.map(({ time, parameter, value }) =>
-        [time, parameter.label, Number.isFinite(value) ? `${fmt(value, 2)} ${parameter.unit}` : "—"]))}
-      ${shown.length < visibleCount ? `<p class="caption">Показано ${fmt(shown.length)} из ${fmt(visibleCount)} отмеченных ячеек.</p>` : ""}
-    </details>` : `<p class="caption">${visibleCount ? "Полный список отмеченных ячеек доступен в XLSX." : "Выбросов для выбранных параметров нет."}</p>`}
+    <div class="legend timeline-legend" role="group" aria-label="Слои шкалы">
+      ${layers.map((kind) =>
+        `<button type="button" class="legend-key" data-file-action="timeline-layer" data-file-id="${kind}" aria-pressed="${enabled.includes(kind)}">
+          <i class="swatch block" style="--dot:${timelineLayers[kind].color}"></i>${timelineLayers[kind].label}</button>`).join("")}
+    </div>
+    <div class="outlier-chart">${outlierTimeline(timeline, chosen, enabled, focusEvent)}</div>
+    ${timeline.incomplete ? note("Чтобы увидеть заполнения по выбранным параметрам, пересчитайте сохранённый предпросмотр.") : ""}
+    ${selected ? `<div class="outlier-chart parameter-trace">${outlierTrace(points[selected.id] ?? [], selected, enabled)}</div>` : ""}
+    ${eventCount ? `<details class="outlier-details" ${focus ? "open" : ""}>
+      <summary>${focus ? `${timeline.periodLabel(focusEvent.bucket)} · ${timelineLayers[focusEvent.kind].label} · ${fmt(eventCount)}` : "Показать отмеченные ячейки"}</summary>
+      <div id="timeline-events">${eventTable(visible, eventCount)}</div>
+      ${focus ? button("Все отмеченные сроки", "timeline-reset") : ""}
+    </details>` : `<p class="caption">${enabled.length ? "Для выбранных слоёв нет изменений." : "Выберите слой на шкале."}</p>`}
     ${preview.warnings?.length ? `<div class="preview-warnings">${preview.warnings.map((message) => note(message, true)).join("")}</div>` : ""}
+    ${manualCsvControls(file, preview, editor, checked && !editor.busy)}
     <div class="between publish-bar">
       <div>${checked && !editor.busy ? link("Скачать отфильтрованный файл", download, { glyph: "download" }) :
         button("Скачать отфильтрованный файл", "excel", { glyph: "download", disabled: true })}
@@ -380,79 +468,150 @@ function dayLabel(iso) {
   return `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 }
 
-function outlierTimeline(preview, file) {
+const HOUR = 3_600_000;
+
+function sumCounts(counts) {
+  return Object.values(counts).reduce((total, count) => total + count, 0);
+}
+
+function timelineData(preview, file, parameters, events, totals) {
   const start = stamp(file.start.slice(0, 10));
   const end = stamp(file.end.slice(0, 10));
   const days = Math.round((end - start) / DAY) + 1;
-  const months = days > 95;
+  const filledEvents = events.filter(({ kind }) => kind === "filled");
+  const completeFills = filledEvents.length === totals.filled;
+  const hourly = days <= 2 && completeFills && events.length === totals.filled + totals.marked + totals.manual;
+  const periodDays = preview.timeline_days ?? 1;
+  const months = days > 95 && periodDays === 1;
   const monthNumber = (time) => Number(time.slice(0, 4)) * 12 + Number(time.slice(5, 7)) - 1;
   const startMonth = monthNumber(file.start);
-  const bucketCount = months ? monthNumber(file.end) - startMonth + 1 : days;
-  const countsByBucket = new Map();
-  for (const row of preview.timeline) {
-    const bucket = months ? monthNumber(row.time) - startMonth :
-      Math.round((stamp(row.time.slice(0, 10)) - start) / DAY);
-    const counts = countsByBucket.get(bucket) ?? new Map();
-    for (const [key, count] of Object.entries(row.parameters)) {
-      if (count > 0) counts.set(key, (counts.get(key) ?? 0) + count);
-    }
-    if (counts.size) countsByBucket.set(bucket, counts);
-  }
-  let maximum = 0;
-  for (const counts of countsByBucket.values()) {
-    const sum = [...counts.values()].reduce((total, count) => total + count, 0);
-    maximum = Math.max(maximum, sum);
-  }
-  const step = Math.max(1, Math.ceil(maximum / 4));
-  const { left, top, bottom } = chartBox;
-  const y = (value) => bottom - value / (4 * step) * (bottom - top);
-  const grid = Array.from({ length: 5 }, (_, index) => gridLine(index * step, y(index * step))).join("");
-  const width = chartWidth / bucketCount;
-  const barWidth = Math.min(26, width * 0.71);
-  const labels = new Map(preview.params.map(({ id, label }) => [id, label]));
-  const dateAt = (bucket) => {
-    if (!months) return new Date(start + bucket * DAY).toISOString().slice(0, 10);
-    const month = bucket + startMonth;
-    return `${Math.floor(month / 12)}-${String(month % 12 + 1).padStart(2, "0")}`;
+  const size = hourly ? days * 24 :
+    months ? monthNumber(file.end) - startMonth + 1 : Math.ceil(days / periodDays);
+  const indexFor = (time) => {
+    if (hourly) return Math.floor((stamp(time) - start) / HOUR);
+    if (months) return monthNumber(time) - startMonth;
+    return Math.floor((stamp(time.slice(0, 10)) - start) / (DAY * periodDays));
   };
-  const bars = [];
-  for (const [bucket, counts] of countsByBucket) {
-    let sum = 0;
-    const x = left + (bucket + 0.5) * width;
-    for (const [key, count] of counts) {
-      const label = `${dateAt(bucket)} · ${labels.get(key) ?? key} · ${countLabel(count)}`;
-      bars.push(`<rect x="${x - barWidth / 2}" width="${barWidth}" y="${y(sum + count)}" height="${y(sum) - y(sum + count)}" fill="${colorFor(key)}"><title>${escapeHtml(label)}</title></rect>`);
-      sum += count;
+  const isoAt = (index) => {
+    if (months) {
+      const month = startMonth + index;
+      return `${Math.floor(month / 12)}-${String(month % 12 + 1).padStart(2, "0")}`;
     }
+    return new Date(start + index * (hourly ? HOUR : DAY * periodDays)).toISOString();
+  };
+  const axisLabel = (index) => {
+    const iso = isoAt(index);
+    if (hourly) return `${days > 1 ? dayLabel(iso) + " " : ""}${iso.slice(11, 16)}`;
+    return months ? `${iso.slice(5)}/${iso.slice(2, 4)}` : dayLabel(iso);
+  };
+  const periodLabel = (index) => {
+    const iso = isoAt(index);
+    if (hourly) return `${dateFormat.format(stamp(iso))} · ${iso.slice(11, 16)}–${iso.slice(11, 13)}:59`;
+    if (months) return `${iso.slice(5)}.${iso.slice(0, 4)}`;
+    const last = new Date(Math.min(end, stamp(iso) + (periodDays - 1) * DAY)).toISOString();
+    return spanLabel(iso, last);
+  };
+  const selected = new Set(parameters.map(({ id }) => id));
+  const all = selected.size === preview.params.length;
+  const groups = new Map();
+  function add(time, kind, parameter, count) {
+    const index = indexFor(time);
+    if (!count || index < 0 || index >= size) return;
+    if (!groups.has(index)) groups.set(index, { marked: {}, filled: {}, manual: {} });
+    const counts = groups.get(index)[kind];
+    counts[parameter] = (counts[parameter] ?? 0) + count;
   }
-  const stride = Math.max(1, Math.ceil(bucketCount / 11));
-  const axis = [];
-  for (let index = 0; index < bucketCount; index += stride) {
-    const value = dateAt(index);
-    const label = months ? `${value.slice(5)}/${value.slice(2, 4)}` : dayLabel(value);
-    axis.push(axisLabel(label, left + (index + 0.5) * width));
+  let incomplete = false;
+  if (hourly) {
+    for (const event of events) add(event.time, event.kind, event.parameter.id, 1);
+  } else {
+    const oldFill = preview.timeline.some((row) => row.filled && !row.filled_parameters);
+    for (const row of preview.timeline) {
+      for (const [id, count] of Object.entries(row.parameters)) {
+        if (selected.has(id)) add(row.time, "marked", id, count);
+      }
+      for (const [id, count] of Object.entries(row.manual_parameters ?? {})) {
+        if (selected.has(id)) add(row.time, "manual", id, count);
+      }
+      if (!oldFill) {
+        for (const [id, count] of Object.entries(row.filled_parameters ?? {})) {
+          if (selected.has(id)) add(row.time, "filled", id, count);
+        }
+      } else if (!completeFills && all) {
+        add(row.time, "filled", "all", row.filled);
+      }
+    }
+    if (oldFill && completeFills) {
+      for (const event of filledEvents) add(event.time, "filled", event.parameter.id, 1);
+    }
+    incomplete = oldFill && !completeFills && !all && totals.filled > 0;
   }
-  return chartSvg("Количество выбросов от начала до конца периода", grid, bars.join("") + axis.join(""));
+  return { groups, size, indexFor, axisLabel, periodLabel, incomplete };
 }
 
-function outlierTrace(points, parameter) {
+function outlierTimeline(timeline, parameters, enabled, focus) {
+  const { left, right, w, top, bottom } = chartBox;
+  const middle = (top + bottom) / 2;
+  const width = chartWidth / timeline.size;
+  const barWidth = Math.min(26, width * 0.71);
+  let magnitude = 1;
+  const marks = [];
+  const labels = new Map(parameters.map(({ id, label }) => [id, label]));
+  for (const [bucket, group] of [...timeline.groups].sort(([first], [second]) => first - second)) {
+    let lower = 0;
+    for (const kind of enabled) {
+      const counts = group[kind];
+      const total = sumCounts(counts);
+      if (!total) continue;
+      const first = kind === "marked" ? 0 : -lower;
+      const last = kind === "marked" ? total : first - total;
+      if (kind !== "marked") lower += total;
+      magnitude = Math.max(magnitude, Math.abs(last));
+      const breakdown = Object.entries(counts).map(([id, count]) => `${labels.get(id) ?? "Все параметры"} · ${fmt(count)}`).join(", ");
+      const label = `${timeline.periodLabel(bucket)} · ${timelineLayers[kind].label} · ${breakdown}`;
+      marks.push({ bucket, kind, first, last, label });
+    }
+  }
+  const stride = Math.max(1, Math.ceil(timeline.size / 11));
+  const step = Math.max(1, Math.ceil(magnitude / 2));
+  const y = (value) => middle - value / (2 * step) * (middle - top);
+  const grid = [-2, -1, 0, 1, 2].map((factor) => gridLine(Math.abs(step * factor), y(step * factor))).join("");
+  const bars = marks.map(({ bucket, kind, first, last, label }) => {
+    const x = left + (bucket + 0.5) * width;
+    const a = y(first);
+    const b = y(last);
+    const active = focus?.bucket === bucket && focus.kind === kind;
+    return `<rect class="timeline-event" data-file-action="timeline-event" data-file-id="${kind}:${bucket}" role="button"
+      tabindex="0" aria-label="${escapeHtml(label)}" aria-pressed="${active}" x="${x - barWidth / 2}" width="${barWidth}" y="${Math.min(a, b)}"
+      height="${Math.abs(a - b)}" fill="${timelineLayers[kind].color}"><title>${escapeHtml(label)}</title></rect>`;
+  }).join("");
+  const axis = [];
+  for (let index = 0; index < timeline.size; index += stride) {
+    axis.push(axisLabel(timeline.axisLabel(index), left + (index + 0.5) * width, index === 0 && timeline.size > 14 ? "start" : "middle"));
+  }
+  const zero = `<path d="M${left} ${middle}H${w - right}" class="timeline-zero"/>`;
+  return `<svg class="graph timeline-graph" viewBox="0 0 ${w} ${chartBox.h}" role="group" aria-label="Выбросы и заполнения на общей шкале времени">${grid}${zero}${bars}${axis.join("")}</svg>`;
+}
+
+function outlierTrace(points, parameter, enabled) {
   const sample = points.map((point) => ({ ...point, stamp: stamp(point.time) }))
     .filter((point) => Number.isFinite(point.stamp)
-      && (Number.isFinite(point.value) || Number.isFinite(point.estimate?.value)))
+      && (Number.isFinite(point.value) || Number.isFinite(point.estimate?.value) || Number.isFinite(point.manual_value)))
     .sort((first, last) => first.stamp - last.stamp);
   if (!sample.length) return '<div class="empty-chart"><h3>Нет наблюдений по этому параметру</h3></div>';
 
   const { left, top, bottom } = chartBox;
   const color = colorFor(parameter.id);
   const observationColor = "#6b8f79";
-  const restoredColor = "#227790";
+  const restoredColor = timelineLayers.filled.color;
+  const manualColor = timelineLayers.manual.color;
   const start = sample[0].stamp;
   const span = sample.at(-1).stamp - start;
   const x = (time) => left + (span ? (time - start) / span : 0.5) * chartWidth;
   let low = Infinity;
   let high = -Infinity;
   for (const point of sample) {
-    for (const value of [point.value, point.estimate?.value]) {
+    for (const value of [point.value, point.estimate?.value, point.manual_value]) {
       if (Number.isFinite(value)) {
         low = Math.min(low, value);
         high = Math.max(high, value);
@@ -481,23 +640,29 @@ function outlierTrace(points, parameter) {
   for (const point of sample) {
     const position = x(point.stamp);
     if (Number.isFinite(point.value)) {
-      if (point.marked) {
-        const label = `${point.time} · ${fmt(point.value, 2)} ${parameter.unit} · к удалению`;
+      if (point.marked && enabled.includes("marked")) {
+        const label = [point.time, `${fmt(point.value, 2)} ${parameter.unit}`, "к удалению", ...(point.reasons ?? [])].join(" · ");
         highlighted.push(`<circle cx="${position}" cy="${y(point.value)}" r="4.1" fill="${color}" stroke="#fff" stroke-width="1.2"><title>${escapeHtml(label)}</title></circle>`);
-      } else {
+      } else if (!point.marked) {
         dots.push(`<circle cx="${position}" cy="${y(point.value)}" r="1.8" fill="${observationColor}" opacity=".64"/>`);
       }
     }
-    if (Number.isFinite(point.estimate?.value)) {
+    if (enabled.includes("filled") && Number.isFinite(point.estimate?.value)) {
       const label = `${point.time} · ${fmt(point.estimate.value, 2)} ${parameter.unit} · ${point.estimate.source}`;
       highlighted.push(`<circle cx="${position}" cy="${y(point.estimate.value)}" r="4.1" fill="${restoredColor}" stroke="#fff" stroke-width="1.2"><title>${escapeHtml(label)}</title></circle>`);
     }
+    if (enabled.includes("manual") && point.manual && Number.isFinite(point.manual_value)) {
+      const label = `${point.time} · ${fmt(point.manual_value, 2)} ${parameter.unit} · Исправлено в загруженном CSV`;
+      highlighted.push(`<circle cx="${position}" cy="${y(point.manual_value)}" r="4.1" fill="${manualColor}" stroke="#fff" stroke-width="1.2"><title>${escapeHtml(label)}</title></circle>`);
+    }
   }
-  const estimates = sample.some((point) => Number.isFinite(point.estimate?.value));
+  const estimates = enabled.includes("filled") && sample.some((point) => Number.isFinite(point.estimate?.value));
+  const manual = enabled.includes("manual") && sample.some((point) => point.manual && Number.isFinite(point.manual_value));
   return `<span class="small muted">${escapeHtml(parameter.unit)}</span>
     ${chartSvg(`${parameter.label} с выделенными выбросами`, grid, axis.join("") + dots.join("") + highlighted.join(""))}
-    <div class="legend">${legendItem("Наблюдения", observationColor)}${legendItem("К удалению", color)}
-      ${estimates ? legendItem("Заполненные значения", restoredColor) : ""}</div>`;
+    <div class="legend">${legendItem("Наблюдения", observationColor)}${enabled.includes("marked") ? legendItem("К удалению", color) : ""}
+      ${estimates ? legendItem("Заполненные значения", restoredColor) : ""}
+      ${manual ? legendItem("Ручные правки", manualColor) : ""}</div>`;
 }
 
 function render({ top = false } = {}) {
@@ -600,7 +765,7 @@ async function openEditor(id) {
   const file = state.files.get(id);
   if (!file || file.status === "error") return;
   const editor = state.editors.get(id) ?? {
-    id, settings: settingsFor(file), preview: null, metric: "all", message: "",
+    id, settings: settingsFor(file), preview: null, parameters: new Set(), hiddenLayers: new Set(), message: "",
   };
   state.editors.set(id, editor);
   state.editor = editor;
@@ -634,10 +799,7 @@ async function runPreview(editor) {
   render();
   try {
     const result = await jsonRequest(filesUrl("preview", { id: editor.id, ...settingsQuery(editor.settings) }), { method: "POST" });
-    const file = saveRecord(result);
-    editor.preview = result;
-    editor.settings = settingsFor(file);
-    editor.metric = "all";
+    applyPreview(editor, result);
   } catch (error) {
     editor.message = messageFor(error);
     editor.preview = null;
@@ -648,6 +810,42 @@ async function runPreview(editor) {
       const refreshed = main.querySelector(editor.preview ? '[data-file-action="outlier"]' : '[data-file-action="filter"]');
       refreshed?.focus({ preventScroll: true });
       main.querySelector(".preview-card-shell")?.scrollIntoView({ block: "nearest" });
+    } else if (!state.editor) {
+      render();
+    }
+  }
+}
+
+function applyPreview(editor, result) {
+  const file = saveRecord(result);
+  editor.preview = result;
+  editor.settings = settingsFor(file);
+  editor.parameters.clear();
+  editor.hiddenLayers.clear();
+  editor.focusEvent = null;
+}
+
+async function uploadCorrectedCsv(editor, selected) {
+  if (editor.busy || !checkedPreview(editor)) return;
+  if (!selected.name.toLowerCase().endsWith(".csv")) {
+    editor.message = "Для ручной правки выберите файл CSV.";
+    render();
+    return;
+  }
+  editor.busy = "corrected";
+  editor.message = "";
+  render();
+  try {
+    const url = filesUrl("corrected", { id: editor.id, revision: editor.preview.revision, filename: selected.name });
+    const result = await jsonRequest(url, { method: "POST", headers: { "Content-Type": "text/csv" }, body: selected });
+    applyPreview(editor, result);
+  } catch (error) {
+    editor.message = messageFor(error);
+  } finally {
+    editor.busy = null;
+    if (state.editor === editor) {
+      render();
+      main.querySelector(editor.message ? '[role="alert"]' : ".manual-csv")?.scrollIntoView({ block: "nearest" });
     } else if (!state.editor) {
       render();
     }
@@ -776,6 +974,29 @@ const settingFields = {
   "file-conflicts": "conflict_policy",
 };
 
+function updatePreviewPresentation(editor, control) {
+  if (!editor?.preview) return;
+  const id = control.dataset.fileId;
+  const action = control.dataset.fileAction;
+  editor.focusEvent = null;
+  if (action === "outlier") {
+    if (id === "all") editor.parameters.clear();
+    else if (!editor.parameters.delete(id)) editor.parameters.add(id);
+  } else if (action === "timeline-layer") {
+    if (!editor.hiddenLayers.delete(id)) editor.hiddenLayers.add(id);
+  } else if (action === "timeline-event") {
+    const [kind, bucket] = id.split(":");
+    editor.focusEvent = { kind, bucket: Number(bucket) };
+  }
+  const current = main.querySelector(".preview-card-shell");
+  const wasOpen = current.querySelector(".outlier-details")?.open;
+  current.outerHTML = previewCard(editor, checkedPreview(editor), state.files.get(editor.id));
+  const details = main.querySelector(".outlier-details");
+  if (details && wasOpen) details.open = true;
+  const next = [...main.querySelectorAll(`[data-file-action="${action}"]`)].find((item) => item.dataset.fileId === id);
+  (next ?? details?.querySelector("summary"))?.focus({ preventScroll: true });
+}
+
 main.addEventListener("change", (event) => {
   const editor = state.editor;
   if (!editor || editor.busy || editor.done) return;
@@ -805,6 +1026,7 @@ document.addEventListener("click", (event) => {
   const editor = state.editor;
   switch (action) {
     case "browse": picker.click(); break;
+    case "corrected-browse": correctedPicker.click(); break;
     case "example": void uploadExample(); break;
     case "reload": void loadList(); break;
     case "edit": void openEditor(id); break;
@@ -816,14 +1038,19 @@ document.addEventListener("click", (event) => {
     case "discard": void discardFile(id); break;
     case "close": dialog.close(); break;
     case "outlier":
-      if (editor?.preview) {
-        editor.metric = id;
-        const preview = main.querySelector(".preview-card-shell");
-        preview.outerHTML = previewCard(editor, checkedPreview(editor), state.files.get(editor.id));
-        main.querySelector(".outlier-chip[aria-pressed=true]")?.focus({ preventScroll: true });
-      }
+    case "timeline-layer":
+    case "timeline-event":
+    case "timeline-reset":
+      updatePreviewPresentation(editor, control);
       break;
   }
+});
+
+main.addEventListener("keydown", (event) => {
+  const eventMark = event.target.closest('[data-file-action="timeline-event"]');
+  if (!eventMark || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  updatePreviewPresentation(state.editor, eventMark);
 });
 
 dialog.addEventListener("cancel", (event) => {
@@ -833,6 +1060,12 @@ dialog.addEventListener("cancel", (event) => {
 picker.addEventListener("change", () => {
   appendUploads(picker.files);
   picker.value = "";
+});
+
+correctedPicker.addEventListener("change", () => {
+  const selected = correctedPicker.files[0];
+  correctedPicker.value = "";
+  if (state.editor && selected) void uploadCorrectedCsv(state.editor, selected);
 });
 
 function isFileDrag(event) {

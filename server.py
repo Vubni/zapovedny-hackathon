@@ -2,12 +2,15 @@
 import argparse
 import json
 import mimetypes
+import os
 import re
 import sys
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from shlex import quote as shell_quote
 from urllib.parse import parse_qs, quote, urlsplit
 
+from admin_auth import OperatorHTTPServer, handle_operator_access
 from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
 from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
@@ -36,6 +39,8 @@ API = {
     "/api/model": "Прогноз следующей среднесуточной температуры по станции",
     "/api/stations": "Каталог и карта станций. POST регистрирует пользовательскую станцию",
     "/api/observations": "Ряды, покрытие и сравнение станций за общий выбранный период",
+    "/api/observation-coverage": "Матрица покрытия выбранных станций за отмеченные интервалы",
+    "/api/map-config": "Настройки карты станций для браузера",
     "/api/files": "Очередь, исходные файлы, предпросмотр и подтверждённые наборы наблюдений",
 }
 WEB_FILES = {
@@ -44,6 +49,9 @@ WEB_FILES = {
     "/observations": "observations.html",
     "/journal": "index.html",
     "/files": "files-page.html",
+    "/operator": "operator.html",
+    "/operator.js": "operator.js",
+    "/operator.css": "operator.css",
     "/app.js": "app.js",
     "/style.css": "style.css",
     "/import": "import.html",
@@ -71,6 +79,8 @@ WEB_FILES = {
 }
 for asset in ("archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js",
               "station-map.js", "station-map.css", "station-map-data.js", "observation-chart.js",
+              "yandex-location.js", "yandex-location.css", "yandex-station-sdk.js",
+              "coverage-overview.js", "coverage-overview.css", "observation-indicators.js", "observation-indicators.css",
               "observation-chart.css", "files-page.js", "files-page.css", "weather-pages.css",
               "fonts/manrope.ttf", "fonts/OFL-Manrope.txt"):
     WEB_FILES["/" + asset] = asset
@@ -94,13 +104,18 @@ def ready():
 
 
 class Handler(BaseHTTPRequestHandler):
-    def respond(self, body, content_type, status=200, filename=None):
+    def respond(self, body, content_type, status=200, filename=None, *, headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        no_store = self.command == "POST" or self.path.startswith(("/api/review", "/api/files", "/api/observations", "/api/stations"))
+        no_store = self.command == "POST" or self.path.startswith((
+            "/api/review", "/api/files", "/api/observation", "/api/stations", "/api/map-config",
+            "/api/operator", "/operator", "/files",
+        ))
         self.send_header("Cache-Control", "no-store" if no_store else "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         if filename:
             fallback = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
             disposition = f'attachment; filename="{fallback}"'
@@ -110,15 +125,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_json(self, value, status=200, filename=None):
+    def send_json(self, value, status=200, filename=None, *, headers=None):
         body = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
-        self.respond(body, "application/json; charset=utf-8", status, filename)
+        self.respond(body, "application/json; charset=utf-8", status, filename, headers=headers)
 
     def do_GET(self):
         try:
             parts = urlsplit(self.path)
             route = parts.path
             query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
+            if handle_operator_access(self, route, query):
+                return
             if route == "/api":
                 self.send_json(API)
             elif route == "/api/stations":
@@ -126,7 +143,12 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/api/observations":
                 from observations import chart_data
                 self.send_json(chart_data(query))
-            elif route in ("/api/files", "/api/files/item", "/api/files/preview", "/api/files/original", "/api/files/excel"):
+            elif route == "/api/observation-coverage":
+                from observations import coverage_overview
+                self.send_json(coverage_overview(query))
+            elif route == "/api/map-config":
+                self.send_json({"browserKey": os.environ.get("YANDEX_MAPS_BROWSER_KEY", "").strip()})
+            elif route in ("/api/files", "/api/files/item", "/api/files/preview", "/api/files/original", "/api/files/csv", "/api/files/excel"):
                 import observation_store as store
                 if route == "/api/files":
                     self.send_json(store.list_files())
@@ -137,6 +159,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif route == "/api/files/original":
                     name, kind, body = store.original_file(query)
                     self.respond(body, kind, filename=name)
+                elif route == "/api/files/csv":
+                    name, body = store.draft_csv(query)
+                    self.respond(body, "text/csv; charset=utf-8", filename=name)
                 else:
                     name, body = store.preview_excel(query)
                     self.respond(body, XLSX_TYPE, filename=name)
@@ -200,13 +225,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             parts = urlsplit(self.path)
-            file_upload = parts.path == "/api/files/upload"
+            query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
+            if handle_operator_access(self, parts.path, query):
+                return
+            file_upload = parts.path in ("/api/files/upload", "/api/files/corrected")
             action = parts.path in FILE_ACTIONS or parts.path == "/api/stations"
-            if file_upload or action:
-                origin = self.headers.get("Origin")
-                if origin and origin != "http://" + self.headers.get("Host", ""):
-                    self.send_json({"error": "Откройте Метеоархив по его локальному адресу."}, HTTPStatus.FORBIDDEN)
-                    return
             if parts.path not in ("/api/import", "/api/review") and not file_upload and not action:
                 self.send_json({"error": "Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
                 return
@@ -226,6 +249,9 @@ class Handler(BaseHTTPRequestHandler):
             if size < 0 or (parts.path == "/api/import" and size == 0):
                 raise ValueError("Файл не содержит данных")
             maximum = 64 * 1024 if action else MAX_REVIEW_UPLOAD if is_review or file_upload else MAX_UPLOAD
+            if parts.path == "/api/files/corrected":
+                from observation_store import MAX_CORRECTED_BYTES
+                maximum = MAX_CORRECTED_BYTES
             if size > maximum:
                 self.send_json({"error": "Слишком большой запрос настроек" if action else
                                 f"Размер файла превышает {maximum // (1024*1024)} МиБ"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
@@ -234,7 +260,6 @@ class Handler(BaseHTTPRequestHandler):
             body = self.rfile.read(size)
             if len(body) != size:
                 raise ValueError("Файл загружен не полностью")
-            query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
             if action:
                 if body:
                     if self.headers.get_content_type() != "application/json":
@@ -256,6 +281,9 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     import observation_store as store
                     self.send_json(getattr(store, FILE_ACTIONS[parts.path])(query))
+            elif parts.path == "/api/files/corrected":
+                from observation_store import corrected_file
+                self.send_json(corrected_file(query, body, self.headers.get_content_type()))
             elif file_upload:
                 from observation_store import upload_file
                 self.send_json(upload_file(query, body, self.headers.get_content_type()), 201)
@@ -284,11 +312,13 @@ def main():
     args = parser.parse_args()
     ready()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    except OSError as error:
+        server = OperatorHTTPServer(("127.0.0.1", args.port), Handler, ROOT)
+    except (OSError, ValueError) as error:
         sys.exit(f"Не удалось запустить сервер на порту {args.port}: {error}")
     with server:
         print(f"API метеожурнала — http://127.0.0.1:{server.server_port}/api", flush=True)
+        if server.operator_auth.password_file is not None:
+            print(f"Пароль локального оператора: cat {shell_quote(str(server.operator_auth.password_file))}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

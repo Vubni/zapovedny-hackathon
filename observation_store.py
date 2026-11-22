@@ -1,6 +1,7 @@
 """Private import queue, multi-parameter quality control, and published observation revisions."""
 from __future__ import annotations
 
+import csv
 import json
 import re
 import sqlite3
@@ -9,7 +10,7 @@ from bisect import bisect_left
 from collections import Counter
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
-from io import BytesIO
+from io import BytesIO, StringIO
 from itertools import groupby
 from pathlib import Path
 from statistics import fmean, median
@@ -23,10 +24,10 @@ from review_excel import (
     BAD, ESTIMATED, GOOD, _cell, _column, _header, _row, _sheet_open, _write_package,
 )
 from review_filter import (
-    FILTERS, archive_observations, checked_date, mark_buddy, mark_hampel, mark_spikes,
-    mark_stuck, minute_bounds, prepare, resolve_conflicts, uploaded_observations,
+    FILTERS, STAMP_PATTERN, archive_observations, checked_date, mark_buddy, mark_hampel,
+    mark_spikes, mark_stuck, minute_bounds, number, prepare, resolve_conflicts, uploaded_observations,
 )
-from review_upload import MAX_BYTES, SourceRow, read_upload
+from review_upload import MAX_BYTES, SourceRow, csv_rows, read_upload
 from station_catalog import catalog, local_db_path
 
 MIME_TYPES = {
@@ -55,6 +56,20 @@ FILL_OPTIONS = [
 ]
 POINT_BUDGET = 1200
 TIMELINE_BUDGET = 1500
+MAX_CORRECTED_BYTES = 16 * 1024 * 1024
+CORRECTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS file_corrections (
+    file_id TEXT NOT NULL REFERENCES files(id),
+    revision TEXT NOT NULL,
+    parent_revision TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    original_csv BLOB NOT NULL,
+    parent_result BLOB NOT NULL,
+    parent_meta TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (file_id, revision)
+);
+"""
 SCHEMA = """
 BEGIN IMMEDIATE;
 CREATE TABLE IF NOT EXISTS files (
@@ -208,12 +223,17 @@ def review_source(identifier):
         return _record(row), row["original"], row["mime"]
 
 
-def upload_file(query, body, content_type):
+def _filename(query):
     name = query.get("filename", "").replace("\\", "/").rsplit("/", 1)[-1].strip()
     name = re.sub(r"[\x00-\x1f\x7f]", "", name)
-    suffix = Path(name).suffix.lower()
     if len(name) > 255:
         raise ValueError("Название файла не должно превышать 255 символов.")
+    return name
+
+
+def upload_file(query, body, content_type):
+    name = _filename(query)
+    suffix = Path(name).suffix.lower()
     if not body or len(body) > MAX_BYTES:
         raise ValueError("Загрузите непустой файл размером до 12 МиБ.")
     station = _station(query.get("station") or "kr1")["id"]
@@ -496,7 +516,9 @@ def _review(source, fields, filename, settings, station, start, end):
         if bucket > 1:
             day = date.fromordinal(day.toordinal() - ((day - start).days % bucket))
         label = day.isoformat()
-        return timeline.setdefault(label, {"time": label, "marked": 0, "filled": 0, "parameters": {}})
+        return timeline.setdefault(label, {
+            "time": label, "marked": 0, "filled": 0, "parameters": {}, "filled_parameters": {},
+        })
 
     originals, original_minutes, step = None, None, None
     for item in parameters:
@@ -540,7 +562,10 @@ def _review(source, fields, filename, settings, station, start, end):
 
         for stamp, estimate in estimates.items():
             term(stamp, stamp not in originals)["estimates"][parameter] = estimate
-            bin_for(stamp)["filled"] += 1
+            group = bin_for(stamp)
+            group["filled"] += 1
+            filled_parameters = group["filled_parameters"]
+            filled_parameters[parameter] = filled_parameters.get(parameter, 0) + 1
         selected = [
             _record_point(row, not row.keep and row.quality != "missing", estimates.get(row.time))
             for row in (rows[index] for index in _point_indices(rows, estimates))
@@ -573,7 +598,7 @@ def _review(source, fields, filename, settings, station, start, end):
 
 def _response(row, payload, summary):
     return {
-        key: value for key, value in payload.items() if key not in {"rows", "changes", "repeats"}
+        key: value for key, value in payload.items() if key not in {"rows", "changes", "repeats", "manual_cells"}
     } | {"file": _record(row), "id": row["id"], "revision": summary["revision"], "settings": summary["settings"]}
 
 
@@ -619,6 +644,190 @@ def _saved(query):
 
 def get_file(query):
     return _response(*_saved(query))
+
+
+def draft_csv(query):
+    row, payload, _ = _saved(query)
+    fields = ["datetime", *(item["id"] for item in payload["params"])]
+    output = StringIO(newline="")
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(fields)
+    for term in payload["rows"]:
+        if not term["synthetic"]:
+            writer.writerow([term.get(field) for field in fields])
+    return f"{Path(row['filename']).stem}-draft.csv", output.getvalue().encode("utf-8-sig")
+
+
+def _corrected_time(value, line):
+    raw = value.strip()
+    try:
+        if STAMP_PATTERN.fullmatch(raw):
+            return datetime.fromisoformat(raw).isoformat(" ", timespec="minutes")
+        return datetime.strptime(raw, "%d.%m.%Y %H:%M").isoformat(" ", timespec="minutes")
+    except ValueError:
+        raise ValueError(f"Строка {line}: сохраните исходную дату и время срока.") from None
+
+
+def _apply_corrections(payload, settings, body):
+    try:
+        text = body.decode("utf-8-sig")
+    except UnicodeError:
+        raise ValueError("Сохраните исправленную таблицу как CSV в UTF-8.") from None
+    parameters = [item["id"] for item in payload["params"]]
+    columns = {"datetime", *parameters}
+    rows = {item["datetime"]: item for item in payload["rows"] if not item["synthetic"]}
+    pending = set(rows)
+    edits = payload.setdefault("manual_cells", {})
+    applied = 0
+    for source in csv_rows(text):
+        if source.keys() != columns:
+            raise ValueError("Столбцы исправленного CSV должны совпадать со столбцами скачанного черновика.")
+        line = source.source_line
+        stamp = _corrected_time(source["datetime"], line)
+        if stamp not in pending:
+            raise ValueError(f"Строка {line}: повторяющийся или новый срок {stamp}. Сохраните исходные сроки.")
+        pending.remove(stamp)
+        term = rows[stamp]
+        for parameter in parameters:
+            raw = source[parameter]
+            value, quality = number(raw)
+            lower, upper = LIMITS[parameter]
+            if parameter == "pressure_hpa":
+                upper = int(settings["pressure_max"])
+            if quality == "invalid_number" or (value is not None and not lower <= value <= upper):
+                raise ValueError(f"Строка {line}, {parameter}: введите число в диапазоне {lower}–{upper} или оставьте ячейку пустой.")
+            before = term.get(parameter)
+            if value == before:
+                continue
+            parameter_edits = edits.setdefault(parameter, {})
+            initial = parameter_edits.get(stamp, {}).get("initial_value", before)
+            parameter_edits[stamp] = {"value": value, "previous_value": before, "initial_value": initial, "line": line}
+            term["estimates"].pop(parameter, None)
+            stats = payload["stats"]["parameters"][parameter]
+            stats["kept"] += int(value is not None) - int(before is not None)
+            if value is None:
+                del term[parameter]
+            else:
+                term[parameter] = value
+            applied += 1
+    if pending:
+        raise ValueError("В исправленном CSV отсутствуют сроки из черновика.")
+    if not applied:
+        raise ValueError("В CSV нет изменений относительно черновика.")
+    return applied
+
+
+def _manual_timeline(payload):
+    timeline = payload["timeline"]
+    origin = date.fromisoformat(timeline[0]["time"])
+    bucket = payload["timeline_days"]
+    groups = {entry["time"]: entry for entry in timeline}
+    fills = Counter()
+    for group in groups.values():
+        group.update(filled=0, filled_parameters={}, manual=0, manual_parameters={})
+
+    def group_for(stamp):
+        day = date.fromisoformat(stamp[:10])
+        day = date.fromordinal(day.toordinal() - ((day - origin).days % bucket))
+        return groups[day.isoformat()]
+
+    for row in payload["rows"]:
+        if row["estimates"]:
+            group = group_for(row["datetime"])
+            for parameter in row["estimates"]:
+                group["filled"] += 1
+                group["filled_parameters"][parameter] = group["filled_parameters"].get(parameter, 0) + 1
+                fills[parameter] += 1
+    for parameter, entries in payload["manual_cells"].items():
+        for stamp in entries:
+            group = group_for(stamp)
+            group["manual"] += 1
+            group["manual_parameters"][parameter] = group["manual_parameters"].get(parameter, 0) + 1
+    for parameter, stats in payload["stats"]["parameters"].items():
+        stats["filled"] = fills[parameter]
+    payload["stats"]["filled"] = sum(fills.values())
+
+
+def _manual_points(payload):
+    edits = payload["manual_cells"]
+    sampled = {param: dict(_sample(sorted(items.items()), POINT_BUDGET // 3)) for param, items in edits.items()}
+    audited = {(stamp, param): (line, value) for stamp, line, param, value, _ in payload["changes"]
+               if stamp in sampled.get(param, {})}
+    for parameter, points in payload["points"].items():
+        if parameter not in edits:
+            continue
+        selected = sampled[parameter]
+        readings = {}
+        base = []
+        for point in points:
+            if point.get("manual_only"):
+                continue
+            stamp = point["time"]
+            if stamp in edits[parameter]:
+                point["estimate"] = None
+                for field in ("manual", "manual_value", "previous_value"):
+                    point.pop(field, None)
+            if stamp in selected and (stamp not in readings or point["marked"]):
+                readings[stamp] = point
+            base.append(point)
+        for stamp, edit in selected.items():
+            point = readings.get(stamp)
+            if point is None:
+                rejected = audited.get((stamp, parameter))
+                line, original = rejected if rejected is not None else (None, edit["initial_value"])
+                point = {
+                    "time": stamp, "line": line, "value": number(original)[0], "marked": rejected is not None,
+                    "estimate": None, "reasons": [], "manual_only": True,
+                }
+                base.append(point)
+            point.update(manual=True, manual_value=edit["value"], previous_value=edit["previous_value"])
+        payload["points"][parameter] = sorted(base, key=lambda item: item["time"])
+
+
+def _current_parent(row):
+    key = "draft" if row["draft_meta"] else "confirmed"
+    return key, _summary(row[f"{key}_meta"])
+
+
+def corrected_file(query, body, content_type):
+    name = _filename(query)
+    if Path(name).suffix.lower() != ".csv" or not body or len(body) > MAX_CORRECTED_BYTES:
+        raise ValueError("Загрузите непустой исправленный CSV размером до 16 МиБ.")
+    with _database() as db:
+        row = _lookup(db, query, ", draft, confirmed")
+    parent_key, parent = _current_parent(row)
+    if not parent or parent["revision"] != query.get("revision"):
+        raise ValueError("Версия черновика изменилась. Скачайте актуальный CSV.")
+    parent_result = row[parent_key]
+    payload = _unpack(parent_result)
+    applied = _apply_corrections(payload, parent["settings"], body)
+    _manual_timeline(payload)
+    _manual_points(payload)
+    counts = {param: len(entries) for param, entries in payload["manual_cells"].items()}
+    manual = {"parent_revision": parent["revision"], "filename": name, "changed": sum(counts.values()),
+              "applied": applied, "parameters": counts}
+    payload["manual"] = manual
+    revision, now = uuid4().hex, _now()
+    summary = {
+        "revision": revision, "settings": parent["settings"], "stats": payload["stats"],
+        "params": [param["id"] for param in payload["params"]], "created_at": now, "manual": manual,
+    }
+    stored = _pack(payload)
+    with _database(write=True) as db:
+        current = _lookup(db, query)
+        _, current_parent = _current_parent(current)
+        if (current["generation"] != row["generation"] or current["version"] != row["version"]
+                or not current_parent or current_parent["revision"] != parent["revision"]):
+            raise ValueError("Версия черновика изменилась. Скачайте актуальный CSV.")
+        db.execute(CORRECTIONS_SCHEMA)
+        db.execute(
+            "INSERT INTO file_corrections (file_id, revision, parent_revision, filename, original_csv, "
+            "parent_result, parent_meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (row["id"], revision, parent["revision"], name, body, parent_result, row[f"{parent_key}_meta"], now),
+        )
+        db.execute("UPDATE files SET draft=?, draft_meta=?, updated_at=?, generation=generation+1 WHERE id=?",
+                   (stored, _dumps(summary), now, row["id"]))
+        return _response(_lookup(db, query), payload, summary)
 
 
 def confirm_file(query):

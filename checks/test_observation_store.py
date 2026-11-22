@@ -42,6 +42,15 @@ class ObservationStoreTests(unittest.TestCase):
     def rows(self, station="kr1"):
         return list(store.confirmed_rows(station, date(2024, 4, 1), "2024-04-30"))
 
+    def assert_timeline_fills(self, report, expected):
+        timeline = report["timeline"]
+        self.assertEqual({entry["time"]: entry["filled_parameters"] for entry in timeline}, expected)
+        for entry in timeline:
+            self.assertEqual(sum(entry["filled_parameters"].values()), entry["filled"])
+        self.assertEqual(sum(entry["filled"] for entry in timeline), report["stats"]["filled"])
+        for param, stats in report["stats"]["parameters"].items():
+            self.assertEqual(sum(entry["filled_parameters"].get(param, 0) for entry in timeline), stats["filled"])
+
     def test_second_file_and_workbook_lifecycle(self):
         self.assertEqual(store.list_files()["files"], [])
         self.assertFalse(Path(os.environ["METEO_OBSERVATION_DB"]).exists())
@@ -230,10 +239,14 @@ class ObservationStoreTests(unittest.TestCase):
             stamp = (origin + timedelta(hours=index)).isoformat(" ", timespec="minutes")
             if index == 14:
                 continue
-            lines.append(f"{stamp},{'' if index == 10 else index / 4},64")
+            lines.append(f"{stamp},{'' if index == 10 else index / 4},{150 if index == 30 else 64}")
         file = self.upload(csv(*lines))
         report, request = self.review(file, fill="model")
         self.assertEqual(report["stats"]["parameters"]["t_air"]["filled"], 2)
+        self.assert_timeline_fills(report, {
+            "2024-04-01": {"t_air": 2, "rh": 1}, "2024-04-02": {"rh": 1}, "2024-04-03": {},
+        })
+        self.assertEqual(report["timeline"][1]["parameters"], {"rh": 1})
         self.assertGreaterEqual(report["model"]["t_air"]["test_n"], 3)
         self.assertEqual(report["model"]["t_air"]["mae"], 0)
         store.confirm_file(request)
@@ -255,10 +268,13 @@ class ObservationStoreTests(unittest.TestCase):
         self.assertEqual(at_fourteen["t_air"], 21)
 
     def test_external_requires_explicit_zone_and_keeps_source_confidence(self):
-        file = self.upload(csv("2024-04-15 14:00,8,65", "2024-04-15 15:00,,65", "2024-04-15 16:00,8,65"))
+        file = self.upload(csv("2024-04-15 14:00,8,65", "2024-04-15 15:00,,105", "2024-04-15 16:00,8,65"))
         with self.assertRaisesRegex(ValueError, "часовой пояс"):
             self.review(file, fill="external")
         report, request = self.review(file, fill="external", timezone="Europe/Moscow")
+        self.assert_timeline_fills(report, {"2024-04-15": {"t_air": 1, "rh": 1}})
+        self.assertEqual(report["timeline"][0]["parameters"], {"rh": 1})
+        self.assertEqual(store.get_file(request)["timeline"], report["timeline"])
         point = report["points"]["t_air"][1]
         self.assertIsNotNone(point["estimate"])
         self.assertEqual(point["estimate"]["confidence"]["source_count"], 2)
@@ -266,6 +282,114 @@ class ObservationStoreTests(unittest.TestCase):
         store.confirm_file(request)
         self.assertNotIn("t_air", self.rows()[1])
         self.assertTrue(self.rows()[1]["estimates"]["t_air"]["enters_working_graphs"])
+
+    def test_corrected_csv_preserves_original_parent_and_confirmation_boundary(self):
+        original = csv("2024-04-01 00:00,7.123456789012345,61", "2024-04-02 01:00,8,66")
+        file = self.upload(original, "Станция.csv")
+        initial, parent = self.review(file, filters="hampel")
+        store.confirm_file(parent)
+        name, exported = store.draft_csv(parent)
+        self.assertEqual(name, "Станция-draft.csv")
+        self.assertIn(b"7.123456789012345;61.0", exported)
+        edited = (
+            "datetime;rh;t_air\n"
+            "02.04.2024 01:00;;8\n"
+            "2024-04-01 00:00;61;7,987654321098765\n"
+        ).encode("utf-8-sig")
+        upload = dict(parent, filename="Точные исправления.csv")
+        report = store.corrected_file(upload, edited, "text/csv")
+        self.assertEqual(report["manual"]["parent_revision"], initial["revision"])
+        self.assertEqual(report["manual"]["parameters"], {"t_air": 1, "rh": 1})
+        self.assertEqual(report["settings"], initial["settings"])
+        self.assertNotEqual(report["revision"], initial["revision"])
+        self.assertEqual(report["file"]["version"], 1)
+        self.assertEqual([row["t_air"] for row in self.rows()], [7.123456789012345, 8])
+        self.assertEqual(self.rows()[1]["rh"], 66)
+        self.assertEqual(report["timeline"][0]["manual_parameters"], {"t_air": 1})
+        self.assertEqual(report["timeline"][1]["manual"], 1)
+        self.assertIsNone(report["points"]["rh"][1]["manual_value"])
+        with self.assertRaisesRegex(ValueError, "Версия черновика изменилась"):
+            store.corrected_file(upload, edited, "text/csv")
+        corrected = dict(parent, revision=report["revision"])
+        self.assertIn(b"7.987654321098765", store.draft_csv(corrected)[1])
+        store.confirm_file(corrected)
+        self.assertEqual([row["t_air"] for row in self.rows()], [7.987654321098765, 8])
+        self.assertNotIn("rh", self.rows()[1])
+        self.assertEqual(store.original_file(file)[2], original)
+        with store._database() as db:
+            lineage = db.execute("SELECT * FROM file_corrections WHERE file_id=?", (file["id"],)).fetchone()
+            self.assertEqual(lineage["parent_revision"], initial["revision"])
+            self.assertEqual(lineage["original_csv"], edited)
+            self.assertEqual(store._unpack(lineage["parent_result"])["rows"][0]["t_air"], 7.123456789012345)
+
+        recalculated = store.preview_file(parent)
+        self.assertNotIn("manual", recalculated)
+        self.assertEqual(recalculated["points"]["t_air"][0]["value"], 7.123456789012345)
+        self.assertEqual(self.rows()[0]["t_air"], 7.987654321098765)
+
+    def test_correction_replaces_only_its_automatic_estimate(self):
+        file = self.upload(csv("2024-04-15 14:00,8,65", "2024-04-15 15:00,-100,", "2024-04-15 16:00,8,65"))
+        parent, request = self.review(file, fill="external", timezone="Europe/Moscow")
+        self.assertEqual(parent["stats"]["filled"], 2)
+        _, working = store.draft_csv(request)
+        self.assertIn(b"2024-04-15 15:00;;", working)
+        edited = working.replace(b"2024-04-15 15:00;;", b"2024-04-15 15:00;8.25;")
+        report = store.corrected_file(dict(request, filename="corrected.csv"), edited, "text/csv")
+        self.assertEqual(report["stats"]["marked"], 1)
+        self.assert_timeline_fills(report, {"2024-04-15": {"rh": 1}})
+        point = report["points"]["t_air"][1]
+        self.assertEqual(point["value"], -100)
+        self.assertTrue(point["marked"])
+        self.assertTrue(point["manual"])
+        self.assertEqual(point["manual_value"], 8.25)
+        self.assertIsNone(point["estimate"])
+        self.assertEqual(self.rows(), [])
+        store.confirm_file(dict(request, revision=report["revision"]))
+        self.assertEqual(self.rows()[1]["t_air"], 8.25)
+        self.assertNotIn("t_air", self.rows()[1]["estimates"])
+        self.assertIn("rh", self.rows()[1]["estimates"])
+
+    def test_correction_rejects_invalid_number_changed_schema_or_missing_dates(self):
+        file = self.upload(csv("2024-04-01 00:00,5,60", "2024-04-01 01:00,6,61"))
+        parent, request = self.review(file)
+        request["filename"] = "corrected.csv"
+        _, exported = store.draft_csv(request)
+        bad_inputs = (
+            (exported, "нет изменений"),
+            (exported.replace(b"5.0", b"55"), "введите число"),
+            (exported.replace(b"01:00", b"00:00"), "повторяющийся или новый срок"),
+            (exported.splitlines(keepends=True)[0] + exported.splitlines(keepends=True)[1], "отсутствуют сроки"),
+            (exported.replace(b";rh", b";wind_speed"), "Столбцы исправленного CSV"),
+        )
+        for content, error in bad_inputs:
+            with self.subTest(error=error), self.assertRaisesRegex(ValueError, error):
+                store.corrected_file(request, content, "text/csv")
+            self.assertEqual(store.get_file(request)["revision"], parent["revision"])
+        self.assertEqual(self.rows(), [])
+
+    def test_repeat_correction_keeps_manual_points_outside_base_sample(self):
+        source = csv(*(f"2024-04-01 {hour:02d}:00,10,60" for hour in range(18)))
+        file = self.upload(source)
+        with patch.object(store, "POINT_BUDGET", 9):
+            parent, request = self.review(file)
+            sampled = {point["time"] for point in parent["points"]["t_air"]}
+            stamp = next(f"2024-04-01 {hour:02d}:00" for hour in range(18)
+                         if f"2024-04-01 {hour:02d}:00" not in sampled)
+            _, exported = store.draft_csv(request)
+            first_body = exported.replace(f"{stamp};10.0;".encode(), f"{stamp};11.25;".encode())
+            first_query = dict(request, filename="correction.csv")
+            first = store.corrected_file(first_query, first_body, "text/csv")
+            point = next(point for point in first["points"]["t_air"] if point.get("manual"))
+            self.assertEqual((point["time"], point["value"], point["previous_value"], point["manual_value"]),
+                             (stamp, 10, 10, 11.25))
+            second_body = first_body.replace(f"{stamp};11.25;".encode(), f"{stamp};12.375;".encode())
+            second = store.corrected_file(dict(first_query, revision=first["revision"]), second_body, "text/csv")
+            points = [point for point in second["points"]["t_air"] if point.get("manual")]
+            self.assertEqual(len(points), 1)
+            self.assertEqual((points[0]["value"], points[0]["previous_value"], points[0]["manual_value"]),
+                             (10, 11.25, 12.375))
+            self.assertEqual(second["manual"]["parent_revision"], first["revision"])
+            self.assertEqual((second["manual"]["changed"], second["manual"]["applied"]), (1, 1))
 
     def test_new_station_profile_and_independent_geographic_identity(self):
         station = register_station({"id": "test-field", "label": "Пункт проверки", "profile": "ame60"})["station"]

@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from threading import Lock
 from time import monotonic
 
+from admin_auth import OPERATOR_REPORT_PREFIX
 from analytics import STATIONS, database
 from external_fill import apply_estimates
 from review_excel import export_xlsx
@@ -73,8 +74,10 @@ def _prune(now):
         del _cache[token]
 
 
-def _save(report, original):
+def _save(report, original, saved_source=False):
     token = secrets.token_urlsafe(24)
+    if saved_source:
+        token = OPERATOR_REPORT_PREFIX + token
     with _lock:
         now = monotonic()
         _prune(now)
@@ -147,7 +150,7 @@ def create_report(query, body, content_type):
     sheet = getattr(records[0], "sheet_member", None) if records else None
     original = (body, sheet, records[0].column_offset) if sheet else None
     report["original_workbook"] = original is not None
-    return _page(report, _save(report, original), 0)
+    return _page(report, _save(report, original, saved_source="file_id" in query), 0)
 
 
 def report_page(query):

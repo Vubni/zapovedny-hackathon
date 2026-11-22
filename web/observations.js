@@ -1,5 +1,7 @@
-import { renderChartCard, download } from "/observation-chart.js";
-import { pickStations } from "/station-map.js";
+import { renderChartCard, download, periodFilename } from "/observation-chart.js";
+import { pickStations, mountStationOverview } from "/station-map.js";
+import { mountCoverageOverview } from "/coverage-overview.js";
+import { mountObservationIndicators } from "/observation-indicators.js";
 
 const chartGroups = [
   ["Температура воздуха", [
@@ -56,6 +58,8 @@ const defaultState = {
   charts: ["air"],
 };
 const emptySelection = "Выберите хотя бы одну станцию";
+const defaultIntervals = [{ start: defaultState.start, end: defaultState.end }];
+const maxDateIntervals = 12;
 const millisecondsPerDay = 86400000;
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
 const icons = {
@@ -77,21 +81,64 @@ function isDate(value) {
     Number.isFinite(asDay(value)) && asDate(asDay(value)) === value;
 }
 
+function normalizeIntervals(rows) {
+  if (!Array.isArray(rows) || !rows.length || rows.some(row =>
+    !isDate(row?.start) || !isDate(row?.end) || row.start > row.end)) return null;
+  const ordered = rows.map(({ start, end }) => ({ start, end })).sort((a, b) => a.start.localeCompare(b.start));
+  const merged = [];
+  for (const interval of ordered) {
+    const previous = merged.at(-1);
+    if (previous && asDay(interval.start) <= asDay(previous.end) + 1) {
+      if (interval.end > previous.end) previous.end = interval.end;
+    } else {
+      merged.push(interval);
+    }
+  }
+  return merged.length <= maxDateIntervals ? merged : null;
+}
+
+function parseIntervals(value) {
+  return normalizeIntervals(value.split(",").map(token => {
+    const [start, end, extra] = token.split(":");
+    return extra === undefined ? { start, end } : null;
+  }));
+}
+
+function encodeIntervals(intervals) {
+  return intervals.map(({ start, end }) => `${start}:${end}`).join(",");
+}
+
+function periodSelection(intervals) {
+  return { start: intervals[0].start, end: intervals.at(-1).end, intervals };
+}
+
+export function observationDates() {
+  return periodSelection(state.intervals.map(interval => ({ ...interval })));
+}
+
+export function observationDateQuery() {
+  const { start, end, intervals } = state;
+  return intervals.length > 1 ? { start, end, intervals: encodeIntervals(intervals) } : { start, end };
+}
+
+function notifyDates() {
+  document.dispatchEvent(new CustomEvent("observations:dates", { detail: observationDates() }));
+}
+
 function restoreLocalState() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (!saved) return { ...defaultState };
-    const validDates = isDate(saved.start) && isDate(saved.end) && saved.start <= saved.end;
+    if (!saved) return { ...defaultState, intervals: defaultIntervals };
+    const intervals = normalizeIntervals(saved.intervals) || normalizeIntervals([{ start: saved.start, end: saved.end }]) || defaultIntervals;
     return {
       selected: Array.isArray(saved.selected) ? [...new Set(saved.selected.filter(id => typeof id === "string"))] : defaultState.selected,
-      start: validDates ? saved.start : defaultState.start,
-      end: validDates ? saved.end : defaultState.end,
+      ...periodSelection(intervals),
       mode: Object.hasOwn(sources, saved.mode) ? saved.mode : defaultState.mode,
       grain: grains.has(saved.grain) ? saved.grain : defaultState.grain,
       charts: Array.isArray(saved.charts) ? [...new Set(saved.charts.filter(id => charts.has(id)))] : defaultState.charts,
     };
   } catch {
-    return { ...defaultState };
+    return { ...defaultState, intervals: defaultIntervals };
   }
 }
 
@@ -104,11 +151,12 @@ function restoreState() {
   const grain = query.get("grain");
   const selected = query.get("stations");
   const chartIds = query.get("charts");
-  const validDates = isDate(start) && isDate(end) && start <= end;
+  const givenIntervals = query.get("intervals");
+  const intervals = givenIntervals !== null ? parseIntervals(givenIntervals)
+    : query.has("start") || query.has("end") ? normalizeIntervals([{ start, end }]) : saved.intervals;
   return {
     selected: selected === null ? saved.selected : [...new Set(selected.split(",").filter(Boolean))],
-    start: validDates ? start : saved.start,
-    end: validDates ? end : saved.end,
+    ...periodSelection(intervals || saved.intervals),
     mode: Object.hasOwn(sources, mode) ? mode : saved.mode,
     grain: grains.has(grain) ? grain : saved.grain,
     charts: chartIds === null ? saved.charts : [...new Set(chartIds.split(",").filter(id => charts.has(id)))],
@@ -131,14 +179,15 @@ function saveAddress() {
   clearTimeout(addressTimer);
   addressTimer = undefined;
   const url = new URL(location.href);
+  const dates = observationDateQuery();
   const filters = {
     stations: state.selected.join(","),
-    start: state.start,
-    end: state.end,
+    ...dates,
     grain: state.grain,
     mode: state.mode,
     charts: state.charts.join(","),
   };
+  if (!dates.intervals) url.searchParams.delete("intervals");
   for (const [key, value] of Object.entries(filters)) url.searchParams.set(key, value);
   if (url.href !== location.href) history.replaceState(history.state, "", url);
 }
@@ -153,8 +202,9 @@ let renderTimer;
 let addressTimer;
 const cards = new Map();
 const get = id => document.getElementById(id);
-const startInput = get("dash-start");
-const endInput = get("dash-end");
+const dateRows = get("observation-date-rows");
+const addDateInterval = get("add-date-interval");
+let notifiedDateKey;
 const rangeStart = get("range-start");
 const rangeEnd = get("range-end");
 const dateError = get("date-error");
@@ -224,7 +274,7 @@ exportDialog.addEventListener("click", async event => {
   updateBulkExport();
   exportMessage.hidden = false;
   exportMessage.textContent = "Собираем графики в ZIP…";
-  const name = `Метеоархив_${state.start}_${state.end}_${format}.zip`;
+  const name = `Метеоархив_${periodFilename(state.intervals)}_${format}.zip`;
   try {
     // Each card captures its legend and zoom before asynchronous raster conversion starts.
     const files = await Promise.all(opened.map(card => card.instance.exportFile(format, { includeEmpty: true })));
@@ -263,6 +313,7 @@ function stationLabel(id) {
 }
 
 function renderStations() {
+  stationOverview.update(stations, state.selected);
   stationChips.replaceChildren(...state.selected.map(id => {
     const station = stations.find(item => item.id === id);
     const label = stationLabel(id);
@@ -302,10 +353,7 @@ async function loadStationCatalog() {
   stations = data.stations;
   if (isDate(data.start) && isDate(data.end) && data.start <= data.end) {
     bounds = { start: data.start, end: data.end };
-    for (const field of [startInput, endInput]) {
-      field.min = bounds.start;
-      field.max = bounds.end;
-    }
+    applyDateBounds();
     get("archive-start").textContent = dateLabel(bounds.start);
     get("archive-end").textContent = dateLabel(bounds.end);
   }
@@ -344,72 +392,136 @@ function syncHandles() {
   if (!bounds) return;
   const first = asDay(bounds.start);
   const days = asDay(bounds.end) - first;
+  const offset = value => Math.max(0, Math.min(days, asDay(value) - first));
+  const percentage = position => 100 * position / (days || 1);
   rangeStart.max = days;
   rangeEnd.max = days;
-  rangeStart.value = Math.max(0, Math.min(days, asDay(state.start) - first));
-  rangeEnd.value = Math.max(0, Math.min(days, asDay(state.end) - first));
+  rangeStart.value = offset(state.start);
+  rangeEnd.value = offset(state.end);
   rangeStart.setAttribute("aria-valuetext", dateLabel(asDate(first + rangeStart.valueAsNumber)));
   rangeEnd.setAttribute("aria-valuetext", dateLabel(asDate(first + rangeEnd.valueAsNumber)));
-  archiveRange.style.setProperty("--start", `${100 * rangeStart.valueAsNumber / (days || 1)}%`);
-  archiveRange.style.setProperty("--end", `${100 * (days - rangeEnd.valueAsNumber) / (days || 1)}%`);
+  rangeStart.hidden = rangeEnd.hidden = dateRows.children.length !== 1;
+  archiveRange.querySelector(".date-range-bands").replaceChildren(...state.intervals.map(interval => {
+    const band = document.createElement("span");
+    band.className = "date-range-band";
+    band.style.left = `${percentage(offset(interval.start))}%`;
+    band.style.right = `${percentage(days - offset(interval.end))}%`;
+    return band;
+  }));
+}
+
+function applyDateBounds() {
+  if (!bounds) return;
+  for (const field of dateRows.querySelectorAll("input")) {
+    field.min = bounds.start;
+    field.max = bounds.end;
+  }
+}
+
+function renderDateRows(intervals) {
+  const multiple = intervals.length > 1;
+  dateRows.innerHTML = intervals.map(({ start, end }, index) => {
+    const ordinal = index + 1;
+    const startId = index ? `dash-start-${ordinal}` : "dash-start";
+    const endId = index ? `dash-end-${ordinal}` : "dash-end";
+    const labelId = `date-interval-name-${ordinal}`;
+    return `<fieldset class="date-interval" data-date-interval${multiple ? ` aria-labelledby="${labelId}"` : ""}>
+      <legend${multiple ? "" : " hidden"}>
+        <span id="${labelId}">Интервал ${ordinal}</span>
+        <button type="button" class="icon-btn date-remove" data-remove-date="${index}" aria-label="Убрать интервал ${ordinal}" title="Убрать интервал ${ordinal}">${icon("close", 16)}</button>
+      </legend>
+      <div class="date-interval-fields">
+        <div class="field"><label for="${startId}">Дата с</label><input type="date" id="${startId}" value="${escape(start)}" required aria-describedby="date-error"></div>
+        <div class="field"><label for="${endId}">Дата по</label><input type="date" id="${endId}" value="${escape(end)}" required aria-describedby="date-error"></div>
+      </div>
+    </fieldset>`;
+  }).join("");
+  applyDateBounds();
+  addDateInterval.disabled = intervals.length >= maxDateIntervals;
+  get("date-instructions").hidden = !multiple;
+  syncHandles();
+}
+
+function readDateRows() {
+  return [...dateRows.children].map(row => {
+    const [startInput, endInput] = row.querySelectorAll("input");
+    return { start: startInput.value, end: endInput.value, startInput, endInput };
+  });
 }
 
 function setDateError(message, invalid = []) {
   setStatus(dateError, message);
-  for (const field of [startInput, endInput]) {
+  for (const field of dateRows.querySelectorAll("input")) {
     if (invalid.includes(field)) field.setAttribute("aria-invalid", "true");
     else field.removeAttribute("aria-invalid");
   }
 }
 
-function dateChange({ immediate = false, rewriteFields = false } = {}) {
-  const start = startInput.value;
-  const end = endInput.value;
-  const missing = [startInput, endInput].filter(field => !isDate(field.value));
-  if (missing.length) {
-    setDateError("Введите обе даты.", missing);
-    return;
-  }
-  if (start > end) {
-    setDateError("Дата начала должна быть раньше даты окончания или совпадать с ней.", [startInput, endInput]);
-    return;
-  }
-  const outside = bounds ? [startInput, endInput].filter(field => field.value < bounds.start || field.value > bounds.end) : [];
-  if (outside.length && !rewriteFields) {
-    setDateError(`Выберите даты от ${dateLabel(bounds.start)} до ${dateLabel(bounds.end)}.`, outside);
-    return;
-  }
-  setDateError("");
-  if (start !== state.start || end !== state.end) {
-    state.start = start;
-    state.end = end;
+function commitIntervals(intervals, { immediate = true, redraw = false, retry = false } = {}) {
+  if (encodeIntervals(intervals) !== encodeIntervals(state.intervals)) {
+    Object.assign(state, periodSelection(intervals));
     saveState({ deferAddress: !immediate });
   }
-  syncHandles();
+  if (redraw) renderDateRows(state.intervals);
+  else syncHandles();
   clearTimeout(renderTimer);
   if (immediate) {
     saveAddress();
-    updateCharts();
+    updateCharts({ retry });
   } else {
     renderTimer = setTimeout(updateCharts, 180);
   }
 }
 
-function setDates(start, end, immediate) {
-  startInput.value = start;
-  endInput.value = end;
-  dateChange({ immediate, rewriteFields: true });
+function dateChange({ immediate = false } = {}) {
+  setStatus(get("date-result"), "");
+  const rows = readDateRows();
+  for (const [index, { start, end, startInput, endInput }] of rows.entries()) {
+    const fields = [startInput, endInput];
+    const prefix = rows.length > 1 ? `Интервал ${index + 1}. ` : "";
+    const missing = fields.filter(field => !isDate(field.value));
+    if (missing.length) {
+      if (immediate || rows.length === 1) setDateError(`${prefix}Введите обе даты.`, missing);
+      return;
+    }
+    if (start > end) {
+      setDateError(`${prefix}Дата начала должна быть раньше даты окончания или совпадать с ней.`, fields);
+      return;
+    }
+    const outside = bounds ? fields.filter(field => field.value < bounds.start || field.value > bounds.end) : [];
+    if (outside.length) {
+      setDateError(`${prefix}Выберите даты от ${dateLabel(bounds.start)} до ${dateLabel(bounds.end)}.`, outside);
+      return;
+    }
+  }
+  setDateError("");
+  if (!immediate && rows.length > 1) return;
+  const intervals = normalizeIntervals(rows);
+  const redraw = encodeIntervals(rows) !== encodeIntervals(intervals);
+  commitIntervals(intervals, { immediate, redraw, retry: immediate });
+  if (intervals.length < rows.length) setStatus(get("date-result"), "Смежные и пересекающиеся интервалы объединены.");
+}
+
+function replaceDates(start, end) {
+  setDateError("");
+  setStatus(get("date-result"), "");
+  commitIntervals([{ start, end }], { redraw: true });
 }
 
 function moveHandle(handle, immediate) {
+  if (!bounds || dateRows.children.length !== 1) return;
   const first = asDay(bounds.start);
   const start = rangeStart.valueAsNumber;
   const end = rangeEnd.valueAsNumber;
-  setDates(
-    asDate(first + (handle === rangeStart ? Math.min(start, end) : start)),
-    asDate(first + (handle === rangeEnd ? Math.max(start, end) : end)),
-    immediate,
-  );
+  const interval = {
+    start: asDate(first + (handle === rangeStart ? Math.min(start, end) : start)),
+    end: asDate(first + (handle === rangeEnd ? Math.max(start, end) : end)),
+  };
+  const [{ startInput, endInput }] = readDateRows();
+  startInput.value = interval.start;
+  endInput.value = interval.end;
+  setDateError("");
+  commitIntervals([interval], { immediate });
 }
 
 function drawCatalog() {
@@ -427,7 +539,7 @@ function updateCatalog() {
       button.lastElementChild.innerHTML = icon(chosen ? "check" : "plus", 16);
     }
   }
-  get("catalog-count").textContent = `На экране: ${state.charts.length}`;
+  get("catalog-count").textContent = `На экране: ${state.charts.length + indicators.count + Number(coverageToggle.checked)}`;
 }
 
 function toggleChart(id, keepFocus = false) {
@@ -462,7 +574,7 @@ function renderCard(card) {
   } else {
     const { start, end, grain, mode } = state;
     card.instance = renderChartCard(card.mount, card.data, {
-      mode, grain, from: start, to: end, primary: card.primary,
+      mode, grain, from: start, to: end, intervals: card.data.intervals ?? state.intervals, primary: card.primary,
       onHide: () => toggleChart(card.id, true),
     });
   }
@@ -485,8 +597,7 @@ function createCard(id) {
 function updateCard(card, retry) {
   const query = new URLSearchParams({
     stations: state.selected.join(","),
-    start: state.start,
-    end: state.end,
+    ...observationDateQuery(),
     grain: state.grain,
     mode: state.mode,
     chart: card.id,
@@ -556,13 +667,17 @@ function coverageSummary(data) {
     return `<hr class="rule"><div><h3>${escape(numberFormat.format(count.valid_days))} из ${escape(numberFormat.format(count.total_days))} суток</h3><p class="muted small">Пригодны для расчёта по параметру.</p></div>`;
   }
   return `<hr class="rule"><h3>Сутки, пригодные для расчёта</h3><div class="observation-summary-values">${counts.map(count =>
-    `<div class="between small"><span>${escape(count.label)}${counts.some(other => other !== count && other.station === count.station) ? ` · ${escape(count.parameter_label)}` : ""}</span><strong>${escape(numberFormat.format(count.valid_days))} из ${escape(numberFormat.format(count.total_days))}</strong></div>`,
+    `<div class="between small"><span>${escape([count.label, count.interval_label,
+      counts.some(other => other !== count && other.station === count.station && other.interval === count.interval) ? count.parameter_label : null,
+    ].filter(Boolean).join(" · "))}</span><strong>${escape(numberFormat.format(count.valid_days))} из ${escape(numberFormat.format(count.total_days))}</strong></div>`,
   ).join("")}</div>`;
 }
 
 function renderSummary(card) {
-  const period = `${dateLabel(state.start)} — ${dateLabel(state.end)}`;
-  const heading = `<span class="eyebrow">За выбранный период</span><h2>${period}</h2>`;
+  const intervals = state.intervals.map(({ start, end }) => `${dateLabel(start)} — ${dateLabel(end)}`);
+  const heading = intervals.length === 1
+    ? `<span class="eyebrow">За выбранный период</span><h2>${intervals[0]}</h2>`
+    : `<span class="eyebrow">За выбранные интервалы</span><ul class="summary-intervals">${intervals.map(interval => `<li>${interval}</li>`).join("")}</ul>`;
   const data = card.data;
   const stats = data?.series?.map(series => ({ series, stats: summaryOf(series) })).filter(result => result.stats) ?? [];
   if (!stats.length) {
@@ -598,7 +713,13 @@ function renderSummary(card) {
 }
 
 function updateCharts({ retry = false } = {}) {
+  updateExtraPanels({retry});
   clearTimeout(renderTimer);
+  const dateKey = encodeIntervals(state.intervals);
+  if (dateKey !== notifiedDateKey) {
+    notifiedDateKey = dateKey;
+    notifyDates();
+  }
   const selected = new Set(state.charts);
   const [primaryId] = state.charts;
   for (const [id, card] of cards) {
@@ -639,16 +760,31 @@ function updateCharts({ retry = false } = {}) {
 get("dashboard-dates").addEventListener("submit", event => {
   event.preventDefault();
   dateChange({ immediate: true });
-  if (dateError.hidden) updateCharts({ retry: true });
 });
-for (const field of [startInput, endInput]) {
-  field.addEventListener("input", () => dateChange());
-}
+dateRows.addEventListener("input", () => dateChange());
+addDateInterval.addEventListener("click", () => {
+  const rows = readDateRows();
+  if (rows.length >= maxDateIntervals) return;
+  setDateError("");
+  setStatus(get("date-result"), "");
+  renderDateRows([...rows, { start: "", end: "" }]);
+  dateRows.lastElementChild.querySelector("input").focus();
+});
+dateRows.addEventListener("click", event => {
+  const remove = event.target.closest("[data-remove-date]");
+  if (!remove || dateRows.children.length < 2) return;
+  const index = Number(remove.dataset.removeDate);
+  setDateError("");
+  renderDateRows(readDateRows().filter((_, position) => position !== index));
+  dateChange({ immediate: true });
+  dateRows.children[Math.min(index, dateRows.children.length - 1)].querySelector("input").focus();
+});
 for (const handle of [rangeStart, rangeEnd]) {
   handle.addEventListener("input", () => moveHandle(handle, false));
   handle.addEventListener("change", () => moveHandle(handle, true));
 }
-get("all-dates").addEventListener("click", () => setDates(bounds.start, bounds.end, true));
+get("all-dates").addEventListener("click", () => replaceDates(bounds.start, bounds.end));
+get("reset-dates").addEventListener("click", () => replaceDates(defaultState.start, defaultState.end));
 openStations.addEventListener("click", chooseStations);
 clearStations.addEventListener("click", () => {
   updateStations([]);
@@ -675,8 +811,7 @@ catalog.addEventListener("click", event => {
 });
 
 async function start() {
-  startInput.value = state.start;
-  endInput.value = state.end;
+  renderDateRows(state.intervals);
   drawCatalog();
   updateCatalog();
   renderMode();
@@ -701,6 +836,8 @@ window.addEventListener("pagehide", () => {
 async function refreshPublishedData() {
   try {
     await loadStationCatalog();
+    coverageOverview.refresh();
+    updateExtraPanels({refresh: true});
     for (const card of cards.values()) card.key = undefined;
     updateCharts();
   } catch {
@@ -714,4 +851,33 @@ window.addEventListener("storage", event => {
   if (event.key === "meteoarchive.dataRevision") refreshPublishedData();
 });
 
+const stationOverview = mountStationOverview(get("station-overview"), {
+  onChange: updateStations,
+  onExpand: chooseStations,
+});
+const coverageToggle = get("show-coverage");
+const coverageOverview = mountCoverageOverview(get("coverage-overview"));
+const indicators = mountObservationIndicators({
+  catalog: get("indicator-catalog"), container: get("observation-indicators"), onChange: updateCatalog,
+});
+const coverageKey = "meteoarchive.observations.coverage";
+try {
+  coverageToggle.checked = localStorage.getItem(coverageKey) === "1";
+} catch {}
+function showCoverage() {
+  get("coverage-overview").hidden = !coverageToggle.checked;
+  coverageOverview.setEnabled(coverageToggle.checked);
+}
+coverageToggle.addEventListener("change", () => {
+  try { localStorage.setItem(coverageKey, coverageToggle.checked ? "1" : "0"); } catch {}
+  showCoverage();
+  updateExtraPanels();
+  updateCatalog();
+});
+function updateExtraPanels(options = {}) {
+  const dates = {start: state.start, end: state.end, intervals: state.intervals};
+  coverageOverview.update({...dates, stations: state.selected});
+  indicators.update({...options, ...dates, stations: stations.filter(station => state.selected.includes(station.id))});
+}
+showCoverage();
 start();

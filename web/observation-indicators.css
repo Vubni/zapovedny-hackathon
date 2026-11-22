@@ -1,0 +1,76 @@
+.observation-indicator-catalog {
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.observation-indicator-catalog > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 40px;
+  gap: 10px;
+  color: var(--dark);
+  font-size: 13px;
+  font-weight: 800;
+  list-style: none;
+  cursor: pointer;
+}
+
+.observation-indicator-catalog > summary::-webkit-details-marker { display: none; }
+.observation-indicator-catalog[open] > summary svg { transform: rotate(180deg); }
+.observation-indicator-catalog__group { padding: 5px 0 11px; }
+.observation-indicator-catalog__group + .observation-indicator-catalog__group { border-top: 1px solid var(--grid); padding-top: 11px; }
+.observation-indicator-catalog__group h4 { margin: 0; font-size: 12px; font-weight: 800; }
+.observation-indicator-catalog__item { position: relative; cursor: pointer; }
+.observation-indicator-catalog__item input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.observation-indicator-catalog__mark svg:last-child { display: none; }
+.observation-indicator-catalog__item:has(input:checked) { border-color: #d9e7b6; background: #f2f7e5; }
+.observation-indicator-catalog__item:has(input:checked) .observation-indicator-catalog__mark { border-color: var(--lime); background: var(--lime); }
+.observation-indicator-catalog__item:has(input:checked) .observation-indicator-catalog__mark svg:first-child { display: none; }
+.observation-indicator-catalog__item:has(input:checked) .observation-indicator-catalog__mark svg:last-child { display: block; }
+.observation-indicator-catalog > summary:focus-visible,
+.observation-indicator-catalog__item:has(input:focus-visible),
+.observation-indicator__table-wrap:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.observation-indicators { display: grid; gap: 14px; min-width: 0; }
+.observation-indicators__group { display: grid; gap: 7px; min-width: 0; }
+.observation-indicators [hidden] { display: none; }
+.observation-indicators h2 { color: var(--ink); }
+.observation-indicators h3 { color: var(--dark); font-size: 14px; }
+.observation-indicators__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 265px), 1fr)); gap: 10px; }
+.observation-indicators--comparison .observation-indicators__grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
+.observation-indicator { min-width: 0; padding: 13px 14px; }
+.observation-indicator__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.observation-indicator__header h4 { margin: 2px 0 0; font-size: 13px; line-height: 1.5; font-weight: 800; }
+.observation-indicator__close { width: 25px; min-height: 25px; flex: none; border-radius: 6px; }
+.observation-indicator__body { margin-top: 4px; }
+.observation-indicator__period { margin-bottom: 5px; color: var(--mute); font-size: 11px; }
+.observation-indicator__values { display: grid; margin: 0; }
+.observation-indicator__values > div { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; padding: 4px 0; }
+.observation-indicator__values > div + div { border-top: 1px solid var(--grid); }
+.observation-indicator__values dt { color: var(--mute); font-size: 12px; }
+.observation-indicator__values dd { margin: 0; text-align: right; }
+.observation-indicator__value { display: inline-flex; gap: 4px; align-items: baseline; color: var(--ink); white-space: nowrap; }
+.observation-indicator__value strong { font-size: 22px; line-height: 1.15; font-weight: 800; letter-spacing: -.035em; }
+.observation-indicator__unit { color: var(--mute); font-size: 12px; font-weight: 750; }
+.observation-indicator__missing,
+.observation-indicator__status { color: var(--mute); font-size: 12px; }
+.observation-indicator__status { padding-block: 5px; }
+.observation-indicator__table-wrap { max-width: 100%; margin-top: 6px; overflow-x: auto; }
+.observation-indicator__table { width: 100%; border-collapse: collapse; text-align: left; }
+.observation-indicator__table :is(th, td) { padding: 6px 9px 6px 0; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+.observation-indicator__table :is(th, td):not(:first-child) { padding-inline: 9px; min-width: 104px; }
+.observation-indicator__table th { white-space: normal; overflow-wrap: anywhere; }
+.observation-indicator__table thead th { color: var(--mute); font-size: 11px; font-weight: 700; }
+.observation-indicator__table tbody th { min-width: 75px; color: var(--mute); font-size: 12px; font-weight: 650; }
+.observation-indicator__table tbody tr:last-child > * { border-bottom: 0; }
+.observation-indicator__table .observation-indicator__value strong { font-size: 18px; }

@@ -1,0 +1,42 @@
+{
+  "command": "node checks/coverage-intervals.cjs",
+  "database": "Temporary METEO_OBSERVATION_DB",
+  "intervals": [
+    {
+      "start": "2024-02-28",
+      "end": "2024-02-29"
+    },
+    {
+      "start": "2024-04-01",
+      "end": "2024-04-05"
+    },
+    {
+      "start": "2024-04-25",
+      "end": "2024-04-30"
+    }
+  ],
+  "http": {
+    "kr1_2024": {
+      "total": 366,
+      "general_valid": 363,
+      "pressure_valid": 334,
+      "april_pressure_valid": 2
+    },
+    "selected_month_days": {
+      "february": 2,
+      "april": 11
+    },
+    "selected_kr1_coverage": {
+      "total": 13,
+      "general_valid": 11,
+      "pressure_valid": 4
+    },
+    "ame60_pressure_supported": false,
+    "chart_points_outside_selection": 0
+  },
+  "chromium": {
+    "keyboard_navigation": true,
+    "intervals_persisted_on_reload": true,
+    "coverage_cleared_without_stations": true
+  }
+}

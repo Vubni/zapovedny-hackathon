@@ -133,19 +133,19 @@
   transform: translate(-50%, -50%);
   border: 2px solid #fff;
   border-radius: 50%;
-  background: var(--dark, #20563b);
+  background: var(--terrain-fill, #58675f);
   color: #fff;
-  box-shadow: 0 2px 6px #172c2350;
+  box-shadow: 0 0 0 2px var(--selection-ring, transparent), 0 2px 6px #172c2350;
   font-size: 14px;
   font-weight: 800;
   pointer-events: auto;
 }
 
 .station-map-marker-area { width: 43px; height: 43px; outline: 1px dashed #326847; outline-offset: 4px; }
-.station-map-marker[aria-pressed="true"] { background: var(--lime, #d7e950); color: var(--ink, #162820); }
-.station-map-marker[aria-pressed="mixed"] { background: #e5f0e5; color: var(--dark, #20563b); }
+.station-map-marker[aria-pressed="true"] { border-color: var(--lime, #d7e950); --selection-ring: #20563b; }
+.station-map-marker[aria-pressed="mixed"] { border-color: #e5f0e5; --selection-ring: #61896f; }
 .station-map-marker:hover, .station-map-marker:focus { z-index: 1; }
-.station-map-marker:hover { box-shadow: 0 2px 10px #172c2370; }
+.station-map-marker:hover { box-shadow: 0 0 0 2px var(--selection-ring, transparent), 0 2px 10px #172c2370; }
 .station-map-viewport.is-picking .station-map-marker { pointer-events: none; }
 .station-map-tools {
   display: grid;
@@ -200,9 +200,24 @@
 .station-map-shortcut { color: var(--mute, #53645a); font-size: 11px; margin-top: 3px; }
 @media (pointer: coarse) { .station-map-shortcut { display: none; } }
 
+.station-terrain-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mute, #53645a);
+  font-size: 11px;
+}
+
+.station-terrain-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.station-terrain-legend li span { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .station-picker-side { min-width: 0; }
 .station-picker-list-head { margin-bottom: 12px; }
 .station-picker-list-head .btn { flex: none; }
+.station-list-tip, .station-list-empty { color: var(--mute, #53645a); font-size: 11px; }
+.station-list-tip { margin: -7px 0 9px; }
 .station-picker-list {
   display: grid;
   align-content: start;
@@ -213,6 +228,8 @@
   margin: -3px -4px -4px;
 }
 
+.station-list-group { display: grid; gap: 7px; }
+.station-list-other-title { margin: 4px 0 0; color: var(--mute, #53645a); font-size: 12px; font-weight: 750; }
 .station-picker-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -241,7 +258,19 @@
 .station-picker-row strong, .station-picker-row small { display: block; overflow-wrap: anywhere; }
 .station-picker-row strong { font-size: 13px; line-height: 1.35; }
 .station-picker-row small { color: var(--mute, #53645a); font-size: 11px; }
-.station-picker-row .station-row-locate { margin-right: 5px; color: var(--dark, #20563b); }
+.station-row-actions { display: flex; gap: 4px; margin: 4px 5px 4px 0; }
+.station-row-actions .icon-btn { width: 31px; min-height: 31px; color: var(--dark, #20563b); }
+.station-row-actions .icon-btn[aria-expanded="true"] { background: var(--mint, #e5f0e5); border-color: #afc9b3; }
+.station-row-passport {
+  grid-column: 1 / -1;
+  padding: 9px 11px 11px;
+  border-top: 1px solid var(--line, #dce5db);
+  font-size: 12px;
+}
+.station-row-passport dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 3px 9px; margin: 0 0 7px; }
+.station-row-passport dt, .station-row-passport p { color: var(--mute, #53645a); font-weight: 750; }
+.station-row-passport dd { margin: 0; overflow-wrap: anywhere; }
+.station-row-passport ul { margin: 3px 0 0; padding: 0 0 0 15px; }
 
 .station-picker [data-station-form] fieldset {
   display: grid;
@@ -274,7 +303,7 @@
 .station-form-params { color: var(--mute, #53645a); font-size: 12px; }
 .station-form-params label { display: flex; align-items: center; gap: 5px; min-height: 24px; }
 .station-form-error { color: #8c332a; font-size: 12px; }
-.station-picker [data-save] { justify-self: start; }
+.station-picker :is([data-save], [data-operator-signin]) { justify-self: start; }
 
 .station-picker-footer {
   flex: none;
@@ -294,6 +323,7 @@
   .station-map-viewport { height: clamp(180px, 35dvh, 310px); }
   .station-picker-list { max-height: 245px; }
   .station-picker-list-head { margin-bottom: 7px; }
+  .station-list-tip { margin-top: -2px; }
 }
 
 @media (max-width: 340px) {

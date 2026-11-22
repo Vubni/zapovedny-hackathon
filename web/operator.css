@@ -1,0 +1,22 @@
+.operator-main > section { max-width: 650px; }
+.operator-main h1 { margin-top: 6px; }
+.operator-main [hidden] { display: none !important; }
+.operator-main:focus { outline: none; }
+.operator-card { display: grid; gap: 13px; }
+.operator-card [role="status"] { color: var(--mute); }
+.operator-card form { display: grid; gap: 10px; }
+.operator-card label { font-weight: 800; }
+.operator-card input {
+  width: min(100%, 355px);
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+.operator-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.operator-actions .btn { min-height: 44px; text-decoration: none; }
+.operator-actions a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}

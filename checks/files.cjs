@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
+const { randomBytes } = require("node:crypto");
 const { once } = require("node:events");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -15,7 +16,7 @@ const failureName = "Файл с неверными полями.csv";
 const csv = Buffer.from([
   "datetime,t_air,rh",
   ...Array.from({ length: 24 }, (_, hour) =>
-    `2026-02-14 ${String(hour).padStart(2, "0")}:00,${hour === 7 ? -100 : 4 + hour % 3},${hour === 8 ? 120 : 78}`),
+    `2026-02-14 ${String(hour).padStart(2, "0")}:00,${hour === 7 ? -100 : 4 + hour % 3},${hour === 8 ? 120 : hour === 12 ? "" : 78}`),
   "",
 ].join("\n"));
 
@@ -41,6 +42,29 @@ async function download(page, trigger) {
   return { name: item.suggestedFilename(), bytes: await fs.readFile(await item.path()) };
 }
 
+async function correctTemperature(page, name, value) {
+  const exported = await download(page, page.getByRole("link", { name: "Скачать CSV для правки" }));
+  assert.match(exported.name, /\.csv$/);
+  const lines = exported.bytes.toString("utf8").replace(/^\uFEFF/, "").trimEnd().split(/\r?\n/).map((line) => line.split(";"));
+  const index = lines[0].indexOf("t_air");
+  assert.ok(index > 0);
+  const target = lines.find((line) => /^2026-02-14[ T]07:00/.test(line[0]));
+  assert.ok(target);
+  target[index] = value;
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "Загрузить исправленный CSV" }).click(),
+  ]);
+  const response = page.waitForResponse((event) => new URL(event.url()).pathname === "/api/files/corrected" &&
+    event.request().method() === "POST");
+  await chooser.setFiles([{
+    name, mimeType: "text/csv", buffer: Buffer.from(lines.map((line) => line.join(";")).join("\n") + "\n"),
+  }]);
+  const imported = await response;
+  assert.equal(imported.status(), 200, await imported.text());
+  return imported.json();
+}
+
 async function applyFilters(page) {
   await page.getByRole("button", { name: "Отфильтровать", exact: true }).click();
   await page.locator(".preview-card-shell").waitFor();
@@ -52,7 +76,7 @@ async function publish(page, label) {
   await page.getByRole("button", { name: "К очереди", exact: true }).click();
 }
 
-async function runChecks(page, base, workbook) {
+async function runChecks(page, base, workbook, operatorPassword) {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   const queueItem = (name) => page.locator(".queue-item").filter({ hasText: name });
@@ -63,6 +87,10 @@ async function runChecks(page, base, workbook) {
   const add = page.getByRole("button", { name: "Добавить в базу", exact: true });
   const toFiles = page.getByRole("button", { name: "К файлам", exact: true });
   const pressure = page.getByLabel("Верхняя граница давления", { exact: true });
+  const timeline = page.getByRole("group", { name: "Выбросы и заполнения на общей шкале времени" });
+  const marks = timeline.locator(".timeline-event");
+  const temperature = page.getByRole("button", { name: "Температура воздуха 1", exact: true });
+  const humidity = page.getByRole("button", { name: "Относительная влажность 1", exact: true });
 
   const otherTab = await page.context().newPage();
   await otherTab.goto(`${base}/api`);
@@ -74,6 +102,15 @@ async function runChecks(page, base, workbook) {
   });
 
   await page.goto(`${base}/files`);
+  assert.equal(new URL(page.url()).pathname, "/operator");
+  assert.equal((await page.request.get(`${base}/api/files`)).status(), 401);
+  const password = page.getByLabel("Пароль оператора", { exact: true });
+  await password.fill("неверный пароль");
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.getByRole("alert").getByText("Неверный пароль оператора.").waitFor();
+  await password.fill(operatorPassword);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.waitForURL(`${base}/files`);
   await page.getByRole("button", { name: "Выбрать файлы", exact: true }).waitFor();
   assert.equal(await page.getByRole("link", { name: "Расширенный аудит" }).getAttribute("href"), "/review");
   const [chooser] = await Promise.all([
@@ -100,7 +137,7 @@ async function runChecks(page, base, workbook) {
   await hampel.check();
   await applyFilters(page);
   await page.getByText("2 выброса", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("img", { name: "Количество выбросов от начала до конца периода" }).locator("rect").count(), 2);
+  assert.equal(await marks.count(), 2);
 
   const draft = await fileRecord(page, base, csvName);
   assert.equal(draft.status, "preview");
@@ -109,15 +146,11 @@ async function runChecks(page, base, workbook) {
   assert.equal((await fileRecord(page, base, xlsxName)).preview, null);
   assert.equal(await otherTab.evaluate(() => window.dataRevisions.length), 0);
 
-  await page.getByRole("button", { name: "Температура воздуха 1", exact: true }).click();
+  await temperature.click();
   const graph = page.getByRole("img", { name: "Температура воздуха с выделенными выбросами" });
   assert.match(await graph.locator("circle title").textContent(), /100.+к удалению/);
   await page.locator("summary").click();
   await page.getByRole("row").filter({ hasText: "2026-02-14 07:00" }).waitFor();
-  await page.locator(".preview-card-shell").evaluate((section) =>
-    section.scrollIntoView({ block: "center", behavior: "instant" }));
-  await page.screenshot({ path: path.join(images, "files-preview-1280.png") });
-
   await spike.check();
   await page.getByText("Настройки изменились. Запустите фильтрацию повторно.").waitFor();
   assert.equal(await add.isDisabled(), true);
@@ -131,11 +164,41 @@ async function runChecks(page, base, workbook) {
   assert.equal(await spike.isChecked(), true);
   assert.equal(await add.isDisabled(), true);
 
+  await page.getByLabel("Способ заполнения", { exact: true }).selectOption("model");
   await applyFilters(page);
   await page.waitForFunction(() => document.querySelector("[data-file-action=publish]")?.disabled === false);
   const updatedDraft = await fileRecord(page, base, csvName);
   assert.notEqual(updatedDraft.preview.revision, draft.preview.revision);
   assert.deepEqual(updatedDraft.preview.settings.filters, ["hampel", "spike"]);
+  assert.equal(updatedDraft.preview.stats.filled, 3);
+
+  const replaced = timeline.getByRole("button", { name: /07:00.*Замены и заполнения.*Температура воздуха/ });
+  const excluded = timeline.getByRole("button", { name: /07:00.*Исходные выбросы.*Температура воздуха/ });
+  const filledGap = timeline.getByRole("button", { name: /12:00.*Замены и заполнения.*Относительная влажность/ });
+  assert.equal(await marks.count(), 5);
+  assert.ok(Number(await replaced.getAttribute("y")) > Number(await excluded.getAttribute("y")));
+  await excluded.focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("row").filter({ hasText: "2026-02-14 07:00" }).getByText("К удалению").waitFor();
+  assert.match(await page.locator("#timeline-events tbody").innerText(), /(?:предел|диапазон)/i);
+  await filledGap.click();
+  const fillRow = page.getByRole("row").filter({ hasText: "2026-02-14 12:00" });
+  await fillRow.getByText(/Локальная модель.*Регрессия/).waitFor();
+  assert.match(await fillRow.innerText(), /Относительная влажность.*78/s);
+
+  await temperature.click();
+  assert.equal(await marks.count(), 2);
+  await humidity.click();
+  assert.equal(await temperature.getAttribute("aria-pressed"), "true");
+  assert.equal(await humidity.getAttribute("aria-pressed"), "true");
+  assert.equal(await marks.count(), 5);
+  const fillLayer = page.getByRole("group", { name: "Слои шкалы" }).getByRole("button", { name: "Замены и заполнения" });
+  await fillLayer.click();
+  assert.equal(await fillLayer.getAttribute("aria-pressed"), "false");
+  assert.equal(await marks.count(), 2);
+  await fillLayer.click();
+  assert.equal(await marks.count(), 5);
+
   await page.reload();
   await queueItem(csvName).getByText("Проверка результата", { exact: true }).waitFor();
   await queueItem(csvName).getByRole("button", { name: "Настроить" }).click();
@@ -147,7 +210,32 @@ async function runChecks(page, base, workbook) {
   const excel = await download(page, page.getByRole("link", { name: "Скачать отфильтрованный файл" }));
   assert.match(excel.name, /-filtered\.xlsx$/);
   assert.equal(excel.bytes.subarray(0, 4).toString("hex"), "504b0304");
+  const firstManual = await correctTemperature(page, "Исправленный.csv", "4.25");
+  assert.equal(firstManual.manual.changed, 1);
+  assert.equal(firstManual.manual.parent_revision, updatedDraft.preview.revision);
+  assert.equal(firstManual.file.confirmed, null);
+  await page.getByText("Исправленный.csv", { exact: true }).waitFor();
+  const manualMark = timeline.getByRole("button", { name: /07:00.*Ручные правки.*Температура воздуха/ });
+  await manualMark.click();
+  const correctedRow = page.getByRole("row").filter({ hasText: "2026-02-14 07:00" });
+  await correctedRow.getByText("Исправлено в загруженном CSV").waitFor();
+  assert.match(await correctedRow.innerText(), /4,25/);
+  const secondManual = await correctTemperature(page, "Повторная правка.csv", "4.75");
+  assert.equal(secondManual.manual.parent_revision, firstManual.revision);
+  assert.equal(secondManual.manual.changed, 1);
+  assert.equal(secondManual.file.confirmed, null);
+  await page.reload();
+  await queueItem(csvName).getByText("Проверка результата", { exact: true }).waitFor();
+  await queueItem(csvName).getByRole("button", { name: "Настроить" }).click();
+  await page.getByText("Повторная правка.csv", { exact: true }).waitFor();
+  await manualMark.click();
+  assert.match(await correctedRow.innerText(), /4,75/);
+  await page.locator(".preview-card-shell").evaluate((section) =>
+    section.scrollIntoView({ block: "center", behavior: "instant" }));
+  await page.screenshot({ path: path.join(images, "files-preview-1280.png") });
+  assert.equal(await otherTab.evaluate(() => window.dataRevisions.length), 0);
   await publish(page, "Добавить в базу");
+  assert.equal((await fileRecord(page, base, csvName)).confirmed.revision, secondManual.revision);
   await otherTab.waitForFunction(() => window.dataRevisions.length === 1);
   await row(csvName).getByText("В общих графиках").waitFor();
   assert.match(await row(csvName).innerText(), /Кр2 · поле/);
@@ -155,6 +243,7 @@ async function runChecks(page, base, workbook) {
   const filenameBox = await queueItem(xlsxName).locator("strong").boundingBox();
   const editBox = await queueItem(xlsxName).getByRole("button", { name: "Настроить" }).boundingBox();
   assert.ok(editBox.y > filenameBox.y + filenameBox.height);
+  await row(csvName).getByText("С ручными правками").waitFor();
   await page.screenshot({ path: path.join(images, "files-queue-1280.png"), fullPage: true });
 
   await queueItem(xlsxName).getByRole("button", { name: "Настроить" }).click();
@@ -248,6 +337,9 @@ async function runChecks(page, base, workbook) {
   await transfer.dispose();
   await queueItem("Перетащенный.csv").getByText("Ожидает обработки").waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+  await queueItem("Перетащенный.csv").getByRole("button", { name: "Настроить" }).click();
+  await applyFilters(page);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
   assert.deepEqual(pageErrors, []);
 }
 
@@ -255,10 +347,14 @@ async function run() {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "meteo-files-qa-"));
   const database = path.join(temporary, "observations.sqlite3");
   const workbook = path.join(temporary, "observations.xlsx");
+  const operatorPassword = randomBytes(32).toString("base64url");
   // All writes use a fresh database and an operating-system-assigned local port.
   const server = spawn(process.env.PYTHON || "python3", ["-u", "-c", qaServer, workbook], {
     cwd: root,
-    env: { ...process.env, METEO_OBSERVATION_DB: database, PYTHONDONTWRITEBYTECODE: "1" },
+    env: {
+      ...process.env, METEO_OBSERVATION_DB: database, METEO_ADMIN_PASSWORD: operatorPassword,
+      METEO_ADMIN_ORIGIN: "", PYTHONDONTWRITEBYTECODE: "1",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const lines = readline.createInterface({ input: server.stdout });
@@ -276,8 +372,8 @@ async function run() {
     const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, locale: "ru-RU", reducedMotion: "reduce" });
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
-    await runChecks(page, `http://127.0.0.1:${port}`, await fs.readFile(workbook));
-    console.log("PASS /files: CSV, XLSX, очередь, предпросмотр, перезагрузка, выгрузка, замена, удаление, аудит исходника и drop");
+    await runChecks(page, `http://127.0.0.1:${port}`, await fs.readFile(workbook), operatorPassword);
+    console.log("PASS /files: очередь CSV/XLSX, шкала, ручные версии CSV, перезагрузка, выгрузка, публикация, замена, удаление, аудит и drop");
   } catch (error) {
     if (serverErrors) console.error(serverErrors.trim());
     throw error;

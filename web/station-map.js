@@ -1,11 +1,21 @@
-import {land, lakes, places, rivers, roads} from './station-map-data.js';
+import {mountYandexLocation} from './yandex-location.js';
 
 const reserve = {latitude: 56.52, longitude: 32.87};
 const initialScale = 410;
 const maxScale = 9600;
 const degrees = Math.PI / 180;
 let mapId = 0;
+let passportId = 0;
 const coordinateFormat = new Intl.NumberFormat('ru', {maximumFractionDigits: 5});
+const terrains = {
+  clearing: ['Поляна', '#5e6b2d'],
+  field: ['Поле', '#8a5628'],
+  forest: ['Лес', '#256248'],
+  wetland: ['Болото', '#2d6971'],
+  settlement: ['Населённый пункт', '#6d5178'],
+  other: ['Другая местность', '#494f78'],
+  unknown: ['Тип местности не указан', '#58675f'],
+};
 const commonParams = [
   ['t_air', 'Температура воздуха'], ['rh', 'Относительная влажность'],
   ['wind_speed', 'Скорость ветра'], ['wind_gust', 'Порывы ветра'], ['wind_dir', 'Направление ветра'],
@@ -24,6 +34,7 @@ const icons = {
   pin: '<path d="M19 10c0 5-7 10-7 10s-7-5-7-10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
   select: '<path d="M8 4H4v4m6-4h4m2 0h4v4m0 2v4m0 2v4h-4m-2 0h-4m-2 0H4v-4m0-2v-4"/>',
   pan: '<path d="M12 4v16M4 12h16M9 7l3-3 3 3M9 17l3 3 3-3M7 9l-3 3 3 3m10-6 3 3-3 3"/>',
+  passport: '<path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6"/>',
 };
 
 function icon(name) {
@@ -56,6 +67,46 @@ function stationGroups(stations) {
   return [...groups.values()];
 }
 
+function terrainType(station) {
+  return Object.hasOwn(terrains, station.terrain) ? station.terrain : 'unknown';
+}
+
+function terrainFill(types) {
+  const colors = types.map(type => terrains[type][1]);
+  if (colors.length === 1) return colors[0];
+  const stops = colors.map((color, index) =>
+    `${color} ${index * 100 / colors.length}% ${(index + 1) * 100 / colors.length}%`);
+  return `conic-gradient(${stops.join(', ')})`;
+}
+
+function stationLocation(station, point) {
+  if (station.location_precision === 'area') return 'Район заповедника';
+  return point ? coordinates(point) : 'Координаты отсутствуют';
+}
+
+function stationPassport(station, locationLabel, id) {
+  const panel = document.createElement('div');
+  panel.id = id;
+  panel.className = 'station-row-passport';
+  panel.hidden = true;
+  panel.innerHTML = `<dl><dt>Тип местности</dt><dd data-terrain></dd><dt>Местоположение</dt><dd data-location></dd></dl>
+    <p>Доступные показатели</p><ul></ul>`;
+  panel.querySelector('[data-terrain]').textContent = terrains[terrainType(station)][0];
+  panel.querySelector('[data-location]').textContent = locationLabel;
+  const params = panel.querySelector('ul');
+  for (const {label, unit} of station.params || []) {
+    const parameter = document.createElement('li');
+    parameter.textContent = unit ? `${label} · ${unit}` : label;
+    params.append(parameter);
+  }
+  if (!params.childElementCount) {
+    const empty = document.createElement('li');
+    empty.textContent = 'Показатели не указаны.';
+    params.append(empty);
+  }
+  return panel;
+}
+
 function createMap(viewport, onPick, onSelect) {
   const canvas = viewport.querySelector('canvas');
   const overlay = viewport.querySelector('.station-map-markers');
@@ -64,6 +115,8 @@ function createMap(viewport, onPick, onSelect) {
   const modes = [...viewport.querySelectorAll('[data-map-mode]')];
   const controls = viewport.querySelectorAll('.station-map-modes, .station-map-tools');
   const context = canvas.getContext('2d');
+  let geography;
+  let requestedGeography = false;
   const bound = (value, low, high) => Math.min(Math.max(value, low), high);
   const worldScale = () => Math.min(viewport.clientWidth / 370, viewport.clientHeight / 190);
   const cosine = latitude => Math.max(0.25, Math.cos(latitude * degrees));
@@ -77,6 +130,14 @@ function createMap(viewport, onPick, onSelect) {
   let mode = 'select';
   let picking = false;
   let pointer = null;
+  const provider = mountYandexLocation(viewport, {
+    center: reserve, inline: Boolean(viewport.closest('.station-overview')), onPick,
+    onToggleGroup: group => group.element.click(),
+    onSelectIds: (ids, additive) => {
+      const included = new Set(ids);
+      onSelect(markers.flatMap(group => group.stations).filter(station => included.has(station.id)), additive);
+    },
+  });
 
   const project = (longitude, latitude) => [
     width / 2 + (longitude - center.longitude) * scale * cosine(center.latitude),
@@ -108,6 +169,17 @@ function createMap(viewport, onPick, onSelect) {
     width = viewport.clientWidth;
     height = viewport.clientHeight;
     if (!width || !height) return;
+    if (!requestedGeography) {
+      requestedGeography = true;
+      import('./station-map-data.js').then(data => {
+        geography = data;
+        if (viewport.isConnected) redraw();
+      }).catch(() => {
+        const source = viewport.parentElement?.querySelector('.station-map-source span');
+        if (source) source.textContent = 'Географическая основа недоступна. Станции показаны по координатам.';
+      });
+    }
+    const {land = [], lakes = [], places = [], rivers = [], roads = []} = geography || {};
     const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
     const pixelWidth = Math.round(width * pixelRatio);
     const pixelHeight = Math.round(height * pixelRatio);
@@ -251,6 +323,8 @@ function createMap(viewport, onPick, onSelect) {
 
   function focus(point) {
     center = point;
+    provider.focus(point, !markers.some(group => group.area &&
+      group.point.latitude === point.latitude && group.point.longitude === point.longitude));
     scale = initialScale;
     redraw();
   }
@@ -367,6 +441,7 @@ function createMap(viewport, onPick, onSelect) {
   observer.observe(viewport);
   return {
     zoom, focus, fit, cancelGesture,
+    setSelection(ids) { provider.update(markers, ids); },
     setMarkers(next) {
       markers = next;
       for (const marker of markers) marker.element.disabled = picking;
@@ -380,12 +455,14 @@ function createMap(viewport, onPick, onSelect) {
     pickCoordinates(active) {
       cancelGesture();
       picking = active;
+      provider.setPicking(active);
       for (const button of modes) button.disabled = active;
       for (const marker of markers) marker.element.disabled = active;
       viewport.classList.toggle('is-picking', active);
       if (active) viewport.focus();
     },
     destroy() {
+      provider.destroy();
       cancelGesture();
       observer.disconnect();
       cancelAnimationFrame(pendingFrame);
@@ -416,14 +493,21 @@ function mapContents() {
     <span>Обзорная карта · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
     <span data-area-note>Общий маркер показывает район заповедника.</span>
   </div>
+  <ul class="station-terrain-legend" data-terrain-legend aria-label="Тип местности на карте" hidden></ul>
   <p id="${hintId}" class="station-map-shortcut">Удерживайте Ctrl или ⌘, чтобы добавить станции рамкой.</p>
 </section>`;
 }
 
 function stationListContents(action = '') {
   return `<section data-picker-list aria-label="Список метеостанций">
-    <div class="station-picker-list-head"><h3>Станции архива</h3>${action}</div>
-    <div class="station-picker-list" data-list></div>
+    <div class="station-picker-list-head"><h3>Выбранные станции</h3>${action}</div>
+    <p class="station-list-tip" id="station-stats-tip-${mapId}" data-selection-tip>Флажок включает станцию в статистику.</p>
+    <div class="station-picker-list" data-list>
+      <p class="station-list-empty" data-empty-selection></p>
+      <div class="station-list-group" data-selected-stations role="group" aria-label="Выбранные станции"></div>
+      <h4 class="station-list-other-title" data-other-title>Остальные станции</h4>
+      <div class="station-list-group" data-other-stations role="group" aria-label="Остальные станции"></div>
+    </div>
   </section>`;
 }
 
@@ -431,6 +515,11 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
   const get = selector => root.querySelector(selector);
   const viewport = get('.station-map-viewport');
   const fitButton = get('[data-fit]');
+  const selectedList = get('[data-selected-stations]');
+  const otherList = get('[data-other-stations]');
+  const emptySelection = get('[data-empty-selection]');
+  const otherTitle = get('[data-other-title]');
+  const selectionTip = get('[data-selection-tip]');
   let stations = [];
   let selected = new Set();
   let items = [];
@@ -455,7 +544,32 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
   fitButton.addEventListener('click', fitMarkers);
 
   function refreshSelection() {
-    for (const {station, input} of items) input.checked = selected.has(station.id);
+    map.setSelection([...selected]);
+    const active = document.activeElement;
+    const selectedRows = [];
+    const otherRows = [];
+    for (const {station, input, row} of items) {
+      input.checked = selected.has(station.id);
+      input.title = input.checked ? 'Скрыть из статистики' : 'Включить в статистику';
+      (input.checked ? selectedRows : otherRows).push(row);
+    }
+    if (selectedList.childElementCount !== selectedRows.length || selectedRows.some((row, i) => selectedList.children[i] !== row)) {
+      selectedList.replaceChildren(...selectedRows);
+    }
+    if (otherList.childElementCount !== otherRows.length || otherRows.some((row, i) => otherList.children[i] !== row)) {
+      otherList.replaceChildren(...otherRows);
+    }
+    selectedList.hidden = !selectedRows.length;
+    otherList.hidden = !otherRows.length;
+    otherTitle.hidden = !otherRows.length;
+    otherTitle.textContent = selectedRows.length ? 'Остальные станции' : 'Все станции';
+    emptySelection.hidden = !!selectedRows.length;
+    emptySelection.textContent = items.length ? 'Выберите станции на карте или в списке.' : emptyText;
+    selectionTip.hidden = !items.length;
+    if (root.contains(active) && document.activeElement !== active) {
+      active.focus({preventScroll: true});
+      active.scrollIntoView({block: 'nearest'});
+    }
     for (const group of markers) {
       const count = group.stations.filter(station => selected.has(station.id)).length;
       group.element.setAttribute('aria-pressed', count === group.stations.length ? 'true' : count ? 'mixed' : 'false');
@@ -470,15 +584,34 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       row.innerHTML = `<label><input type="checkbox"><span class="station-row-dot" aria-hidden="true"></span><span><strong></strong><small></small></span></label>`;
       row.querySelector('strong').textContent = station.label;
       row.querySelector('.station-row-dot').style.backgroundColor = station.color || '#2b7650';
-      const note = station.location_precision === 'area' ? 'Район заповедника' : point ? coordinates(point) : 'Координаты отсутствуют';
-      row.querySelector('small').textContent = note;
+      const locationLabel = stationLocation(station, point);
+      row.querySelector('small').textContent = `${terrains[terrainType(station)][0]} · ${locationLabel}`;
       const input = row.querySelector('input');
+      input.setAttribute('aria-describedby', selectionTip.id);
       input.addEventListener('change', () => {
         if (input.checked) selected.add(station.id);
         else selected.delete(station.id);
         refreshSelection();
         onChange([...selected]);
       });
+      const actions = document.createElement('div');
+      actions.className = 'station-row-actions';
+      const id = `station-passport-${++passportId}`;
+      const showPassport = document.createElement('button');
+      showPassport.className = 'icon-btn';
+      showPassport.type = 'button';
+      showPassport.title = 'Паспорт станции';
+      showPassport.setAttribute('aria-label', `Паспорт станции ${station.label}`);
+      showPassport.setAttribute('aria-expanded', 'false');
+      showPassport.setAttribute('aria-controls', id);
+      showPassport.innerHTML = icon('passport');
+      const passport = stationPassport(station, locationLabel, id);
+      showPassport.addEventListener('click', () => {
+        passport.hidden = !passport.hidden;
+        showPassport.setAttribute('aria-expanded', !passport.hidden);
+        if (!passport.hidden) showPassport.scrollIntoView({block: 'nearest'});
+      });
+      actions.append(showPassport);
       if (point) {
         const locate = document.createElement('button');
         locate.className = 'icon-btn station-row-locate';
@@ -490,14 +623,13 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
           map.focus(point);
           viewport.focus();
         });
-        row.append(locate);
+        actions.append(locate);
       }
+      row.append(actions, passport);
       return {station, row, input};
     });
 
-    const list = get('[data-list]');
-    list.replaceChildren(...items.map(item => item.row));
-    if (!items.length) list.textContent = emptyText;
+    const seenTypes = new Set();
     markers = stationGroups(stations).map(group => {
       const element = document.createElement('button');
       element.type = 'button';
@@ -505,6 +637,9 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       const names = group.stations.map(station => station.label).join(', ');
       element.title = group.area ? `Район заповедника · ${names}` : names;
       element.setAttribute('aria-label', element.title);
+      const types = [...new Set(group.stations.map(terrainType))];
+      for (const type of types) seenTypes.add(type);
+      element.style.setProperty('--terrain-fill', terrainFill(types));
       if (group.stations.length > 1 || group.area) element.textContent = group.stations.length;
       else element.innerHTML = icon('pin');
       element.addEventListener('click', () => {
@@ -518,6 +653,16 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       });
       return {...group, element};
     });
+    const legend = get('[data-terrain-legend]');
+    legend.replaceChildren(...Object.entries(terrains).filter(([type]) => seenTypes.has(type)).map(([, [label, color]]) => {
+      const item = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.setAttribute('aria-hidden', 'true');
+      dot.style.backgroundColor = color;
+      item.append(dot, document.createTextNode(label));
+      return item;
+    }));
+    legend.hidden = !seenTypes.size;
     get('[data-area-note]').hidden = !markers.some(group => group.area);
     fitButton.disabled = !markers.length;
     map.setMarkers(markers);
@@ -537,8 +682,8 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       stations = catalog;
       const stationIds = new Set(stations.map(station => station.id));
       selected = new Set(ids.filter(id => stationIds.has(id)));
-      const nextKey = JSON.stringify(stations.map(({id, label, color, latitude, longitude, location_precision}) =>
-        [id, label, color, latitude, longitude, location_precision]));
+      const nextKey = JSON.stringify(stations.map(({id, label, color, terrain, latitude, longitude, location_precision, params}) =>
+        [id, label, color, terrain, latitude, longitude, location_precision, params]));
       if (nextKey !== catalogKey) {
         catalogKey = nextKey;
         rebuild();
@@ -589,6 +734,10 @@ function dialogContents() {
           <fieldset>
             <label class="field"><span>Название станции</span><input name="label" type="text" required maxlength="100" placeholder="Например, Лесной кордон"></label>
             <label class="field"><span>Формат данных</span><select name="profile"><option value="kr1">Сокол М1 (Кр1 / Кр2)</option><option value="ame60">АМЕ-60</option></select></label>
+            <label class="field"><span>Тип местности</span><select name="terrain">
+              <option value="unknown">Не указан</option>
+              ${Object.entries(terrains).filter(([type]) => type !== 'unknown').map(([type, [label]]) => `<option value="${type}">${label}</option>`).join('')}
+            </select></label>
             <div class="station-form-coordinates">
               <label class="field"><span>Широта</span><input name="latitude" type="number" inputmode="decimal" min="-90" max="90" step="any" placeholder="±90"></label>
               <label class="field"><span>Долгота</span><input name="longitude" type="number" inputmode="decimal" min="-180" max="180" step="any" placeholder="±180"></label>
@@ -602,6 +751,7 @@ function dialogContents() {
               <div class="station-form-params"><div>Показатели станции</div><div data-params></div></div>
             </details>
             <p class="station-form-error" role="alert" hidden></p>
+            <a class="btn line" href="/operator" target="_blank" rel="noopener" data-operator-signin hidden>Вход оператора</a>
             <button class="btn primary" type="submit" data-save>Зарегистрировать станцию</button>
           </fieldset>
         </form>
@@ -628,6 +778,7 @@ export async function pickStations(stations, selectedIds = []) {
   const add = get('[data-add]');
   const pick = get('[data-pick]');
   const error = get('.station-form-error');
+  const signIn = get('[data-operator-signin]');
   const instruction = get('.station-map-instruction');
   let editing = false;
   let picking = false;
@@ -694,6 +845,7 @@ export async function pickStations(stations, selectedIds = []) {
       form.querySelector('details').open = false;
       applyProfile();
       error.hidden = true;
+      signIn.hidden = true;
       fields.label.focus();
     } else {
       add.focus();
@@ -712,6 +864,7 @@ export async function pickStations(stations, selectedIds = []) {
     event.preventDefault();
     if (saving) return;
     error.hidden = true;
+    signIn.hidden = true;
     const point = formPoint();
     if ((fields.latitude.value || fields.longitude.value) && !point) {
       const missing = fields.latitude.value ? fields.longitude : fields.latitude;
@@ -728,7 +881,7 @@ export async function pickStations(stations, selectedIds = []) {
       else form.querySelector('details').open = true;
       return;
     }
-    const passport = {label: data.get('label').trim(), profile: data.get('profile'), params, ...point};
+    const passport = {label: data.get('label').trim(), profile: data.get('profile'), terrain: data.get('terrain'), params, ...point};
     if (data.get('id')) passport.id = data.get('id');
     for (const key of ['minimum_slots', 'slot_minutes']) {
       if (data.get(key)) passport[key] = Number(data.get(key));
@@ -744,6 +897,12 @@ export async function pickStations(stations, selectedIds = []) {
       const response = await fetch('/api/stations', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(passport),
       });
+      if (response.status === 401) {
+        error.textContent = 'Войдите как оператор в новой вкладке, затем вернитесь к паспорту и повторите регистрацию.';
+        error.hidden = false;
+        signIn.hidden = false;
+        return;
+      }
       const body = await response.json();
       if (!response.ok || !body.station?.id) throw new Error(body.error || body.message || 'Станцию не удалось зарегистрировать.');
       stations.push(body.station);

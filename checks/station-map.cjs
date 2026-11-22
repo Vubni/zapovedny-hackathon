@@ -6,11 +6,12 @@ const { chromium } = require('playwright');
 
 const host = 'http://station-map.test';
 const web = path.join(__dirname, '..', 'web');
+const air = {id: 't_air', label: 'Температура воздуха', unit: '°C'};
 const catalog = [
-  { id: 'kr1', label: 'Кр1 · поляна', color: '#2b7650', location_precision: 'area' },
-  { id: 'kr2', label: 'Кр2 · поле', color: '#426583', location_precision: 'area' },
-  { id: 'ame60', label: 'АМЕ-60', color: '#735579', location_precision: 'area' },
-  { id: 'field-check', label: 'Контрольный пост', latitude: 56.35, longitude: 33.13, location_precision: 'exact' },
+  { id: 'kr1', label: 'Кр1 · поляна', color: '#2b7650', terrain: 'clearing', latitude: 56.52, longitude: 32.87, location_precision: 'area', params: [air] },
+  { id: 'kr2', label: 'Кр2 · поле', color: '#426583', terrain: 'field', location_precision: 'area' },
+  { id: 'ame60', label: 'АМЕ-60', color: '#735579', terrain: 'unknown', location_precision: 'area' },
+  { id: 'field-check', label: 'Контрольный пост', terrain: 'forest', latitude: 56.35, longitude: 33.13, location_precision: 'exact', params: [air] },
   { id: 'shore-east', label: 'Восточный берег', latitude: 60, longitude: 42, location_precision: 'exact' },
   { id: 'shore-west', label: 'Западный берег', latitude: 60, longitude: 42, location_precision: 'exact' },
   { id: 'unknown', label: 'Лесная', location_precision: 'unknown' },
@@ -85,11 +86,14 @@ async function run() {
       return route.abort();
     }
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: fixture });
+    if (url.pathname === '/api/map-config') return route.fulfill({json: {}});
     if (url.pathname === '/api/stations') {
       const body = request.postDataJSON();
       posts.push(body);
       if (posts.length === 1) return route.fulfill({ status: 400, json: { error: 'Станция уже есть.' } });
-      return route.fulfill({ status: 201, json: { station: { ...body, id: 'testing-ame', location_precision: 'exact' } } });
+      if (posts.length === 2) return route.fulfill({ status: 401, json: { error: 'Требуется вход.' } });
+      const params = body.params.map(id => id === 't_air' ? air : {id, label: id});
+      return route.fulfill({ status: 201, json: { station: { ...body, id: 'testing-ame', params, location_precision: 'exact' } } });
     }
     const ext = path.extname(url.pathname);
     const type = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' }[ext];
@@ -115,6 +119,22 @@ async function run() {
     assert.equal(await area.count(), 1);
     assert.equal(await area.textContent(), '3');
     assert.equal(await area.getAttribute('aria-pressed'), 'mixed');
+    assert.match(await area.evaluate(el => getComputedStyle(el).backgroundImage), /conic-gradient/);
+    const legend = picker.locator('[data-terrain-legend]');
+    assert.deepEqual(await legend.locator('li').allTextContents(), ['Поляна', 'Поле', 'Лес', 'Тип местности не указан']);
+    const krPassport = picker.getByRole('button', {name: /Паспорт станции Кр1/});
+    await krPassport.click();
+    const krDetails = picker.locator(`#${await krPassport.getAttribute('aria-controls')}`);
+    assert.match(await krDetails.textContent(), /Поляна/);
+    assert.match(await krDetails.textContent(), /Район заповедника/);
+    assert.doesNotMatch(await krDetails.textContent(), /56,52/);
+    assert.match(await krDetails.textContent(), /Температура воздуха · °C/);
+    await krPassport.click();
+    const exactPassport = picker.getByRole('button', {name: /Паспорт станции Контрольный пост/});
+    await exactPassport.click();
+    const exactDetails = picker.locator(`#${await exactPassport.getAttribute('aria-controls')}`);
+    assert.match(await exactDetails.textContent(), /56,35° с\. ш\., 33,13° в\. д\./);
+    await exactPassport.click();
     assert.ok(await picker.locator('canvas').evaluate(canvas => {
       const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
       const colors = new Set();
@@ -129,6 +149,7 @@ async function run() {
     await boxSelect(page, localBounds);
     assert.equal(await area.getAttribute('aria-pressed'), 'false');
     assert.equal(await localMarker.getAttribute('aria-pressed'), 'true');
+    assert.equal(await localMarker.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(37, 98, 72)');
     assert.equal(await checked.count(), 1);
     await boxSelect(page, areaBounds, 'Control');
     assert.equal(await area.getAttribute('aria-pressed'), 'true');
@@ -225,6 +246,8 @@ async function run() {
     await picker.locator('[data-add]').click();
     await picker.getByRole('textbox', { name: 'Название станции' }).fill('Тестовая АМЕ');
     await picker.getByLabel('Формат данных').selectOption('ame60');
+    const terrain = picker.getByRole('combobox', {name: /^Тип местности/});
+    await terrain.selectOption('wetland');
     await picker.locator('[data-pick]').click();
     const mobileCanvas = await picker.locator('canvas').boundingBox();
     await page.mouse.click(mobileCanvas.x + 80, mobileCanvas.y + 95);
@@ -242,11 +265,19 @@ async function run() {
     await picker.getByRole('alert').getByText('Станция уже есть.').waitFor();
     assert.equal(await picker.getByRole('textbox', { name: 'Название станции' }).inputValue(), 'Тестовая АМЕ');
     await picker.locator('[data-save]').click();
+    const signIn = picker.getByRole('link', {name: 'Вход оператора'});
+    await signIn.waitFor();
+    assert.equal(await signIn.getAttribute('href'), '/operator');
+    assert.equal(await signIn.getAttribute('target'), '_blank');
+    assert.equal(await terrain.inputValue(), 'wetland');
+    await picker.locator('[data-save]').click();
     await picker.getByRole('checkbox', { name: /Тестовая АМЕ/ }).waitFor();
     assert.equal(await picker.getByRole('checkbox', { name: /Тестовая АМЕ/ }).isChecked(), true);
     assert.deepEqual(posts[0], posts[1]);
+    assert.deepEqual(posts[1], posts[2]);
     assert.equal(posts[1].id, 'testing-ame');
     assert.equal(posts[1].profile, 'ame60');
+    assert.equal(posts[1].terrain, 'wetland');
     assert.equal(posts[1].slot_minutes, 1);
     assert.equal(posts[1].minimum_slots, 78);
     assert.equal(posts[1].latitude, latitude);
@@ -257,10 +288,15 @@ async function run() {
     await result(['kr1', 'testing-ame']);
 
     await page.setViewportSize({width: 1280, height: 840});
-    await page.evaluate(() => window.mountTestOverview());
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', {value: false});
+      window.mountTestOverview();
+    });
     const overview = page.locator('#station-overview');
     const overviewMap = overview.locator('.station-map-viewport');
     const overviewList = overview.locator('[data-picker-list]');
+    const selectedList = overview.locator('[data-selected-stations]');
+    const otherList = overview.locator('[data-other-stations]');
     const overviewArea = overview.locator('.station-map-marker-area');
     await overviewArea.waitFor();
     assert.equal(await overview.getByRole('checkbox', {name: /Кр1/}).isChecked(), true);
@@ -270,6 +306,11 @@ async function run() {
     await overview.getByRole('checkbox', {name: /Кр2/}).check();
     await overviewResult(['kr1', 'kr2']);
     assert.equal(await overview.getByRole('checkbox', {name: /Кр2/}).evaluate(el => document.activeElement === el), true);
+    assert.equal(await selectedList.getByRole('checkbox', {name: /Кр2/}).getAttribute('title'), 'Скрыть из статистики');
+    await selectedList.getByRole('checkbox', {name: /Кр2/}).uncheck();
+    await overviewResult(['kr1']);
+    assert.equal(await otherList.getByRole('checkbox', {name: /Кр2/}).getAttribute('title'), 'Включить в статистику');
+    await otherList.getByRole('checkbox', {name: /Кр2/}).check();
     await overviewArea.click();
     await overviewResult(['kr1', 'kr2', 'ame60']);
     const exact = overview.getByRole('button', {name: 'Контрольный пост', exact: true});
@@ -303,7 +344,7 @@ async function run() {
     assert.equal(await overviewMap.count(), 0);
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
-    console.log('Карта станций: встроенная карта, синхронизация с диалогом, рамка мышью и касанием, Ctrl/⌘, Escape, перемещение, регистрация, 1280 и 390 px.');
+    console.log('Карта станций: встроенная карта, паспорта и типы местности, выбор для статистики, синхронизация с диалогом, рамка мышью и касанием, Ctrl/⌘, Escape, перемещение, регистрация, 1280 и 390 px.');
   } finally {
     await browser.close();
   }

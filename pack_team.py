@@ -80,6 +80,8 @@ def pack(destination):
         check(project, ["station_model.py", "--output", "trial-model.json"], "Кр1")
         for rel in ("web/observations.html", "web/observations.js", "web/chart-archive.js", "web/station-map-data.js",
                     "web/observation-chart.js", "web/files-page.html", "web/files-page.js",
+                    "web/yandex-location.js", "web/yandex-station-sdk.js", "web/coverage-overview.js",
+                    "web/observation-indicators.js", "admin_auth.py", "web/operator.html",
                     "web/fonts/manrope.ttf", "web/fonts/OFL-Manrope.txt",
                     "web/index.html", "web/app.js", "web/import.html", "web/import.js",
                     "web/events.html", "web/events.js", "web/forecast.html", "web/forecast.js",

@@ -14,6 +14,8 @@ from build_data import STATIONS
 
 COLORS = ("#2b7650", "#426583", "#735579", "#945320", "#507f76", "#854f64")
 ARCHIVE_COLORS = dict(kr1=COLORS[0], kr2=COLORS[1], ame60=COLORS[2])
+ARCHIVE_TERRAIN = {"kr1": "clearing", "kr2": "field"}
+TERRAIN_TYPES = {"clearing", "field", "forest", "wetland", "settlement", "other", "unknown"}
 AREA = (56.52, 32.87)
 
 
@@ -28,6 +30,7 @@ def catalog():
         key = item["id"]
         passport = STATIONS[key]
         item.update(profile=key, archive=True, color=ARCHIVE_COLORS[key],
+                    terrain=ARCHIVE_TERRAIN.get(key, "unknown"),
                     minimum_slots=passport.minimum_slots, slot_minutes=passport.slot_minutes,
                     latitude=AREA[0], longitude=AREA[1], location_precision="area")
     db_path = local_db_path()
@@ -39,6 +42,7 @@ def catalog():
         from observation_store import all_date_bounds
         published = all_date_bounds()
         for item in stations:
+            item.setdefault("terrain", "unknown")
             bounds = published.get(item["id"])
             if bounds:
                 item["start"] = min(item["start"] or bounds[0], bounds[0])
@@ -73,6 +77,9 @@ def register_station(payload):
     if not isinstance(profile, str) or profile not in STATIONS:
         raise ValueError("Выберите профиль прибора АМЕ-60 или Сокол М1.")
     template = STATIONS[profile]
+    terrain = payload.get("terrain", "unknown")
+    if not isinstance(terrain, str) or terrain not in TERRAIN_TYPES:
+        raise ValueError("Выберите тип местности из списка.")
     params = payload.get("params", list(template.params))
     if (not isinstance(params, list) or not params or
             any(not isinstance(p, str) or p not in template.params for p in params)):
@@ -100,7 +107,7 @@ def register_station(payload):
         conn.execute("CREATE TABLE IF NOT EXISTS registered_stations "
                      "(id TEXT PRIMARY KEY,name_key TEXT UNIQUE NOT NULL,passport TEXT NOT NULL)")
         count, = conn.execute("SELECT COUNT(*) FROM registered_stations").fetchone()
-        item = dict(id=key, label=label, profile=profile, minimum_slots=minimum, slot_minutes=step,
+        item = dict(id=key, label=label, profile=profile, terrain=terrain, minimum_slots=minimum, slot_minutes=step,
                     color=COLORS[(len(STATIONS) + count) % len(COLORS)], latitude=lat, longitude=lon,
                     location_precision="exact" if lat is not None else "unknown", archive=False,
                     start=None, end=None, params=[dict(id=p, label=PARAMS[p][0], unit=PARAMS[p][1])

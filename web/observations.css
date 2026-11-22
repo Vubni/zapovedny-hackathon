@@ -8,8 +8,8 @@
 .chart-export-dialog .icon-btn { font-size: 19px; }
 .chart-export-dialog .export-formats { margin-top: 16px; }
 .observations-page .dash-controls {
-  grid-template-columns: minmax(385px, 1.2fr) minmax(0, 2fr);
-  align-items: center;
+  grid-template-columns: minmax(255px, .85fr) minmax(0, 2fr);
+  align-items: start;
 }
 .station-controls,
 .station-chips {
@@ -66,11 +66,52 @@
   font-size: 11px;
   font-weight: 750;
 }
+.observations-page .date-controls {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.date-intervals { display: grid; gap: 9px; min-width: 0; }
+.date-interval { min-width: 0; margin: 0; padding: 0; border: 0; }
+.date-interval legend {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--mute);
+}
+.date-interval-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+.date-actions {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  align-items: center;
+  gap: 5px 7px;
+}
+.date-actions .link-button { justify-self: start; }
+.date-instructions { grid-column: 1 / -1; }
+#add-date-interval:disabled { cursor: default; }
 .observations-page .archive-range {
   margin: 13px 7px 0;
   padding: 0;
 }
 .archive-range .nav-track { height: 20px; }
+.date-range-bands { position: absolute; inset: 0; pointer-events: none; }
+.date-range-band {
+  position: absolute;
+  inset-block: 0;
+  min-width: 2px;
+  border: 1px solid #a3bda5;
+  border-radius: 3px;
+  background: #d8e9d6;
+}
 .archive-range .nav-track input { top: -5px; }
 .archive-range .nav-track input:focus-visible { z-index: 2; }
 /* Put each thumb outside its end of the selected span so it can be grabbed even on the same day. */
@@ -122,6 +163,14 @@
 .observation-group-grid .observation-card-mount > .obs-chart__panel,
 .observation-group-grid .observation-card-placeholder { height: 100%; }
 .observations-page .focus-card h2 { font-size: 21px; }
+.summary-intervals {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  color: var(--mute);
+  list-style: none;
+}
 .observation-summary-values { display: grid; gap: 8px; }
 .observation-summary-values strong { text-align: right; white-space: nowrap; }
 .observations-page button:disabled { cursor: wait; opacity: .7; }
@@ -164,8 +213,18 @@
   .observation-group-grid > article.is-primary,
   .observation-group-grid > #observation-summary { grid-column: 1; }
 }
+@media (max-width: 730px) {
+  .observations-page .date-controls { grid-template-columns: minmax(0, 1fr); }
+  .date-actions { justify-content: start; }
+}
 @media (max-width: 480px) {
   .observations-page .heading-line { align-items: flex-start; flex-wrap: wrap; }
   .observations-page .board-title h2 { font-size: 21px; }
   .observations-page .dash-modes { align-items: flex-start; flex-direction: column; }
+  .date-interval-fields { grid-template-columns: minmax(0, 1fr); }
+  .date-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .date-actions .btn { padding-inline: 6px; white-space: normal; }
 }
+
+.chart-catalog-sections { display: grid; gap: 15px; }
+.coverage-option { display: flex; align-items: center; gap: 9px; padding: 10px 12px; cursor: pointer; }

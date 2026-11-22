@@ -117,7 +117,7 @@ function modelOf(data, options) {
       continue;
     }
     if (axis === 'direction') continue;
-    const key = `${item.station}|${item.color}`;
+    const key = `${item.station}|${item.interval ?? ''}|${item.color}`;
     if (stationColors.has(key)) {
       item.alternate = true;
       item.color = lighter(item.color);
@@ -141,8 +141,10 @@ function modelOf(data, options) {
   }
   const stations = [...new Set((data.coverage || []).map(row => row.label || row.station).filter(Boolean))];
   const period = axis === 'hour' ? 'Средний суточный ход' : axis === 'time' ? (grainLabels[grain] || '') : '';
-  const subtitle = options.subtitle ?? data.subtitle ?? [stations.join(', '), period].filter(Boolean).join(' · ');
-  return { ...data, id: data.id ?? data.chart, axis, grain, mode, series, points, domain, archiveWindow, stations, subtitle,
+  const intervals = options.intervals ?? data.intervals ?? [];
+  const intervalCount = intervals.length > 1 ? `${intervals.length} ${intervals.length < 5 ? 'интервала' : 'интервалов'}` : '';
+  const subtitle = [options.subtitle ?? data.subtitle ?? [stations.join(', '), period].filter(Boolean).join(' · '), intervalCount].filter(Boolean).join(' · ');
+  return { ...data, id: data.id ?? data.chart, axis, grain, mode, series, points, domain, archiveWindow, stations, subtitle, intervals,
     hasValues: series.some(item => item.hasValues) };
 }
 
@@ -309,10 +311,11 @@ function plotText(x, y, text, attrs = {}) {
 }
 
 function lineRanges(root, entries, model, x, y) {
-  const highest = new Map(entries.filter(([item]) => item.role === 'max').map(([item]) => [`${item.station}|${item.parameter}`, item]));
+  const keyOfRange = item => `${item.station}|${item.parameter}|${item.interval ?? ''}`;
+  const highest = new Map(entries.filter(([item]) => item.role === 'max').map(([item]) => [keyOfRange(item), item]));
   for (const [item, points] of entries) {
     if (item.role !== 'min') continue;
-    const maximum = highest.get(`${item.station}|${item.parameter}`);
+    const maximum = highest.get(keyOfRange(item));
     if (!maximum) continue;
     const paired = points.map(point => {
       const high = maximum.byKey.get(point.key)?.y;
@@ -413,17 +416,18 @@ function roseGroups(model, series) {
   const groups = new Map();
   for (const item of series) {
     const scale = item.role === 'speed' ? 'speed' : 'frequency';
-    addTo(groups, `${item.station ?? ''}|${scale}|${item.unit}`, item);
+    addTo(groups, `${item.station ?? ''}|${item.interval ?? ''}|${scale}|${item.unit}`, item);
   }
   const stationLabels = new Map((model.coverage || []).map(item => [item.station, item.label]));
   const scales = new Set(Array.from(groups.values(), group => group[0].role === 'speed' ? 'speed' : 'frequency'));
   return Array.from(groups, ([id, items]) => {
-    const { station, unit, role } = items[0];
+    const { station, unit, role, interval } = items[0];
     const stationLabel = stationLabels.get(station) || items[0].station_label || items[0].label.split(' · ')[0];
     const measure = role === 'speed' ? 'Средняя скорость' : 'Повторяемость';
-    const subtitle = [scales.size > 1 ? measure : '', unit].filter(Boolean).join(', ');
-    return { id, items, stationLabel, subtitle, unit, stack: items.some(item => item.speedClass), hasValues: items.some(item => item.hasValues),
-      calm: model.calm_by_station?.[station] ?? items[0].calm };
+    const periodLabel = items[0].interval_label;
+    const subtitle = [[scales.size > 1 ? measure : '', unit].filter(Boolean).join(', '), periodLabel].filter(Boolean).join(' · ');
+    return { id, items, stationLabel, periodLabel, subtitle, unit, stack: items.some(item => item.speedClass), hasValues: items.some(item => item.hasValues),
+      calm: model.calm_by_interval?.[interval]?.[station] ?? model.calm_by_station?.[station] ?? items[0].calm };
   });
 }
 
@@ -540,7 +544,7 @@ function radialPlot(root, model, groups, layout, origin = 0, onSector) {
       const targets = svg('g');
       for (const [i, name] of compass.entries()) {
         const target = svg('path', { d: roseSector(polar, radius, i, 0, max * 1.14), fill: 'transparent',
-          class: 'obs-chart__sector', tabindex: i === 0 ? 0 : -1, 'aria-label': `${group.stationLabel} · ${name}` });
+          class: 'obs-chart__sector', tabindex: i === 0 ? 0 : -1, 'aria-label': [group.stationLabel, group.periodLabel, name].filter(Boolean).join(' · ') });
         onSector(target, i, group, polar(i, max * .8));
         target.addEventListener('keydown', event => {
           const step = ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 0;
@@ -581,11 +585,13 @@ function coverageContent(model, open) {
   if (model.coverage?.length) {
     const list = html('ul', 'obs-chart__coverage-list');
     const stationRows = new Map();
-    for (const row of model.coverage) addTo(stationRows, row.station, row);
+    const groupOf = row => `${row.station}|${row.interval ?? ''}`;
+    for (const row of model.coverage) addTo(stationRows, groupOf(row), row);
     for (const row of model.coverage) {
       const item = html('li', 'obs-chart__coverage-row');
       const title = row.label || row.station || 'Общее покрытие';
-      const label = html('strong', '', stationRows.get(row.station).length > 1 && row.parameter_label ? `${title} · ${row.parameter_label.toLowerCase()}` : title);
+      const parameter = stationRows.get(groupOf(row)).length > 1 ? row.parameter_label?.toLowerCase() : '';
+      const label = html('strong', '', [title, parameter, row.interval_label].filter(Boolean).join(' · '));
       const counts = html('div', 'obs-chart__coverage-counts');
       const metrics = [['Сутки', row.valid_days, row.total_days], ['Месяцы', row.valid_months, row.total_months]];
       for (const [label, valid, total] of metrics) {
@@ -607,7 +613,8 @@ function coverageContent(model, open) {
 
 function chartLegendEntries(model, series) {
   const singleStation = new Set(model.series.map(item => item.station)).size === 1;
-  return series.map(item => ({ ...item, label: singleStation && item.speedClass ? item.speedClass : item.label }));
+  return series.map(item => ({ ...item, label: singleStation && item.speedClass
+    ? [item.speedClass, item.interval_label].filter(Boolean).join(' · ') : item.label }));
 }
 
 function dashed(item, mode) {
@@ -661,12 +668,12 @@ function exportLegend(model, series, width, start) {
   return { nodes, bottom: y + 24 };
 }
 
-function exportImage(model, series, domain, measuredWidth, period, empty) {
+function exportImage(model, series, domain, measuredWidth, periods, empty) {
   const width = Math.max(780, measuredWidth);
   const rose = isRose(model);
   const groups = rose ? roseGroups(model, series) : [];
   const layout = empty ? { height: 150 } : rose ? roseLayout(groups, width, true) : { height: 365 };
-  const captions = [model.subtitle, period].filter(Boolean);
+  const captions = [model.subtitle, ...periods].filter(Boolean);
   const top = 66 + captions.length * 18;
   const { nodes, bottom } = exportLegend(model, series, width, top + layout.height + 21);
   const root = graphic(width, bottom, model.title);
@@ -718,8 +725,15 @@ async function rasterize({ blob, width, height }, type) {
   }
 }
 
+export function periodFilename(intervals) {
+  if (intervals.length > 4) return `${intervals[0].start}_${intervals.at(-1).end}_интервалов-${intervals.length}`;
+  return intervals.map(({ start, end }) => `${start}_${end}`).join("__");
+}
+
 function filename(model, format) {
-  return `${String(model.title || 'график').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'график'}.${format}`;
+  const title = String(model.title || 'график').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').toLowerCase() || 'график';
+  const dates = model.intervals.length > 1 ? `_${periodFilename(model.intervals)}` : '';
+  return `${title}${dates}.${format}`;
 }
 
 function csvField(value) {
@@ -732,14 +746,18 @@ function csvField(value) {
 
 function chartCsv(model, series, domain) {
   const fields = ['Дата или интервал', 'Конец интервала', 'Станция', 'Параметр', 'Ряд', 'Единица', 'Значение'];
+  const multiple = model.intervals.length > 1;
   if (model.axis === 'hour') fields[0] = 'Час';
   if (model.axis === 'direction') fields[0] = 'Направление';
+  if (multiple) fields.push('Начало выбранного интервала', 'Конец выбранного интервала');
   const stationLabels = new Map((model.coverage || []).map(row => [row.station, row.label]));
   const rows = [fields];
   for (const item of series) {
     for (const point of visiblePoints(item, domain)) {
-      rows.push([point.x, point.x_end, stationLabels.get(item.station) || item.station_label || item.station || item.label,
-        item.parameter_label || item.parameter || model.title, item.label, item.unit, point.y]);
+      const values = [point.x, point.x_end, stationLabels.get(item.station) || item.station_label || item.station || item.label,
+        item.parameter_label || item.parameter || model.title, item.label, item.unit, point.y];
+      if (multiple) values.push(item.interval_start, item.interval_end);
+      rows.push(values);
     }
   }
   const csv = rows.map(row => row.map(csvField).join(';')).join('\r\n');
@@ -817,7 +835,8 @@ function bindLineHover(state, root, model, series, domain, dimensions, zoom) {
     crossLine.setAttribute('d', `M${current} ${top}V${bottom}`);
     const content = html('div', 'obs-chart__tooltip-values');
     dots.replaceChildren();
-    for (const [index, item] of series.entries()) {
+    const comparable = model.axis === 'time' && model.intervals.length > 1 ? series.filter(item => item.byKey.has(key)) : series;
+    for (const [index, item] of comparable.entries()) {
       const value = item.byKey.get(key)?.y;
       content.append(tooltipRow(item, key));
       if (value != null) dots.append(svg('circle', { cx: current, cy: y(value), r: 4, stroke: item.color, 'stroke-width': 1.5, fill: index === 0 ? neutral.lime : '#fff' }));
@@ -890,7 +909,9 @@ function bindRoseHover(state, root, groups, node, key, group, [x, y]) {
     const comparable = groups.filter(item => item.unit === group.unit && item.hasValues);
     for (const group of comparable) {
       const values = html('div', 'obs-chart__tooltip-values');
-      if (group.stack || comparable.length > 1) values.append(html('div', 'obs-chart__tooltip-station', group.stationLabel));
+      if (group.stack || comparable.length > 1) {
+        values.append(html('div', 'obs-chart__tooltip-station', [group.stationLabel, group.periodLabel].filter(Boolean).join(' · ')));
+      }
       for (const item of group.items) {
         values.append(tooltipRow(item, key, item.speedClass || group.subtitle || item.label));
       }
@@ -922,20 +943,27 @@ function emptyChartText(state, series) {
   const { model, options } = state;
   const emptySelection = model.series.length === 0 && model.notes?.includes('Выберите хотя бы одну станцию');
   const emptyMessage = options.emptyMessage || (emptySelection ? 'Выберите хотя бы одну станцию' : '');
-  const message = emptyMessage || (model.hasValues && series.length === 0 ? 'Все ряды скрыты' : 'Нет данных за этот период');
+  const multiple = model.intervals.length > 1;
+  const period = multiple ? 'в выбранных интервалах' : 'за выбранный период';
+  const noData = multiple ? 'Нет данных в выбранных интервалах' : 'Нет данных за этот период';
+  const message = emptyMessage || (model.hasValues && series.length === 0 ? 'Все ряды скрыты' : noData);
   const detail = !emptyMessage && !state.zoom && !model.hasValues && model.stations.length === 1
-    ? `По станции ${model.stations[0]} нет наблюдений за выбранный период.`
+    ? `По станции ${model.stations[0]} нет наблюдений ${period}.`
     : '';
   return { message, detail };
 }
 
-function exportPeriod(state, domain) {
+function exportPeriods(state, domain) {
   const { model } = state;
   const timeAxis = model.axis === 'time' && model.points.size;
   const dates = state.zoom || model.archiveWindow || (timeAxis ? domain : null);
-  if (!dates) return '';
-  const [start, end] = dates.map(value => date.format(value));
-  return start === end ? start : `${start} – ${end}`;
+  const span = ([start, end]) => start === end ? date.format(start) : `${date.format(start)} – ${date.format(end)}`;
+  if (model.intervals.length > 1) {
+    const periods = model.intervals.map(({ start, end }) => span([timestamp(start), timestamp(end)]));
+    if (state.zoom) periods.push(`Масштаб: ${span(state.zoom)}`);
+    return periods;
+  }
+  return dates ? [span(dates)] : [];
 }
 
 async function exportChartFile(state, format, { includeEmpty = false } = {}) {
@@ -948,7 +976,7 @@ async function exportChartFile(state, format, { includeEmpty = false } = {}) {
   if (empty && !includeEmpty) throw new Error('В видимой области графика нет данных.');
 
   // Rasterize the same SVG even if the card is updated while the image loads.
-  const graphic = exportImage(model, series, domain, lastWidth, exportPeriod(state, domain), empty);
+  const graphic = exportImage(model, series, domain, lastWidth, exportPeriods(state, domain), empty);
   const name = filename(model, format);
   if (format === 'svg') return { blob: graphic.blob, filename: name };
   const image = rasterQueue.then(() => rasterize(graphic, `image/${format}`));
@@ -1178,7 +1206,8 @@ export function renderChartCard(container, data, options = {}) {
     cards.set(container, state);
   }
   const model = modelOf(data, options);
-  const windowKey = [model.id || model.title, model.axis, model.grain, ...model.domain].join('|');
+  const windowKey = [model.id || model.title, model.axis, model.grain, ...model.domain,
+    ...model.intervals.map(interval => `${interval.start}:${interval.end}`)].join('|');
   if (state.windowKey !== windowKey) state.zoom = null;
   if (state.model && state.model.id !== model.id) state.hidden.clear();
   state.model = model;

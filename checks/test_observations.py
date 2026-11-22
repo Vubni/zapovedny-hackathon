@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import analytics
 import observation_store as store
-from observations import CHARTS, DIRECTIONS, chart_data
+from observations import CHARTS, DIRECTIONS, chart_data, coverage_overview
 from station_catalog import register_station
 
 
@@ -74,6 +74,63 @@ class ObservationsTests(unittest.TestCase):
         self.assertIsNone(series(result, "kr1")["points"][3]["y"])
         self.assertTrue(all(point["y"] is None for point in series(result, "ame60")["points"]))
         self.assertIn("не измеряет", result["coverage"][1]["reason"])
+
+    def test_overview_distinguishes_station_and_parameter_coverage(self):
+        query = dict(stations="kr1,ame60", start="2024-01-01", end="2024-12-31")
+        overview = coverage_overview(query)
+        self.assertEqual(overview["grain"], "month")
+        self.assertEqual(len(overview["periods"]), 12)
+        self.assertEqual(overview["rows"][0]["valid_days"], 363)
+        self.assertEqual(overview["rows"][0]["total_days"], 366)
+        self.assertEqual(overview["rows"][1]["cells"][0]["ratio"], 0.0)
+        self.assertEqual(overview["rows"][1]["cells"][0]["observed_days"], 0)
+
+        pressure = coverage_overview(dict(query, parameter="pressure_hpa"))
+        self.assertEqual(pressure["rows"][0]["valid_days"], 334)
+        self.assertEqual(pressure["rows"][0]["cells"][3]["total_days"], 30)
+        self.assertLess(pressure["rows"][0]["cells"][3]["ratio"], 1.0)
+        self.assertIsNone(pressure["rows"][1]["cells"][0]["ratio"])
+        self.assertFalse(pressure["rows"][1]["supported"])
+        fallback = coverage_overview(dict(query, stations="ame60", parameter="pressure_hpa"))
+        self.assertEqual(fallback["parameter"], "all")
+        self.assertNotIn("pressure_hpa", {item["id"] for item in fallback["parameters"]})
+
+    def test_overview_uses_calendar_periods_with_only_selected_days(self):
+        many_years = coverage_overview(dict(stations="ame60", start="1992-07-10", end="2025-12-31"))
+        self.assertEqual(many_years["grain"], "year")
+        self.assertEqual(len(many_years["periods"]), 34)
+        self.assertEqual(many_years["periods"][0]["total_days"], 175)
+        gap = next(cell for cell in many_years["rows"][0]["cells"] if cell["period"] == "2000-01-01")
+        self.assertEqual((gap["observed_days"], gap["total_days"]), (0, 366))
+
+        selected = coverage_overview(dict(
+            stations="kr1", start="2024-01-01", end="2024-12-31",
+            intervals="2024-04-25:2024-04-30,2024-02-28:2024-02-29,2024-04-01:2024-04-05",
+        ))
+        self.assertEqual([period["id"] for period in selected["periods"]], ["2024-02-01", "2024-04-01"])
+        april = selected["periods"][1]
+        self.assertEqual(april["total_days"], 11)
+        self.assertEqual(april["intervals"], [{"start": "2024-04-01", "end": "2024-04-05"},
+                                              {"start": "2024-04-25", "end": "2024-04-30"}])
+        self.assertEqual(selected["rows"][0]["total_days"], 13)
+        self.assertEqual(selected["rows"][0]["cells"][0]["total_days"], 2)
+
+    def test_overview_new_station_uses_only_confirmed_distinct_hours(self):
+        station, day = "slot-test", "2026-05-15"
+        register_station(dict(id=station, label="Точка проверки сроков", minimum_slots=2, params=["t_air"]))
+        upload = self.upload(station, "datetime,t_air", [
+            f"{day} 00:05,11", f"{day} 00:35,12", f"{day} 01:00,-100",
+        ])
+        params = dict(stations=station, start=day, end=day)
+
+        def cell(**options):
+            return coverage_overview(dict(params, **options))["rows"][0]["cells"][0]
+
+        self.assertEqual(cell()["observed_days"], 0)
+        store.confirm_file(upload)
+        self.assertEqual(cell()["valid_days"], 1)
+        air = cell(parameter="t_air")
+        self.assertEqual((air["observed_days"], air["valid_days"]), (1, 0))
 
     def test_calendar_groups_with_complete_periods_and_extrema(self):
         result = query("kr1", "2024-02-01", "2024-02-29", chart="air_range", grain="decade")
