@@ -79,16 +79,21 @@
 
       <div class="between board-title">
         <h2>Графики</h2>
+        <div class="board-actions">
+        <button type="button" class="btn line" id="download-all-charts" aria-haspopup="dialog" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m-4-4 4 4 4-4M4 15v5h16v-5"/></svg>
+          Скачать все графики
+        </button>
         <button type="button" class="btn accent" id="open-chart-catalog" aria-haspopup="dialog">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           Добавить график
         </button>
+        </div>
       </div>
-      <div class="split" id="primary-observation">
-        <div id="primary-chart"></div>
-        <section class="card focus-card" id="observation-summary" aria-label="Сводка основного графика"></section>
+      <p id="chart-export-message" class="inline-status" role="status" hidden></p>
+      <div class="observation-groups" id="observation-groups" hidden>
+        <section class="card focus-card" id="observation-summary" aria-label="Сводка основного графика" hidden></section>
       </div>
-      <div class="half" id="secondary-observations" hidden></div>
       <section class="card" id="hidden-observations" hidden>
         <div class="empty-chart">
           <h3>Графики скрыты</h3>
@@ -98,6 +103,19 @@
       <footer><a href="/journal">Журнал наблюдений</a></footer>
     </section>
   </main>
+
+  <dialog class="chart-export-dialog" id="chart-export-dialog" aria-labelledby="chart-export-title">
+    <div class="between dialog-header">
+      <h2 id="chart-export-title">Скачать все графики</h2>
+      <form method="dialog"><button type="submit" class="icon-btn" aria-label="Закрыть выбор формата">×</button></form>
+    </div>
+    <p class="muted" id="chart-export-count"></p>
+    <div class="export-formats" role="group" aria-label="Формат изображений">
+      <button class="btn line" type="button" data-archive-format="svg">SVG</button>
+      <button class="btn line" type="button" data-archive-format="png">PNG</button>
+      <button class="btn line" type="button" data-archive-format="jpeg">JPEG / JPG</button>
+    </div>
+  </dialog>
 
   <dialog id="chart-catalog" class="observation-catalog" aria-labelledby="catalog-title">
     <div class="dialog-card">

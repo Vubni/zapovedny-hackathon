@@ -4,6 +4,7 @@ const reserve = {latitude: 56.52, longitude: 32.87};
 const initialScale = 410;
 const maxScale = 9600;
 const degrees = Math.PI / 180;
+let mapId = 0;
 const coordinateFormat = new Intl.NumberFormat('ru', {maximumFractionDigits: 5});
 const commonParams = [
   ['t_air', 'Температура воздуха'], ['rh', 'Относительная влажность'],
@@ -21,6 +22,8 @@ const icons = {
   locate: '<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>',
   fit: '<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/>',
   pin: '<path d="M19 10c0 5-7 10-7 10s-7-5-7-10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
+  select: '<path d="M8 4H4v4m6-4h4m2 0h4v4m0 2v4m0 2v4h-4m-2 0h-4m-2 0H4v-4m0-2v-4"/>',
+  pan: '<path d="M12 4v16M4 12h16M9 7l3-3 3 3M9 17l3 3 3-3M7 9l-3 3 3 3m10-6 3 3-3 3"/>',
 };
 
 function icon(name) {
@@ -53,10 +56,13 @@ function stationGroups(stations) {
   return [...groups.values()];
 }
 
-function createMap(viewport, onPick) {
+function createMap(viewport, onPick, onSelect) {
   const canvas = viewport.querySelector('canvas');
   const overlay = viewport.querySelector('.station-map-markers');
   const scaleLine = viewport.querySelector('.station-map-scale');
+  const frame = viewport.querySelector('.station-map-frame');
+  const modes = [...viewport.querySelectorAll('[data-map-mode]')];
+  const controls = viewport.querySelectorAll('.station-map-modes, .station-map-tools');
   const context = canvas.getContext('2d');
   const bound = (value, low, high) => Math.min(Math.max(value, low), high);
   const worldScale = () => Math.min(viewport.clientWidth / 370, viewport.clientHeight / 190);
@@ -68,6 +74,7 @@ function createMap(viewport, onPick) {
   let pendingFrame;
   let markers = [];
   let draft = null;
+  let mode = 'select';
   let picking = false;
   let pointer = null;
 
@@ -155,7 +162,8 @@ function createMap(viewport, onPick) {
       context.stroke();
     }
 
-    const occupied = [];
+    const occupied = Array.from(controls, control => [control.offsetLeft - 6, control.offsetTop - 6,
+      control.offsetLeft + control.offsetWidth + 6, control.offsetTop + control.offsetHeight + 6]);
     const font = getComputedStyle(viewport).fontFamily;
     context.textBaseline = 'middle';
     for (const marker of markers) {
@@ -264,37 +272,90 @@ function createMap(viewport, onPick) {
     const rect = viewport.getBoundingClientRect();
     return [event.clientX - rect.left - viewport.clientLeft, event.clientY - rect.top - viewport.clientTop];
   };
+
+  function selectionBounds(gesture, point) {
+    const [x, y] = point;
+    return [bound(Math.min(gesture.startX, x), 0, width), bound(Math.min(gesture.startY, y), 0, height),
+      bound(Math.max(gesture.startX, x), 0, width), bound(Math.max(gesture.startY, y), 0, height)];
+  }
+
+  function cancelGesture() {
+    if (!pointer) return false;
+    const {id} = pointer;
+    pointer = null;
+    frame.hidden = true;
+    viewport.classList.remove('is-panning');
+    if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    return true;
+  }
+
+  function setMode(next) {
+    cancelGesture();
+    mode = next;
+    viewport.classList.toggle('is-pan-mode', mode === 'pan');
+    for (const button of modes) button.setAttribute('aria-pressed', button.dataset.mapMode === mode);
+  }
+
+  for (const button of modes) button.addEventListener('click', () => setMode(button.dataset.mapMode));
   canvas.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || !event.isPrimary) return;
-    pointer = {id: event.pointerId, x: event.clientX, y: event.clientY, moved: false};
+    if (event.button !== 0 || !event.isPrimary || pointer) return;
+    const [startX, startY] = position(event);
+    pointer = {id: event.pointerId, startX, startY, x: startX, y: startY, moved: false,
+      kind: picking ? 'coordinates' : mode, additive: event.ctrlKey || event.metaKey};
+    viewport.focus({preventScroll: true});
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener('pointermove', event => {
     if (pointer?.id !== event.pointerId) return;
-    const dx = event.clientX - pointer.x;
-    const dy = event.clientY - pointer.y;
+    const [x, y] = position(event);
+    const dx = x - pointer.x;
+    const dy = y - pointer.y;
     if (!pointer.moved && Math.hypot(dx, dy) < 5) return;
     pointer.moved = true;
-    pointer.x = event.clientX;
-    pointer.y = event.clientY;
-    viewport.classList.add('is-panning');
-    pan(dx, dy);
+    pointer.x = x;
+    pointer.y = y;
+    if (pointer.kind === 'select') {
+      const [left, top, right, bottom] = selectionBounds(pointer, [x, y]);
+      frame.style.left = `${left}px`;
+      frame.style.top = `${top}px`;
+      frame.style.width = `${right - left}px`;
+      frame.style.height = `${bottom - top}px`;
+      frame.hidden = false;
+    } else {
+      viewport.classList.add('is-panning');
+      pan(dx, dy);
+    }
   });
   canvas.addEventListener('pointerup', event => {
-    if (pointer?.id === event.pointerId && !pointer.moved && picking) onPick(unproject(...position(event)));
+    if (pointer?.id !== event.pointerId) return;
+    const gesture = pointer;
+    cancelGesture();
+    if (gesture.kind === 'coordinates' && !gesture.moved) onPick(unproject(...position(event)));
+    if (gesture.kind !== 'select' || !gesture.moved) return;
+    const [left, top, right, bottom] = selectionBounds(gesture, position(event));
+    const included = markers.filter(({point}) => {
+      const [x, y] = project(point.longitude, point.latitude);
+      return x >= left && x <= right && y >= top && y <= bottom;
+    });
+    onSelect(included.flatMap(group => group.stations), gesture.additive || event.ctrlKey || event.metaKey);
   });
-  canvas.addEventListener('lostpointercapture', () => {
-    pointer = null;
-    viewport.classList.remove('is-panning');
-  });
+  for (const type of ['pointercancel', 'lostpointercapture']) {
+    canvas.addEventListener(type, event => {
+      if (pointer?.id === event.pointerId) cancelGesture();
+    });
+  }
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
-    zoom(event.deltaY < 0 ? 1.25 : 0.8, ...position(event));
+    if (!pointer) zoom(event.deltaY < 0 ? 1.25 : 0.8, ...position(event));
   }, {passive: false});
+  canvas.addEventListener('contextmenu', event => {
+    if (event.ctrlKey && pointer?.kind === 'select') event.preventDefault();
+  });
   viewport.addEventListener('keydown', event => {
     if (event.target !== viewport) return;
     const movement = {ArrowLeft: [44, 0], ArrowRight: [-44, 0], ArrowUp: [0, 44], ArrowDown: [0, -44]};
-    if (movement[event.key]) pan(...movement[event.key]);
+    if (event.key === 'Escape' && cancelGesture()) event.stopPropagation();
+    else if (movement[event.key]) pan(...movement[event.key]);
     else if (['+', '='].includes(event.key)) zoom(1.5);
     else if (event.key === '-') zoom(1 / 1.5);
     else if (picking && event.key === 'Enter') onPick(center);
@@ -305,9 +366,10 @@ function createMap(viewport, onPick) {
   const observer = new ResizeObserver(redraw);
   observer.observe(viewport);
   return {
-    zoom, focus, fit,
+    zoom, focus, fit, cancelGesture,
     setMarkers(next) {
       markers = next;
+      for (const marker of markers) marker.element.disabled = picking;
       overlay.replaceChildren(...markers.map(marker => marker.element));
       redraw();
     },
@@ -316,13 +378,195 @@ function createMap(viewport, onPick) {
       redraw();
     },
     pickCoordinates(active) {
+      cancelGesture();
       picking = active;
+      for (const button of modes) button.disabled = active;
+      for (const marker of markers) marker.element.disabled = active;
       viewport.classList.toggle('is-picking', active);
       if (active) viewport.focus();
     },
     destroy() {
+      cancelGesture();
       observer.disconnect();
       cancelAnimationFrame(pendingFrame);
+    },
+  };
+}
+
+function mapContents() {
+  const hintId = `station-map-shortcut-${++mapId}`;
+  return `<section class="station-map-column" aria-label="Географическая карта">
+  <div class="station-map-viewport" tabindex="0" role="group" aria-label="Карта станций. Стрелки перемещают карту, клавиши плюс и минус меняют масштаб" aria-describedby="${hintId}">
+    <canvas aria-hidden="true"></canvas>
+    <div class="station-map-frame" aria-hidden="true" hidden></div>
+    <div class="station-map-markers"></div>
+    <div class="station-map-modes" role="group" aria-label="Режим карты">
+      <button class="btn line" type="button" data-map-mode="select" aria-label="Выделение рамкой" aria-pressed="true">${icon('select')} <span>Выделение рамкой</span></button>
+      <button class="btn line" type="button" data-map-mode="pan" aria-label="Перемещение" aria-pressed="false">${icon('pan')} <span>Перемещение</span></button>
+    </div>
+    <div class="station-map-tools" aria-label="Управление картой">
+      <button class="icon-btn" type="button" data-zoom-in title="Приблизить" aria-label="Приблизить">${icon('plus')}</button>
+      <button class="icon-btn" type="button" data-zoom-out title="Отдалить" aria-label="Отдалить">${icon('minus')}</button>
+      <button class="icon-btn" type="button" data-fit title="Показать все станции" aria-label="Показать все станции">${icon('fit')}</button>
+    </div>
+    <div class="station-map-scale" aria-hidden="true"></div>
+    <p class="station-map-instruction" hidden>Укажите точку на карте или нажмите Enter для точки в центре.</p>
+  </div>
+  <div class="station-map-source">
+    <span>Обзорная карта · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
+    <span data-area-note>Общий маркер показывает район заповедника.</span>
+  </div>
+  <p id="${hintId}" class="station-map-shortcut">Удерживайте Ctrl или ⌘, чтобы добавить станции рамкой.</p>
+</section>`;
+}
+
+function stationListContents(action = '') {
+  return `<section data-picker-list aria-label="Список метеостанций">
+    <div class="station-picker-list-head"><h3>Станции архива</h3>${action}</div>
+    <div class="station-picker-list" data-list></div>
+  </section>`;
+}
+
+function createStationSelection(root, {onPick, onChange, emptyText}) {
+  const get = selector => root.querySelector(selector);
+  const viewport = get('.station-map-viewport');
+  const fitButton = get('[data-fit]');
+  let stations = [];
+  let selected = new Set();
+  let items = [];
+  let markers = [];
+  let catalogKey;
+  let positioned = false;
+  const map = createMap(viewport, onPick, (included, additive) => {
+    const next = new Set(additive ? selected : []);
+    for (const station of included) next.add(station.id);
+    if (next.size === selected.size && [...next].every(id => selected.has(id))) return;
+    selected = next;
+    refreshSelection();
+    onChange([...selected]);
+  });
+
+  function fitMarkers() {
+    map.fit(markers.map(group => group.point));
+  }
+
+  get('[data-zoom-in]').addEventListener('click', () => map.zoom(1.5));
+  get('[data-zoom-out]').addEventListener('click', () => map.zoom(1 / 1.5));
+  fitButton.addEventListener('click', fitMarkers);
+
+  function refreshSelection() {
+    for (const {station, input} of items) input.checked = selected.has(station.id);
+    for (const group of markers) {
+      const count = group.stations.filter(station => selected.has(station.id)).length;
+      group.element.setAttribute('aria-pressed', count === group.stations.length ? 'true' : count ? 'mixed' : 'false');
+    }
+  }
+
+  function rebuild() {
+    items = stations.map(station => {
+      const point = location(station);
+      const row = document.createElement('div');
+      row.className = 'station-picker-row';
+      row.innerHTML = `<label><input type="checkbox"><span class="station-row-dot" aria-hidden="true"></span><span><strong></strong><small></small></span></label>`;
+      row.querySelector('strong').textContent = station.label;
+      row.querySelector('.station-row-dot').style.backgroundColor = station.color || '#2b7650';
+      const note = station.location_precision === 'area' ? 'Район заповедника' : point ? coordinates(point) : 'Координаты отсутствуют';
+      row.querySelector('small').textContent = note;
+      const input = row.querySelector('input');
+      input.addEventListener('change', () => {
+        if (input.checked) selected.add(station.id);
+        else selected.delete(station.id);
+        refreshSelection();
+        onChange([...selected]);
+      });
+      if (point) {
+        const locate = document.createElement('button');
+        locate.className = 'icon-btn station-row-locate';
+        locate.type = 'button';
+        locate.title = 'Показать на карте';
+        locate.setAttribute('aria-label', `Показать на карте: ${station.label}`);
+        locate.innerHTML = icon('locate');
+        locate.addEventListener('click', () => {
+          map.focus(point);
+          viewport.focus();
+        });
+        row.append(locate);
+      }
+      return {station, row, input};
+    });
+
+    const list = get('[data-list]');
+    list.replaceChildren(...items.map(item => item.row));
+    if (!items.length) list.textContent = emptyText;
+    markers = stationGroups(stations).map(group => {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = `station-map-marker${group.area ? ' station-map-marker-area' : ''}`;
+      const names = group.stations.map(station => station.label).join(', ');
+      element.title = group.area ? `Район заповедника · ${names}` : names;
+      element.setAttribute('aria-label', element.title);
+      if (group.stations.length > 1 || group.area) element.textContent = group.stations.length;
+      else element.innerHTML = icon('pin');
+      element.addEventListener('click', () => {
+        const select = group.stations.some(station => !selected.has(station.id));
+        for (const station of group.stations) {
+          if (select) selected.add(station.id);
+          else selected.delete(station.id);
+        }
+        refreshSelection();
+        onChange([...selected]);
+      });
+      return {...group, element};
+    });
+    get('[data-area-note]').hidden = !markers.some(group => group.area);
+    fitButton.disabled = !markers.length;
+    map.setMarkers(markers);
+    if (!positioned && markers.length) {
+      positioned = true;
+      if (!markers.some(group => group.area)) fitMarkers();
+    }
+  }
+
+  return {
+    map,
+    ids: () => [...selected],
+    focusCheckbox(id) {
+      items.find(item => item.station.id === id)?.input.focus();
+    },
+    update(catalog, ids) {
+      stations = catalog;
+      const stationIds = new Set(stations.map(station => station.id));
+      selected = new Set(ids.filter(id => stationIds.has(id)));
+      const nextKey = JSON.stringify(stations.map(({id, label, color, latitude, longitude, location_precision}) =>
+        [id, label, color, latitude, longitude, location_precision]));
+      if (nextKey !== catalogKey) {
+        catalogKey = nextKey;
+        rebuild();
+      }
+      refreshSelection();
+    },
+  };
+}
+
+export function mountStationOverview(container, {onChange = () => {}, onExpand = () => {}} = {}) {
+  container.classList.add('station-overview');
+  container.innerHTML = `<div class="station-overview-heading">
+    <h2>Карта метеостанций</h2>
+    <button class="btn line" type="button" data-expand-map aria-haspopup="dialog">${icon('fit')} Открыть карту</button>
+  </div>
+  <div class="station-overview-body">
+    ${mapContents()}
+    ${stationListContents()}
+  </div>`;
+  const selection = createStationSelection(container, {onChange, emptyText: 'Станции не найдены.'});
+  container.querySelector('[data-expand-map]').addEventListener('click', onExpand);
+  selection.update([], []);
+  return {
+    update: selection.update,
+    destroy() {
+      selection.map.destroy();
+      container.replaceChildren();
+      container.classList.remove('station-overview');
     },
   };
 }
@@ -332,33 +576,14 @@ function dialogContents() {
     <div class="station-picker-heading">
       <div>
         <h2 id="station-picker-title">Метеостанции</h2>
-        <p id="station-picker-description">Выберите одну или несколько станций для просмотра архива.</p>
+        <p id="station-picker-description">Выберите станции в списке или выделите их рамкой на карте.</p>
       </div>
       <button class="icon-btn" type="button" data-close aria-label="Закрыть" autofocus>${icon('close')}</button>
     </div>
     <div class="station-picker-body">
-      <section class="station-map-column" aria-label="Географическая карта">
-        <div class="station-map-viewport" tabindex="0" role="group" aria-label="Карта станций. Стрелки перемещают карту, клавиши плюс и минус меняют масштаб">
-          <canvas aria-hidden="true"></canvas>
-          <div class="station-map-markers"></div>
-          <div class="station-map-tools" aria-label="Управление картой">
-            <button class="icon-btn" type="button" data-zoom-in title="Приблизить" aria-label="Приблизить">${icon('plus')}</button>
-            <button class="icon-btn" type="button" data-zoom-out title="Отдалить" aria-label="Отдалить">${icon('minus')}</button>
-            <button class="icon-btn" type="button" data-fit title="Показать все станции" aria-label="Показать все станции">${icon('fit')}</button>
-          </div>
-          <div class="station-map-scale" aria-hidden="true"></div>
-          <p class="station-map-instruction" hidden>Укажите точку на карте или нажмите Enter для точки в центре.</p>
-        </div>
-        <div class="station-map-source">
-          <span>Обзорная карта · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
-          <span data-area-note>Общий маркер показывает район заповедника.</span>
-        </div>
-      </section>
+      ${mapContents()}
       <div class="station-picker-side">
-        <section data-picker-list aria-labelledby="station-list-title">
-          <div class="station-picker-list-head"><h3 id="station-list-title">Станции архива</h3><button class="btn line" type="button" data-add>${icon('plus')} Добавить</button></div>
-          <div class="station-picker-list" data-list></div>
-        </section>
+        ${stationListContents(`<button class="btn line" type="button" data-add>${icon('plus')} Добавить</button>`)}
         <form data-station-form hidden>
           <div class="station-picker-list-head"><h3>Паспорт станции</h3><button class="btn line" type="button" data-back>К списку</button></div>
           <fieldset>
@@ -390,7 +615,6 @@ function dialogContents() {
 
 export async function pickStations(stations, selectedIds = []) {
   const before = document.activeElement;
-  const selected = new Set(selectedIds.filter(id => stations.some(station => station.id === id)));
   const dialog = document.createElement('dialog');
   dialog.className = 'station-picker';
   dialog.setAttribute('aria-labelledby', 'station-picker-title');
@@ -398,7 +622,6 @@ export async function pickStations(stations, selectedIds = []) {
   dialog.innerHTML = dialogContents();
   document.body.append(dialog);
   const get = selector => dialog.querySelector(selector);
-  const viewport = get('.station-map-viewport');
   const form = get('[data-station-form]');
   const fields = form.elements;
   const apply = get('[data-apply]');
@@ -409,86 +632,23 @@ export async function pickStations(stations, selectedIds = []) {
   let editing = false;
   let picking = false;
   let saving = false;
-  let items = [];
-  let markers = [];
   let result = null;
-  const map = createMap(viewport, point => {
-    fields.latitude.value = point.latitude.toFixed(5);
-    fields.longitude.value = point.longitude.toFixed(5);
-    setPicking(false);
-    previewCoordinates();
-    pick.focus();
+  const selection = createStationSelection(dialog, {
+    emptyText: 'Добавьте первую станцию.',
+    onChange: refreshFooter,
+    onPick(point) {
+      fields.latitude.value = point.latitude.toFixed(5);
+      fields.longitude.value = point.longitude.toFixed(5);
+      setPicking(false);
+      previewCoordinates();
+      pick.focus();
+    },
   });
+  const {map} = selection;
 
-  function refreshSelection() {
-    for (const {station, input} of items) input.checked = selected.has(station.id);
-    for (const group of markers) {
-      const count = group.stations.filter(station => selected.has(station.id)).length;
-      group.element.setAttribute('aria-pressed', count === group.stations.length ? 'true' : count ? 'mixed' : 'false');
-    }
-    get('[data-selection-count]').textContent = `Выбрано ${selected.size} из ${stations.length}`;
-    apply.disabled = !selected.size || editing;
-  }
-
-  function rebuild() {
-    items = stations.map(station => {
-      const point = location(station);
-      const row = document.createElement('div');
-      row.className = 'station-picker-row';
-      row.innerHTML = `<label><input type="checkbox"><span class="station-row-dot" aria-hidden="true"></span><span><strong></strong><small></small></span></label>`;
-      row.querySelector('strong').textContent = station.label;
-      row.querySelector('.station-row-dot').style.backgroundColor = station.color || '#2b7650';
-      const note = station.location_precision === 'area' ? 'Район заповедника' : point ? coordinates(point) : 'Координаты отсутствуют';
-      row.querySelector('small').textContent = note;
-      const input = row.querySelector('input');
-      input.addEventListener('change', () => {
-        if (input.checked) selected.add(station.id);
-        else selected.delete(station.id);
-        refreshSelection();
-      });
-      if (point) {
-        const locate = document.createElement('button');
-        locate.className = 'icon-btn station-row-locate';
-        locate.type = 'button';
-        locate.title = 'Показать на карте';
-        locate.setAttribute('aria-label', `Показать на карте: ${station.label}`);
-        locate.innerHTML = icon('locate');
-        locate.addEventListener('click', () => {
-          map.focus(point);
-          viewport.focus();
-        });
-        row.append(locate);
-      }
-      return {station, row, input};
-    });
-
-    const list = get('[data-list]');
-    list.replaceChildren(...items.map(item => item.row));
-    if (!items.length) list.textContent = 'Добавьте первую станцию.';
-    markers = stationGroups(stations).map(group => {
-      const element = document.createElement('button');
-      element.type = 'button';
-      element.className = `station-map-marker${group.area ? ' station-map-marker-area' : ''}`;
-      const names = group.stations.map(station => station.label).join(', ');
-      element.title = group.area ? `Район заповедника · ${names}` : names;
-      element.setAttribute('aria-label', element.title);
-      if (group.stations.length > 1 || group.area) element.textContent = group.stations.length;
-      else element.innerHTML = icon('pin');
-      element.addEventListener('click', () => {
-        if (picking) return;
-        const select = group.stations.some(station => !selected.has(station.id));
-        for (const station of group.stations) {
-          if (select) selected.add(station.id);
-          else selected.delete(station.id);
-        }
-        refreshSelection();
-      });
-      return {...group, element};
-    });
-    get('[data-area-note]').hidden = !markers.some(group => group.area);
-    get('[data-fit]').disabled = !markers.length;
-    map.setMarkers(markers);
-    refreshSelection();
+  function refreshFooter(ids = selection.ids()) {
+    get('[data-selection-count]').textContent = `Выбрано ${ids.length} из ${stations.length}`;
+    apply.disabled = !ids.length || editing;
   }
 
   function setPicking(active) {
@@ -539,15 +699,12 @@ export async function pickStations(stations, selectedIds = []) {
       add.focus();
     }
     map.setDraft(null);
-    refreshSelection();
+    refreshFooter();
   }
 
   add.addEventListener('click', () => showForm(true));
   get('[data-back]').addEventListener('click', () => showForm(false));
   pick.addEventListener('click', () => setPicking(!picking));
-  get('[data-zoom-in]').addEventListener('click', () => map.zoom(1.5));
-  get('[data-zoom-out]').addEventListener('click', () => map.zoom(1 / 1.5));
-  get('[data-fit]').addEventListener('click', () => map.fit(markers.map(group => group.point)));
   fields.profile.addEventListener('change', applyProfile);
   fields.latitude.addEventListener('input', previewCoordinates);
   fields.longitude.addEventListener('input', previewCoordinates);
@@ -590,10 +747,9 @@ export async function pickStations(stations, selectedIds = []) {
       const body = await response.json();
       if (!response.ok || !body.station?.id) throw new Error(body.error || body.message || 'Станцию не удалось зарегистрировать.');
       stations.push(body.station);
-      selected.add(body.station.id);
-      rebuild();
+      selection.update(stations, [...selection.ids(), body.station.id]);
       showForm(false);
-      items.find(item => item.station.id === body.station.id)?.input.focus();
+      selection.focusCheckbox(body.station.id);
       const point = location(body.station);
       if (point) map.focus(point);
     } catch (failure) {
@@ -611,10 +767,10 @@ export async function pickStations(stations, selectedIds = []) {
 
   for (const button of dialog.querySelectorAll('[data-close]')) button.addEventListener('click', () => dialog.close());
   dialog.addEventListener('cancel', event => {
-    if (saving) event.preventDefault();
+    if (map.cancelGesture() || saving) event.preventDefault();
   });
   apply.addEventListener('click', () => {
-    result = Array.from(selected);
+    result = selection.ids();
     dialog.close();
   });
 
@@ -624,8 +780,8 @@ export async function pickStations(stations, selectedIds = []) {
     before?.focus();
     resolve(result);
   }, {once: true}));
-  rebuild();
   dialog.showModal();
-  if (!markers.some(group => group.area)) map.fit(markers.map(group => group.point));
+  selection.update(stations, selectedIds);
+  refreshFooter();
   return finished;
 }

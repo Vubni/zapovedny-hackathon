@@ -3,6 +3,7 @@ const svgNamespace = 'http://www.w3.org/2000/svg';
 const DAY = 86_400_000;
 const palette = ['#2b7650', '#426583', '#735579', '#945320', '#507f76', '#ae4b55', '#646f2e', '#59618a'];
 const speedPalette = ['#b4d5bc', '#5d9a75', '#2b7650', '#426583', '#735579', '#945320'];
+const imageFormats = new Map([['svg', 'SVG'], ['png', 'PNG'], ['jpeg', 'JPEG / JPG']]);
 const compass = ['С', 'ССВ', 'СВ', 'ВСВ', 'В', 'ВЮВ', 'ЮВ', 'ЮЮВ', 'Ю', 'ЮЮЗ', 'ЮЗ', 'ЗЮЗ', 'З', 'ЗСЗ', 'СЗ', 'ССЗ'];
 const grainLabels = { day: 'По суткам', decade: 'По декадам', month: 'По месяцам', year: 'По годам' };
 const neutral = { ink: '#162820', mute: '#53645a', line: '#dce5db', grid: '#e5ebe3', median: '#c8d6c8', lime: '#d7e950' };
@@ -11,6 +12,7 @@ const date = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: '2-digit',
 const monthDate = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', month: 'short', year: '2-digit' });
 const shortDate = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
 let nextCard = 0;
+let rasterQueue = Promise.resolve();
 
 function html(tag, className = '', content = '') {
   const node = document.createElement(tag);
@@ -129,17 +131,18 @@ function modelOf(data, options) {
   const keys = Array.from(points.keys()).sort((a, b) => a - b);
   const from = timestamp(options.from ?? data.from ?? data.start);
   const to = timestamp(options.to ?? data.to ?? data.end);
+  const archiveWindow = Number.isFinite(from) && Number.isFinite(to) && to >= from ? [from, to] : null;
   const ends = [keys[0], keys.at(-1)].filter(Number.isFinite);
   let domain = ends.length ? [ends[0], ends.at(-1)] : [0, 0];
   if (axis === 'hour') domain = [keys[0] === 1 && keys.at(-1) === 24 ? 1 : 0, keys.at(-1) === 24 ? 24 : 23];
   if (axis === 'direction') domain = [-0.5, compass.length - 0.5];
-  if (axis === 'time' && Number.isFinite(from) && Number.isFinite(to) && to >= from) {
+  if (axis === 'time' && archiveWindow) {
     domain = [Math.min(from, ends[0] ?? from), Math.max(to, ends.at(-1) ?? to)];
   }
   const stations = [...new Set((data.coverage || []).map(row => row.label || row.station).filter(Boolean))];
   const period = axis === 'hour' ? 'Средний суточный ход' : axis === 'time' ? (grainLabels[grain] || '') : '';
   const subtitle = options.subtitle ?? data.subtitle ?? [stations.join(', '), period].filter(Boolean).join(' · ');
-  return { ...data, id: data.id ?? data.chart, axis, grain, mode, series, points, domain, stations, subtitle,
+  return { ...data, id: data.id ?? data.chart, axis, grain, mode, series, points, domain, archiveWindow, stations, subtitle,
     hasValues: series.some(item => item.hasValues) };
 }
 
@@ -658,25 +661,30 @@ function exportLegend(model, series, width, start) {
   return { nodes, bottom: y + 24 };
 }
 
-function exportImage(model, series, domain, measuredWidth) {
+function exportImage(model, series, domain, measuredWidth, period, empty) {
   const width = Math.max(780, measuredWidth);
   const rose = isRose(model);
   const groups = rose ? roseGroups(model, series) : [];
-  const layout = rose ? roseLayout(groups, width, true) : { height: 365 };
-  const top = model.subtitle ? 81 : 66;
+  const layout = empty ? { height: 150 } : rose ? roseLayout(groups, width, true) : { height: 365 };
+  const captions = [model.subtitle, period].filter(Boolean);
+  const top = 66 + captions.length * 18;
   const { nodes, bottom } = exportLegend(model, series, width, top + layout.height + 21);
   const root = graphic(width, bottom, model.title);
   root.append(svg('title', {}, model.title), svg('rect', { x: 0, y: 0, width, height: bottom, fill: '#fff' }));
   root.append(plotText(24, 35, model.title, { fill: neutral.ink, 'font-size': 24, 'font-weight': 800 }));
-  if (model.subtitle) root.append(plotText(24, 58, model.subtitle, { 'font-size': 12 }));
-  if (rose) radialPlot(root, model, groups, layout, top);
+  for (const [index, caption] of captions.entries()) root.append(plotText(24, 57 + index * 17, caption, { 'font-size': 12 }));
+  if (empty) {
+    const centered = { 'text-anchor': 'middle' };
+    root.append(plotText(width / 2, top + 65, empty.message, { ...centered, 'font-size': 17, fill: neutral.ink }));
+    if (empty.detail) root.append(plotText(width / 2, top + 88, empty.detail, { ...centered, 'font-size': 12 }));
+  } else if (rose) radialPlot(root, model, groups, layout, top);
   else rectangularPlot(root, model, series, domain, width, layout.height, top);
   root.append(...nodes);
   const source = new XMLSerializer().serializeToString(root);
   return { width, height: bottom, blob: new Blob([source], { type: 'image/svg+xml;charset=utf-8' }) };
 }
 
-function download(blob, filename) {
+export function download(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = html('a');
   link.href = url;
@@ -906,11 +914,53 @@ function activeSeries(state) {
   return state.model.series.filter(item => !state.hidden.has(item.id));
 }
 
+function hasVisibleValues(series, domain) {
+  return series.some(item => item.hasValues && visiblePoints(item, domain).some(point => point.y !== null));
+}
+
+function emptyChartText(state, series) {
+  const { model, options } = state;
+  const emptySelection = model.series.length === 0 && model.notes?.includes('Выберите хотя бы одну станцию');
+  const emptyMessage = options.emptyMessage || (emptySelection ? 'Выберите хотя бы одну станцию' : '');
+  const message = emptyMessage || (model.hasValues && series.length === 0 ? 'Все ряды скрыты' : 'Нет данных за этот период');
+  const detail = !emptyMessage && !state.zoom && !model.hasValues && model.stations.length === 1
+    ? `По станции ${model.stations[0]} нет наблюдений за выбранный период.`
+    : '';
+  return { message, detail };
+}
+
+function exportPeriod(state, domain) {
+  const { model } = state;
+  const timeAxis = model.axis === 'time' && model.points.size;
+  const dates = state.zoom || model.archiveWindow || (timeAxis ? domain : null);
+  if (!dates) return '';
+  const [start, end] = dates.map(value => date.format(value));
+  return start === end ? start : `${start} – ${end}`;
+}
+
+async function exportChartFile(state, format, { includeEmpty = false } = {}) {
+  if (!imageFormats.has(format)) throw new TypeError(`Неизвестный формат графика: ${format}`);
+  if (cards.get(state.container) !== state) throw new Error('Карточка графика закрыта.');
+  const { model, lastWidth } = state;
+  const series = activeSeries(state);
+  const domain = currentWindow(state);
+  const empty = hasVisibleValues(series, domain) ? null : emptyChartText(state, series);
+  if (empty && !includeEmpty) throw new Error('В видимой области графика нет данных.');
+
+  // Rasterize the same SVG even if the card is updated while the image loads.
+  const graphic = exportImage(model, series, domain, lastWidth, exportPeriod(state, domain), empty);
+  const name = filename(model, format);
+  if (format === 'svg') return { blob: graphic.blob, filename: name };
+  const image = rasterQueue.then(() => rasterize(graphic, `image/${format}`));
+  rasterQueue = image.then(() => undefined, () => undefined);
+  return { blob: await image, filename: name };
+}
+
 function draw(state) {
   const { model, stage, plot, tooltip, options, controls, enlarged } = state;
   const domain = currentWindow(state);
   const series = activeSeries(state);
-  const hasValues = series.some(item => visiblePoints(item, domain).some(point => point.y !== null));
+  const hasValues = hasVisibleValues(series, domain);
   const canZoom = model.axis === 'time' && model.hasValues && model.domain[1] - model.domain[0] > DAY;
   if (controls) {
     controls.image.setAttribute('aria-disabled', String(!hasValues));
@@ -923,12 +973,8 @@ function draw(state) {
   }
   hideTooltip(tooltip);
   if (!hasValues) {
-    const selected = model.stations.length === 1 ? `По станции ${model.stations[0]} нет наблюдений за выбранный период.` : '';
-    const emptySelection = model.series.length === 0 && model.notes?.includes('Выберите хотя бы одну станцию');
-    const emptyMessage = options.emptyMessage || (emptySelection ? 'Выберите хотя бы одну станцию' : '');
-    const text = emptyMessage || (model.hasValues && series.length === 0 ? 'Все ряды скрыты' : 'Нет данных за этот период');
-    const detail = emptyMessage || state.zoom || model.hasValues ? '' : selected;
-    plot.replaceChildren(emptyContent(text, model.axis, detail));
+    const { message, detail } = emptyChartText(state, series);
+    plot.replaceChildren(emptyContent(message, model.axis, detail));
     return;
   }
   const width = Math.max(220, Math.floor(stage.clientWidth || state.lastWidth || 640));
@@ -966,9 +1012,10 @@ function scaleZoom(state, factor) {
 
 function downloadMenu(state) {
   const menu = html('details', 'obs-chart__download');
-  const image = html('summary', 'icon-btn obs-chart__icon-button');
+  const image = html('summary', 'icon-btn obs-chart__icon-button obs-chart__download-trigger');
   image.dataset.chartAction = 'download';
-  labelIconButton(image, 'download', 'Скачать график');
+  image.setAttribute('role', 'button');
+  image.append(icon('download'), html('span', '', 'Скачать график'));
   menu.append(image);
   const options = html('div', 'obs-chart__download-list');
   image.addEventListener('click', event => {
@@ -985,19 +1032,18 @@ function downloadMenu(state) {
       image.focus();
     }
   });
-  for (const [format, label] of [['svg', 'SVG'], ['png', 'PNG'], ['jpeg', 'JPEG / JPG']]) {
+  for (const [format, label] of imageFormats) {
     const item = html('button', '', label);
     item.type = 'button';
     item.dataset.chartFormat = format;
     item.addEventListener('click', async () => {
-      const { model, status } = state;
+      const { status } = state;
       status.textContent = '';
       menu.open = false;
       image.focus();
       try {
-        const graphic = exportImage(model, activeSeries(state), currentWindow(state), state.lastWidth);
-        const result = format === 'svg' ? graphic.blob : await rasterize(graphic, `image/${format}`);
-        download(result, filename(model, format));
+        const file = await exportChartFile(state, format);
+        download(file.blob, file.filename);
       } catch {
         status.textContent = 'Не удалось скачать график. Попробуйте другой формат.';
       }
@@ -1140,6 +1186,12 @@ export function renderChartCard(container, data, options = {}) {
   state.options = options;
   paintCard(state);
   return {
+    canExport() {
+      return cards.get(container) === state && hasVisibleValues(activeSeries(state), currentWindow(state));
+    },
+    exportFile(format, options) {
+      return exportChartFile(state, format, options);
+    },
     destroy() {
       if (cards.get(container) !== state) return;
       state.observer?.disconnect();

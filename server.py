@@ -69,7 +69,7 @@ WEB_FILES = {
     "/precip.css": "precip.css",
     "/precip-example.json": "precip-example.json",
 }
-for asset in ("archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css",
+for asset in ("archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js",
               "station-map.js", "station-map.css", "station-map-data.js", "observation-chart.js",
               "observation-chart.css", "files-page.js", "files-page.css", "weather-pages.css",
               "fonts/manrope.ttf", "fonts/OFL-Manrope.txt"):

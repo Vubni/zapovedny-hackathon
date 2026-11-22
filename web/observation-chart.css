@@ -18,11 +18,14 @@
 
 .obs-chart__head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
   margin: 0 0 11px;
 }
+
+.obs-chart__head > :first-child { flex: 1 1 200px; min-width: 0; }
 
 .obs-chart__head h2,
 .obs-chart__head h3 {
@@ -38,8 +41,9 @@
 
 .obs-chart__actions {
   display: flex;
-  flex: none;
+  flex-wrap: wrap;
   align-items: center;
+  max-width: 100%;
   gap: 6px;
 }
 
@@ -76,6 +80,16 @@
 .obs-chart .obs-chart__icon-button[aria-disabled="true"] { opacity: .5; cursor: default; }
 .obs-chart .obs-chart__icon-button:disabled:hover,
 .obs-chart .obs-chart__icon-button[aria-disabled="true"]:hover { background: var(--paper, #fff); }
+.obs-chart .obs-chart__download-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
 .obs-chart__download { position: relative; }
 .obs-chart__download summary::-webkit-details-marker { display: none; }
 .obs-chart__download-list {
@@ -274,7 +288,6 @@
 
 @media (max-width: 560px) {
   .obs-chart__panel { padding: 15px; }
-  .obs-chart__head { flex-wrap: wrap; }
   .obs-chart__head h2 { font-size: 20px; }
   .obs-chart__coverage-row { grid-template-columns: 1fr; }
   .obs-chart__coverage-row p { grid-column: auto; }

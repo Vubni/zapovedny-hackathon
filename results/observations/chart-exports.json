@@ -1,0 +1,81 @@
+{
+  "command": "node checks/chart-exports.cjs",
+  "stations": [
+    "kr1",
+    "kr2"
+  ],
+  "input_order": [
+    "pressure",
+    "air_range",
+    "soil_05",
+    "rh",
+    "air"
+  ],
+  "visual_and_dom_order": [
+    "air",
+    "air_range",
+    "soil_05",
+    "rh",
+    "pressure"
+  ],
+  "zip": {
+    "svg": [
+      {
+        "name": "01-средняя-температура-воздуха.svg",
+        "crc32": "4c5a3989"
+      },
+      {
+        "name": "02-диапазон-температуры-воздуха.svg",
+        "crc32": "8ace3dce"
+      },
+      {
+        "name": "03-температура-почвы-5-см.svg",
+        "crc32": "7dffc7a0"
+      },
+      {
+        "name": "04-средняя-относительная-влажность.svg",
+        "crc32": "87a6ab73"
+      },
+      {
+        "name": "05-среднее-атмосферное-давление.svg",
+        "crc32": "ed0a4bb5"
+      }
+    ],
+    "png_files": 5,
+    "jpeg_files": 5,
+    "all_entries_passed_zipfile_and_crc32": true,
+    "empty_soil": {
+      "title": "Температура почвы · 5 см",
+      "message": "Нет данных за этот период"
+    }
+  },
+  "after_hide_and_zoom": {
+    "files": 4,
+    "hidden_card": "rh",
+    "visible_air_legend": [
+      "Кр1 · поляна"
+    ],
+    "period": "23.03.2025 – 10.10.2025",
+    "individual_and_bulk_svg_sha256": "d12415825298ea1c21dda507228fdfe05bf64f80a754e65aaf9ad2d985448b48",
+    "order_on_reload": [
+      "air",
+      "air_range",
+      "soil_05",
+      "pressure"
+    ]
+  },
+  "mobile": [
+    {
+      "width": 390,
+      "scrollWidth": 390,
+      "archive_dialog_width": 362
+    },
+    {
+      "width": 320,
+      "scrollWidth": 320,
+      "archive_dialog_width": 292
+    }
+  ],
+  "download_disabled_without_stations": true,
+  "mutating_http_requests": 0
+}

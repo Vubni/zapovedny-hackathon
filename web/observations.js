@@ -1,4 +1,4 @@
-import { renderChartCard } from "/observation-chart.js";
+import { renderChartCard, download } from "/observation-chart.js";
 import { pickStations } from "/station-map.js";
 
 const chartGroups = [
@@ -7,6 +7,8 @@ const chartGroups = [
     ["air_range", "Минимум и максимум температуры", "°C"],
     ["air_anomaly", "Отклонение от среднего за выбранный период", "°C"],
     ["air_trend", "Тренд температуры воздуха", "°C"],
+    ["temp_difference", "Разница температур · Кр2 − Кр1", "°C"],
+    ["temp_diurnal", "Средний суточный ход температуры", "°C"],
   ]],
   ["Температура почвы", [
     ["soil_05", "Температура почвы на глубине 5 см", "°C"],
@@ -31,13 +33,13 @@ const chartGroups = [
     ["pressure", "Среднее атмосферное давление", "гПа"],
     ["pressure_range", "Минимум и максимум давления", "гПа"],
   ]],
-  ["Сравнение станций", [
-    ["temp_difference", "Разница температур · Кр2 − Кр1", "°C"],
-    ["temp_diurnal", "Средний суточный ход температуры", "°C"],
-  ]],
 ];
 
 const charts = new Map(chartGroups.flatMap(([, items]) => items.map(([id, title, unit]) => [id, { id, title, unit }])));
+function orderedCharts(ids) {
+  const enabled = new Set(ids);
+  return [...charts.keys()].filter(id => enabled.has(id));
+}
 const sources = {
   modern: ["Belchertown", "https://www.belchertownweather.com/graphs/"],
   togu: ["Пособие ТОГУ", "https://togudv.ru/media/filer_public/49/4a/494aa07f-81f4-4bfd-bb8b-f8dc6519843f/meteorology-and-klimatology.pdf"],
@@ -142,6 +144,7 @@ function saveAddress() {
 }
 
 const state = restoreState();
+state.charts = orderedCharts(state.charts);
 let stations = [];
 let bounds;
 let waitingForStations = true;
@@ -165,10 +168,77 @@ const modeButtons = document.querySelectorAll(".dash-modes [data-mode]");
 const grainInput = get("observation-grain");
 const catalog = get("chart-catalog");
 const catalogGroups = get("observation-catalog-groups");
-const primary = get("primary-observation");
-const primaryChart = get("primary-chart");
-const secondary = get("secondary-observations");
+const observationGroups = get("observation-groups");
 const summary = get("observation-summary");
+const displayedGroups = chartGroups.map(([name, items]) => {
+  const section = document.createElement("section");
+  const heading = document.createElement("h3");
+  const grid = document.createElement("div");
+  section.className = "observation-group";
+  section.setAttribute("aria-label", name);
+  heading.className = "observation-group-title";
+  heading.textContent = name;
+  grid.className = "observation-group-grid";
+  section.append(heading, grid);
+  observationGroups.append(section);
+  return { section, heading, grid, ids: items.map(([id]) => id) };
+});
+
+const exportAll = get("download-all-charts");
+const exportDialog = get("chart-export-dialog");
+const exportMessage = get("chart-export-message");
+let exporting = false;
+
+function openCardsInOrder() {
+  return Array.from(document.querySelectorAll("[data-observation-chart]"), element =>
+    cards.get(element.dataset.observationChart));
+}
+
+function updateBulkExport() {
+  const opened = openCardsInOrder();
+  const ready = state.selected.length && opened.length && opened.every(card => card?.status === "ready" && card.instance);
+  exportAll.disabled = exporting || !ready;
+  exportAll.setAttribute("aria-busy", String(exporting));
+  if (exportDialog.open) {
+    if (!ready) exportDialog.close();
+    else get("chart-export-count").textContent = `Графиков в ZIP-архиве: ${opened.length}. Выберите формат изображений.`;
+  }
+}
+
+exportAll.addEventListener("click", () => {
+  exportMessage.hidden = true;
+  exportDialog.showModal();
+  updateBulkExport();
+});
+
+exportDialog.addEventListener("click", async event => {
+  const format = event.target.closest("[data-archive-format]")?.dataset.archiveFormat;
+  if (!format || exporting) return;
+  const opened = openCardsInOrder();
+  if (!opened.length || opened.some(card => card?.status !== "ready" || !card.instance)) {
+    updateBulkExport();
+    return;
+  }
+  exportDialog.close();
+  exporting = true;
+  updateBulkExport();
+  exportMessage.hidden = false;
+  exportMessage.textContent = "Собираем графики в ZIP…";
+  const name = `Метеоархив_${state.start}_${state.end}_${format}.zip`;
+  try {
+    // Each card captures its legend and zoom before asynchronous raster conversion starts.
+    const files = await Promise.all(opened.map(card => card.instance.exportFile(format, { includeEmpty: true })));
+    const { createChartArchive } = await import("/chart-archive.js");
+    const archive = await createChartArchive(files);
+    download(archive, name);
+    exportMessage.textContent = `Скачивание началось. Файлов в архиве: ${files.length}.`;
+  } catch {
+    exportMessage.textContent = "Не удалось собрать архив графиков. Попробуйте скачать его ещё раз.";
+  } finally {
+    exporting = false;
+    updateBulkExport();
+  }
+});
 
 async function requestJson(url, signal) {
   const response = await fetch(url, { signal });
@@ -362,7 +432,7 @@ function updateCatalog() {
 
 function toggleChart(id, keepFocus = false) {
   const index = state.charts.indexOf(id);
-  state.charts = index < 0 ? [...state.charts, id] : state.charts.filter(current => current !== id);
+  state.charts = index < 0 ? orderedCharts([...state.charts, id]) : state.charts.filter(current => current !== id);
   saveState();
   updateCatalog();
   updateCharts();
@@ -392,10 +462,11 @@ function renderCard(card) {
   } else {
     const { start, end, grain, mode } = state;
     card.instance = renderChartCard(card.mount, card.data, {
-      mode, grain, from: start, to: end, primary: card.id === state.charts[0],
+      mode, grain, from: start, to: end, primary: card.primary,
       onHide: () => toggleChart(card.id, true),
     });
   }
+  updateBulkExport();
 }
 
 function createCard(id) {
@@ -422,6 +493,7 @@ function updateCard(card, retry) {
   });
   const queryKey = waitingForStations ? "waiting" : state.selected.length ? query.toString() : "no-stations";
   const primaryCard = card.id === state.charts[0];
+  card.element.classList.toggle("is-primary", primaryCard);
   if (card.key === queryKey && !(retry && card.status === "error")) {
     if (card.primary !== primaryCard) {
       card.primary = primaryCard;
@@ -527,24 +599,41 @@ function renderSummary(card) {
 
 function updateCharts({ retry = false } = {}) {
   clearTimeout(renderTimer);
+  const selected = new Set(state.charts);
+  const [primaryId] = state.charts;
   for (const [id, card] of cards) {
-    if (!state.charts.includes(id)) {
+    if (!selected.has(id)) {
       card.controller?.abort();
       card.instance?.destroy();
       card.element.remove();
       cards.delete(id);
     }
   }
-  primary.hidden = !state.charts.length;
-  secondary.hidden = state.charts.length < 2;
-  get("hidden-observations").hidden = !!state.charts.length;
-  state.charts.forEach((id, index) => {
-    const card = cards.get(id) || createCard(id);
-    const parent = index ? secondary : primaryChart;
-    if (card.element.parentElement !== parent) parent.append(card.element);
-    updateCard(card, retry);
-  });
-  if (state.charts.length) renderSummary(cards.get(state.charts[0]));
+  observationGroups.hidden = !selected.size;
+  summary.hidden = !selected.size;
+  get("hidden-observations").hidden = !!selected.size;
+
+  for (const { section, heading, grid, ids } of displayedGroups) {
+    const visible = ids.filter(id => selected.has(id));
+    section.hidden = !visible.length;
+    heading.hidden = selected.size < 2;
+    grid.classList.toggle("has-primary", visible.includes(primaryId));
+    grid.classList.toggle("has-one-card", visible.length === 1);
+
+    // Insert new cards against their existing neighbors to keep mounted chart controls and dialogs in place.
+    let next = null;
+    for (const id of visible.reverse()) {
+      const card = cards.get(id) || createCard(id);
+      if (!card.element.parentElement) grid.insertBefore(card.element, next);
+      next = card.element;
+    }
+  }
+
+  const primaryCard = cards.get(primaryId);
+  if (primaryCard && primaryCard.element.nextElementSibling !== summary) primaryCard.element.after(summary);
+  for (const id of state.charts) updateCard(cards.get(id), retry);
+  if (primaryCard) renderSummary(primaryCard);
+  updateBulkExport();
 }
 
 get("dashboard-dates").addEventListener("submit", event => {

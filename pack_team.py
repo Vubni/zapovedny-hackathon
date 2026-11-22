@@ -78,7 +78,7 @@ def pack(destination):
                         "r = create_report(q, b'', ''); "
                         "print(r['counts']['excluded'], report_excel(r)[1][:2])"], "38 b'PK'")
         check(project, ["station_model.py", "--output", "trial-model.json"], "Кр1")
-        for rel in ("web/observations.html", "web/observations.js", "web/station-map-data.js",
+        for rel in ("web/observations.html", "web/observations.js", "web/chart-archive.js", "web/station-map-data.js",
                     "web/observation-chart.js", "web/files-page.html", "web/files-page.js",
                     "web/fonts/manrope.ttf", "web/fonts/OFL-Manrope.txt",
                     "web/index.html", "web/app.js", "web/import.html", "web/import.js",

@@ -1,5 +1,12 @@
 .observations-page [hidden] { display: none; }
 .observations-page .heading-line .btn { text-decoration: none; }
+.observations-page .board-title, .board-actions, .export-formats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chart-export-dialog { width: min(380px, calc(100% - 28px)); max-width: none; border: 0; border-radius: 16px; padding: 20px 24px; color: var(--ink); background: var(--paper); }
+.chart-export-dialog::backdrop { background: #172c2379; }
+.chart-export-dialog .dialog-header { margin: 0 0 10px; }
+.chart-export-dialog h2 { margin: 0; font-size: 20px; }
+.chart-export-dialog .icon-btn { font-size: 19px; }
+.chart-export-dialog .export-formats { margin-top: 16px; }
 .observations-page .dash-controls {
   grid-template-columns: minmax(385px, 1.2fr) minmax(0, 2fr);
   align-items: center;
@@ -92,11 +99,28 @@
   color: var(--ink);
   cursor: pointer;
 }
-#primary-chart { min-width: 0; }
-#primary-chart > article,
-#primary-chart .observation-card-mount,
-#primary-chart .observation-card-mount > .obs-chart__panel,
-#primary-chart .observation-card-placeholder { height: 100%; }
+.observation-groups {
+  display: grid;
+  gap: 23px;
+}
+.observation-group {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+}
+.observation-group-title { font-size: 15px; }
+.observation-group-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 19px;
+}
+.observation-group-grid > article { grid-column: span 5; min-width: 0; }
+.observation-group-grid.has-one-card:not(.has-primary) > article { grid-column: 1 / -1; }
+.observation-group-grid > article.is-primary { grid-column: span 7; }
+.observation-group-grid > #observation-summary { grid-column: span 3; }
+.observation-group-grid .observation-card-mount,
+.observation-group-grid .observation-card-mount > .obs-chart__panel,
+.observation-group-grid .observation-card-placeholder { height: 100%; }
 .observations-page .focus-card h2 { font-size: 21px; }
 .observation-summary-values { display: grid; gap: 8px; }
 .observation-summary-values strong { text-align: right; white-space: nowrap; }
@@ -133,6 +157,12 @@
 
 @media (max-width: 1150px) {
   .observations-page .dash-controls { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 950px) {
+  .observation-group-grid { grid-template-columns: minmax(0, 1fr); }
+  .observation-group-grid > article,
+  .observation-group-grid > article.is-primary,
+  .observation-group-grid > #observation-summary { grid-column: 1; }
 }
 @media (max-width: 480px) {
   .observations-page .heading-line { align-items: flex-start; flex-wrap: wrap; }
