@@ -1,0 +1,158 @@
+.temperature-shell { max-width: 1160px; }
+.temperature-nav .nav-button { display: inline-flex; align-items: center; text-decoration: none; }
+
+.temperature-filters {
+  grid-template-columns: minmax(145px, 1fr) minmax(160px, 3fr);
+  align-items: start;
+  padding: 12px 15px;
+}
+.temperature-range {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+.temperature-range label { margin: 0; }
+.temperature-range output { grid-column: 3; color: var(--forest); font-weight: 750; font-variant-numeric: tabular-nums; }
+.temperature-range input {
+  grid-column: 1 / -1;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--forest);
+}
+.temperature-range input:enabled { cursor: ew-resize; }
+.temperature-year-range {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: .77rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.temperature-data {
+  margin-top: 15px;
+  padding: 15px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.temperature-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 13px; }
+.temperature-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.temperature-stats dt { color: var(--muted); font-size: .76rem; font-weight: 620; }
+.temperature-stats dd { margin: 2px 0 0; font-size: .88rem; font-weight: 650; }
+.temperature-extreme {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: .18em;
+  font-weight: inherit;
+}
+.temperature-extreme:hover { color: var(--forest); }
+.temperature-extreme span { display: inline-block; white-space: nowrap; }
+
+.temperature-legend { padding: 10px 0 9px; border-top: 1px solid var(--line); margin-top: 12px; }
+.temperature-legend p { margin-bottom: 5px; color: var(--muted); font-size: .8rem; font-weight: 650; }
+.temperature-scale,
+.temperature-legend-quality { display: flex; flex-wrap: wrap; gap: 3px 10px; margin: 0; padding: 0; list-style: none; }
+.temperature-legend-quality { margin-top: 4px; }
+.temperature-legend li { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; font-size: .73rem; }
+.temperature-swatch {
+  flex: none;
+  width: 14px;
+  height: 12px;
+  border: 1px solid #798579;
+  border-radius: 3px;
+  background: var(--temperature-fill);
+}
+[data-band="0"] { --temperature-fill: #274475; --temperature-text: #fff; }
+[data-band="1"] { --temperature-fill: #416a9c; --temperature-text: #fff; }
+[data-band="2"] { --temperature-fill: #a9c9e7; --temperature-text: #192e45; }
+[data-band="3"] { --temperature-fill: #e8efe2; --temperature-text: #253324; }
+[data-band="4"] { --temperature-fill: #f3d099; --temperature-text: #543117; }
+[data-band="5"] { --temperature-fill: #e9a16e; --temperature-text: #492614; }
+[data-band="6"] { --temperature-fill: #a54437; --temperature-text: #fff; }
+[data-band="missing"] { --temperature-fill: #fffefa; --temperature-text: #526256; }
+[data-band="invalid"] {
+  --temperature-fill: repeating-linear-gradient(-45deg, #f7f3ee 0 3px, #e5dbce 3px 5px);
+  --temperature-text: #452f29;
+}
+
+.temperature-keys { margin-bottom: 7px; color: var(--muted); font-size: .78rem; }
+.temperature-detail {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 13px;
+  min-height: 60px;
+  margin-bottom: 12px;
+  padding: 7px 10px;
+  border: 1px solid #c6d3c2;
+  border-radius: 7px;
+  background: #f3f6ef;
+}
+.temperature-reading { color: var(--forest); font-weight: 750; font-variant-numeric: tabular-nums; }
+.temperature-reason { color: var(--muted); font-size: .76rem; }
+.temperature-detail .button { flex: none; min-height: 32px; padding: 5px 9px; font-size: .76rem; }
+
+.temperature-months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.temperature-month {
+  min-width: 0;
+  margin: 0;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.temperature-month h3 { margin-bottom: 4px; color: var(--forest); font-size: .86rem; }
+.temperature-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; text-align: center; }
+.temperature-weekday { color: var(--muted); font-size: .65rem; }
+.temperature-day {
+  min-width: 0;
+  min-height: 23px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: var(--temperature-fill);
+  color: var(--temperature-text);
+  font-size: .72rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  scroll-margin-top: 120px;
+}
+.temperature-day[data-band="missing"] { border-color: #c9cec0; border-style: dashed; }
+.temperature-day[data-band="invalid"] { border-color: #bcaa96; }
+.temperature-day:hover, .temperature-day[aria-pressed="true"] { border: 2px solid #172f26; }
+.temperature-day:focus-visible { outline: 2px solid #172f26; outline-offset: 1px; z-index: 1; }
+
+@media (max-width: 1040px) {
+  .temperature-months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 750px) {
+  .temperature-months { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .temperature-section-heading { display: block; }
+  .temperature-stats { margin-top: 7px; }
+}
+@media (max-width: 520px) {
+  .temperature-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .temperature-stats { display: grid; grid-template-columns: minmax(0, .85fr) repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .temperature-data { padding: 9px; }
+  .temperature-months { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .temperature-month { padding: 5px; }
+  .temperature-day { min-height: 25px; }
+  .temperature-detail { flex-wrap: wrap; }
+}
+@media (max-width: 340px) {
+  .temperature-filters { grid-template-columns: minmax(0, 1fr); }
+}

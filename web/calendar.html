@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#173e32">
+  <title>Календарь температуры · Урочище «Красное»</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/calendar.css">
+  <script defer src="/calendar.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#temperature-content">К календарю температуры</a>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <a class="brand" href="/">
+        <span>Урочище «Красное»<small>Архив метеонаблюдений</small></span>
+      </a>
+      <nav class="temperature-nav" aria-label="Разделы метеожурнала">
+        <a class="nav-button" href="/">Метеожурнал</a>
+        <span class="nav-button" aria-current="page">Календарь температуры</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="shell temperature-shell" id="temperature-content">
+    <header class="page-heading">
+      <div>
+        <h1>Календарь температуры</h1>
+        <p>Среднесуточная температура воздуха, °C.</p>
+      </div>
+    </header>
+
+    <div class="filters temperature-filters">
+      <div class="filter">
+        <label for="temperature-station">Станция</label>
+        <select id="temperature-station" disabled></select>
+      </div>
+      <div class="filter temperature-range">
+        <label for="temperature-year">Год</label>
+        <output id="temperature-year-value" for="temperature-year"></output>
+        <input type="range" id="temperature-year" min="1992" max="2025" step="1" value="2025"
+          aria-describedby="temperature-year-range" disabled>
+        <div id="temperature-year-range" class="temperature-year-range">
+          <span id="temperature-first-year"></span>
+          <span id="temperature-last-year"></span>
+        </div>
+      </div>
+    </div>
+
+    <p class="status" id="temperature-status" role="status"></p>
+    <section class="temperature-data" id="temperature-data" aria-labelledby="temperature-title" aria-busy="true" hidden>
+      <div class="temperature-section-heading">
+        <h2 id="temperature-title"></h2>
+        <dl class="temperature-stats">
+          <div>
+            <dt>Пригодные сутки</dt>
+            <dd id="temperature-coverage"></dd>
+          </div>
+          <div>
+            <dt>Мин. среднесуточная</dt>
+            <dd id="temperature-minimum"></dd>
+          </div>
+          <div>
+            <dt>Макс. среднесуточная</dt>
+            <dd id="temperature-maximum"></dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="temperature-legend">
+        <p>Общая шкала для всех лет и станций, °C</p>
+        <ul class="temperature-scale" id="temperature-scale" aria-label="Интервалы температуры"></ul>
+        <ul class="temperature-legend-quality" aria-label="Статусы качества">
+          <li><span class="temperature-swatch" data-band="missing" aria-hidden="true"></span>Нет наблюдений</li>
+          <li><span class="temperature-swatch" data-band="invalid" aria-hidden="true"></span>Не прошли контроль качества</li>
+        </ul>
+      </div>
+
+      <p id="temperature-keys" class="temperature-keys">Выберите день на карте. Стрелки ← → меняют день, ↑ ↓ — неделю.</p>
+      <div class="temperature-detail">
+        <div role="status" aria-atomic="true">
+          <p class="temperature-reading" id="temperature-reading"></p>
+          <p class="temperature-reason" id="temperature-reason"></p>
+        </div>
+        <a id="temperature-source" class="button secondary" href="/api/raw" target="_blank" rel="noopener" hidden>Исходные сроки (JSON)</a>
+      </div>
+
+      <div class="temperature-months" id="temperature-months" role="group" aria-label="Дни года"
+        aria-describedby="temperature-keys"></div>
+    </section>
+    <noscript><p class="status">Включите JavaScript, чтобы открыть календарь.</p></noscript>
+  </main>
+
+  <footer class="footer shell temperature-shell">
+    <span>Метеонаблюдения урочища «Красное»</span>
+    <a href="/">К журналу наблюдений</a>
+  </footer>
+</body>
+</html>

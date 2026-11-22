@@ -1,7 +1,4 @@
 __pycache__/
 *.py[cod]
 .DS_Store
-results/weather.sqlite
 results/.weather-build-*/
-handoff/meteo-team.zip
-handoff/Проверка.txt

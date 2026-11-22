@@ -1,6 +1,7 @@
 """Собрать переносимый архив команды и проверить запуск в отдельной папке."""
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -8,14 +9,17 @@ import sys
 from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
+from server import ready
+
 ROOT = Path(__file__).resolve().parent
 FOLDERS = ("web", "checks", "docs", "data", "results")
-SKIP = {"__pycache__", ".DS_Store", "weather.sqlite", "node_modules"}
+SKIP = {"__pycache__", ".DS_Store", "node_modules"}
 
 
 def sources():
     files = {p for p in ROOT.iterdir() if p.is_file() and p.suffix in {".py", ".md"}}
     files.add(ROOT / ".gitignore")
+    files.add(ROOT / ".gitattributes")
     config = ROOT / ".impeccable" / "config.json"
     if config.is_file():
         files.add(config)
@@ -35,6 +39,7 @@ def check(project, command, expected):
 
 
 def pack(destination):
+    ready()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=destination.parent) as stage:
         stage = Path(stage)
@@ -50,6 +55,12 @@ def pack(destination):
                 raise ValueError("Повреждён член архива")
             archive.extractall(project)
             file_count = len(archive.namelist())
+        database = project / "results" / "weather.sqlite"
+        manifest = json.loads((project / "results" / "build.json").read_text(encoding="utf-8"))
+        if hashlib.sha256(database.read_bytes()).hexdigest() != manifest["database_sha256"]:
+            raise ValueError("Контрольная сумма базы в комплекте не совпала с манифестом")
+        check(project, ["journal.py"], "334/366")
+        database.unlink()  # Rehearse a cold rebuild in the temporary extracted copy.
         check(project, ["research_results.py"], "оба наклона")
         check(project, ["journal.py"], "334/366")
         check(project, ["replay_day.py", "results/examples/kr1-pressure-april-29-incomplete.json",
@@ -57,15 +68,18 @@ def pack(destination):
         check(project, ["import_station.py", "--station", "kr1", "--year", "2024", "--input",
                         "results/examples/kr1-station-2024-04-01.json", "--output-dir", "trial-import"],
               "Прочитано строк: 48")
-        for rel in ("web/index.html","web/app.js","web/import.html","web/import.js"):
+        for rel in ("web/index.html", "web/app.js", "web/import.html", "web/import.js",
+                    "web/events.html", "web/events.js", "web/forecast.html", "web/forecast.js",
+                    "web/forecast-example.json", "web/calendar.html", "web/calendar.js",
+                    "web/calendar.css", "docs/Защита-exeCUtor.pdf"):
             if not (project / rel).is_file():
-                raise ValueError(f"Отсутствует файл интерфейса {rel}")
+                raise ValueError(f"Отсутствует файл для показа {rel}")
         sha = hashlib.sha256(packet.read_bytes()).hexdigest()
         note = stage / "proof.txt"
         note.write_text(
             f"{destination.name} · SHA-256 {sha}\n"
             f"Проверено файлов {file_count}, Python {sys.version.split()[0]}.\n"
-            "В отдельной папке проверены CRC, сборка из исходного ZIP, воспроизведение исследования и месячного расчёта, сверка "
+            "В отдельной папке проверены CRC, SHA-256 комплектной базы, запуск с базой и повторная сборка из исходного ZIP, воспроизведение исследования и месячного расчёта, сверка "
             "со всеми 31 исходными строками 29 апреля и импорт 48 наблюдений за 1 апреля.\n"
             "Отчёт фактического браузерного прогона этой версии находится в results/browser/acceptance.json.\n",
             encoding="utf-8")

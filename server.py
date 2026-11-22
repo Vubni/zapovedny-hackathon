@@ -39,6 +39,9 @@ WEB_FILES = {
     "/events": "events.html",
     "/events.html": "events.html",
     "/events.js": "events.js",
+    "/calendar": "calendar.html",
+    "/calendar.js": "calendar.js",
+    "/calendar.css": "calendar.css",
 }
 
 

@@ -1,0 +1,93 @@
+{
+  "kr1": {
+    "station": "kr1",
+    "year": 2025,
+    "coverage": "365 из 365",
+    "invalid": 0,
+    "missing": 0,
+    "minimum": {
+      "day": "2025-02-16",
+      "mean_c": -12.268958333333332
+    },
+    "maximum": {
+      "day": "2025-07-10",
+      "mean_c": 24.312291666666667
+    }
+  },
+  "keyboard": {
+    "minimum": "2025-02-16",
+    "right": "2025-02-17",
+    "down": "2025-02-24"
+  },
+  "warmDay": {
+    "day": "2025-07-10",
+    "mean_c": 24.312291666666667,
+    "valid": true,
+    "source_rows": 24
+  },
+  "mobile": {
+    "viewport": 390,
+    "document": 390,
+    "monthColumns": 2
+  },
+  "kr2": {
+    "station": "kr2",
+    "year": 2025,
+    "coverage": "361 из 365",
+    "invalid": 4,
+    "missing": 0,
+    "minimum": {
+      "day": "2025-02-16",
+      "mean_c": -11.740416666666667
+    },
+    "maximum": {
+      "day": "2025-07-10",
+      "mean_c": 24.55925
+    }
+  },
+  "invalidDay": {
+    "day": "2025-05-23",
+    "valid": false,
+    "source_rows": 15
+  },
+  "fixedScale": [
+    "rgb(39, 68, 117)",
+    "rgb(65, 106, 156)",
+    "rgb(169, 201, 231)",
+    "rgb(232, 239, 226)",
+    "rgb(243, 208, 153)",
+    "rgb(233, 161, 110)",
+    "rgb(165, 68, 55)"
+  ],
+  "yearSlider": {
+    "mouse": 2022,
+    "end": 2025,
+    "left": 2024
+  },
+  "zeroDay": {
+    "day": "2023-01-18",
+    "mean_c": 0,
+    "valid": true,
+    "source_rows": 24
+  },
+  "emptyYear": {
+    "station": "ame60",
+    "year": 2000,
+    "coverage": "0 из 366",
+    "invalid": 0,
+    "missing": 366,
+    "minimum": null,
+    "maximum": null
+  },
+  "emptyDay": {
+    "day": "2000-02-29",
+    "mean_c": null,
+    "valid": false,
+    "source_rows": 0
+  },
+  "desktop": {
+    "viewport": 1280,
+    "document": 1280,
+    "monthColumns": 6
+  }
+}
