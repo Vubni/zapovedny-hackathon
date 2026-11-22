@@ -1,0 +1,320 @@
+{
+  "pages": [
+    "/forecast",
+    "/events",
+    "/calendar"
+  ],
+  "browser": "Chromium",
+  "methods": {
+    "topToText": "Расстояние в CSS px от верхнего края рамки прокрутки до DOM Range текста первой ячейки заголовка при начальной прокрутке.",
+    "widthSweep": "Проверка переполнения документа и выхода текста дней, дней недели и подписей сводки за границы элементов."
+  },
+  "before": [
+    {
+      "width": 390,
+      "route": "forecast",
+      "wrappers": [
+        {
+          "label": "Дата",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {},
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 390,
+      "route": "events",
+      "wrappers": [
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        },
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {
+        "footer a": "10.95px"
+      },
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 390,
+      "route": "calendar",
+      "wrappers": [],
+      "fonts": {
+        ".temperature-year-range span": "11.55px",
+        ".temperature-legend li": "10.95px",
+        ".temperature-keys": "11.7px",
+        ".temperature-weekday": "9.75px",
+        ".temperature-day": "10.8px",
+        ".temperature-reason": "11.4px",
+        ".temperature-stats dt": "11.4px",
+        "#temperature-station": "12.9px",
+        "footer a": "10.95px"
+      },
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 1280,
+      "route": "forecast",
+      "wrappers": [
+        {
+          "label": "Дата",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {},
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 1280,
+      "route": "events",
+      "wrappers": [
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        },
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {
+        "footer a": "10.95px"
+      },
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 1280,
+      "route": "calendar",
+      "wrappers": [],
+      "fonts": {
+        ".temperature-year-range span": "11.55px",
+        ".temperature-legend li": "10.95px",
+        ".temperature-keys": "11.7px",
+        ".temperature-weekday": "9.75px",
+        ".temperature-day": "10.8px",
+        ".temperature-reason": "11.4px",
+        ".temperature-stats dt": "11.4px",
+        "#temperature-station": "12.9px",
+        "footer a": "10.95px"
+      },
+      "horizontalOverflow": 0
+    }
+  ],
+  "after": [
+    {
+      "width": 390,
+      "route": "forecast",
+      "wrappers": [
+        {
+          "label": "Дата",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {},
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 390,
+      "route": "events",
+      "wrappers": [
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        },
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {
+        "footer a": "10.95px"
+      },
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 390,
+      "route": "calendar",
+      "wrappers": [],
+      "fonts": {
+        ".temperature-year-range span": "14.25px",
+        ".temperature-legend li": "14.25px",
+        ".temperature-keys": "14.25px",
+        ".temperature-weekday": "12px",
+        ".temperature-day": "14.25px",
+        ".temperature-reason": "14.25px",
+        ".temperature-stats dt": "14.25px",
+        "#temperature-station": "14.25px",
+        "footer a": "12px"
+      },
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 1280,
+      "route": "forecast",
+      "wrappers": [
+        {
+          "label": "Дата",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {},
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 1280,
+      "route": "events",
+      "wrappers": [
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        },
+        {
+          "label": "Станция",
+          "paddingTop": "6px",
+          "paddingLeft": "15px",
+          "topToText": 8,
+          "wrapperBorder": "1px"
+        }
+      ],
+      "fonts": {
+        "footer a": "10.95px"
+      },
+      "horizontalOverflow": 0
+    },
+    {
+      "width": 1280,
+      "route": "calendar",
+      "wrappers": [],
+      "fonts": {
+        ".temperature-year-range span": "14.25px",
+        ".temperature-legend li": "14.25px",
+        ".temperature-keys": "14.25px",
+        ".temperature-weekday": "12px",
+        ".temperature-day": "14.25px",
+        ".temperature-reason": "14.25px",
+        ".temperature-stats dt": "14.25px",
+        "#temperature-station": "14.25px",
+        "footer a": "12px"
+      },
+      "horizontalOverflow": 0
+    }
+  ],
+  "calendarWidths": [
+    {
+      "width": 280,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 320,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 365,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 366,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 390,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 521,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 610,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 751,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 1024,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 1151,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    },
+    {
+      "width": 1280,
+      "pageOverflow": 0,
+      "collisions": [],
+      "count": 0
+    }
+  ],
+  "impeccable": {
+    "scopedExceptions": {
+      "cramped-padding": [
+        "web/events.html",
+        "web/forecast.html"
+      ]
+    },
+    "qualityWarnings": {
+      "4.3.1": 0,
+      "4.9.0": 0
+    }
+  }
+}

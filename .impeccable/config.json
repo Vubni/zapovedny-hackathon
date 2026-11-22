@@ -2,6 +2,17 @@
   "detector": {
     "ignoreRules": [],
     "ignoreFiles": [],
-    "ignoreValues": []
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "web/events.html",
+          "web/forecast.html"
+        ],
+        "createdAt": "2026-11-22T08:51:04.431Z",
+        "reason": "Проверка Codex в Chromium при 390 и 1280 px: в трёх таблицах от верхней рамки прокрутки до текста заголовка 8 px, слева от края до текста первой ячейки 15 px. Скролл-контейнер охватывает таблицу, отступы задают ячейки."
+      }
+    ]
   }
 }
