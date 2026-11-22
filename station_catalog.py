@@ -1,15 +1,12 @@
 """Station passports for the observation workspace and its interactive map."""
 import json
 import math
-import os
 import re
-import sqlite3
 import uuid
-from contextlib import closing
-from pathlib import Path
 
-from analytics import PARAMS, ROOT, metadata
+from analytics import PARAMS, metadata
 from build_data import STATIONS
+from observations_db import connection
 
 
 COLORS = ("#2b7650", "#426583", "#735579", "#945320", "#507f76", "#854f64")
@@ -17,11 +14,6 @@ ARCHIVE_COLORS = dict(kr1=COLORS[0], kr2=COLORS[1], ame60=COLORS[2])
 ARCHIVE_TERRAIN = {"kr1": "clearing", "kr2": "field"}
 TERRAIN_TYPES = {"clearing", "field", "forest", "wetland", "settlement", "other", "unknown"}
 AREA = (56.52, 32.87)
-
-
-def local_db_path():
-    override = os.environ.get("METEO_OBSERVATION_DB")
-    return Path(override) if override else ROOT / ".local" / "observations.sqlite3"
 
 
 def catalog():
@@ -33,20 +25,22 @@ def catalog():
                     terrain=ARCHIVE_TERRAIN.get(key, "unknown"),
                     minimum_slots=passport.minimum_slots, slot_minutes=passport.slot_minutes,
                     latitude=AREA[0], longitude=AREA[1], location_precision="area")
-    db_path = local_db_path()
-    if db_path.exists():
-        with closing(sqlite3.connect(db_path)) as conn:
-            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='registered_stations'").fetchone():
-                stations.extend(json.loads(body) for (body,) in
-                                conn.execute("SELECT passport FROM registered_stations ORDER BY rowid"))
-        from observation_store import all_date_bounds
-        published = all_date_bounds()
-        for item in stations:
-            item.setdefault("terrain", "unknown")
-            bounds = published.get(item["id"])
-            if bounds:
-                item["start"] = min(item["start"] or bounds[0], bounds[0])
-                item["end"] = max(item["end"] or bounds[1], bounds[1])
+    with connection() as db:
+        if db is None:
+            return stations
+        if db.table_exists("registered_stations"):
+            order = "ordinal" if db.is_postgres else "rowid"
+            stations.extend(json.loads(body) for (body,) in
+                            db.execute(f"SELECT passport FROM registered_stations ORDER BY {order}"))
+
+    from observation_store import all_date_bounds
+    published = all_date_bounds()
+    for item in stations:
+        item.setdefault("terrain", "unknown")
+        bounds = published.get(item["id"])
+        if bounds:
+            item["start"] = min(item["start"] or bounds[0], bounds[0])
+            item["end"] = max(item["end"] or bounds[1], bounds[1])
     return stations
 
 
@@ -100,21 +94,15 @@ def register_station(payload):
         raise ValueError("Проверьте единицу учёта покрытия и суточный порог в паспорте станции.")
     if key in STATIONS or label.casefold() in {s["label"].casefold() for s in metadata()["stations"]}:
         raise ValueError("Станция с таким кодом или названием уже есть.")
-    path = local_db_path()
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with closing(sqlite3.connect(path, timeout=10)) as conn, conn:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute("CREATE TABLE IF NOT EXISTS registered_stations "
-                     "(id TEXT PRIMARY KEY,name_key TEXT UNIQUE NOT NULL,passport TEXT NOT NULL)")
-        count, = conn.execute("SELECT COUNT(*) FROM registered_stations").fetchone()
+    with connection(write=True) as db:
+        count, = db.execute("SELECT COUNT(*) FROM registered_stations").fetchone()
         item = dict(id=key, label=label, profile=profile, terrain=terrain, minimum_slots=minimum, slot_minutes=step,
                     color=COLORS[(len(STATIONS) + count) % len(COLORS)], latitude=lat, longitude=lon,
                     location_precision="exact" if lat is not None else "unknown", archive=False,
                     start=None, end=None, params=[dict(id=p, label=PARAMS[p][0], unit=PARAMS[p][1])
                                                   for p in dict.fromkeys(params)])
-        try:
-            conn.execute("INSERT INTO registered_stations VALUES (?,?,?)",
-                         (key, label.casefold(), json.dumps(item, ensure_ascii=False)))
-        except sqlite3.IntegrityError:
-            raise ValueError("Станция с таким кодом или названием уже есть.") from None
+        inserted = db.execute("INSERT INTO registered_stations (id,name_key,passport) VALUES (?,?,?) "
+                              "ON CONFLICT DO NOTHING", (key, label.casefold(), json.dumps(item, ensure_ascii=False)))
+        if inserted.rowcount != 1:
+            raise ValueError("Станция с таким кодом или названием уже есть.")
     return {"station": item}

@@ -12,12 +12,13 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 from server import ready
 
 ROOT = Path(__file__).resolve().parent
-FOLDERS = ("web", "checks", "docs", "data", "results")
+FOLDERS = ("web", "checks", "docs", "data", "results", "docker")
 SKIP = {"__pycache__", ".DS_Store", "node_modules"}
 
 
 def sources():
     files = {p for p in ROOT.iterdir() if p.is_file() and p.suffix in {".py", ".md"}}
+    files.update(ROOT / name for name in ("Dockerfile", "compose.yaml", ".dockerignore", "requirements-container.txt"))
     files.add(ROOT / ".gitignore")
     files.add(ROOT / ".gitattributes")
     config = ROOT / ".impeccable" / "config.json"
@@ -32,8 +33,9 @@ def sources():
 
 
 def check(project, command, expected):
+    env = dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(project / ".local" / "observations.sqlite3"))
     result = subprocess.run([sys.executable, "-B", *command], cwd=project, capture_output=True,
-                            text=True, encoding="utf-8", check=True)
+                            text=True, encoding="utf-8", check=True, env=env)
     if expected not in result.stdout:
         raise ValueError(f"Не подтвердился результат {command}: {result.stdout}")
 
@@ -78,7 +80,10 @@ def pack(destination):
                         "r = create_report(q, b'', ''); "
                         "print(r['counts']['excluded'], report_excel(r)[1][:2])"], "38 b'PK'")
         check(project, ["station_model.py", "--output", "trial-model.json"], "Кр1")
-        for rel in ("web/observations.html", "web/observations.js", "web/chart-archive.js", "web/station-map-data.js",
+        for rel in ("Dockerfile", "compose.yaml", ".dockerignore", "docker/10-app-role.sql",
+                    "requirements-container.txt", "setup_compose.py", "serve_container.py", "observations_db.py",
+                    "migrate_observations.py", "docs/СТЕК.md", "results/stack/verification.json",
+                    "web/observations.html", "web/observations.js", "web/chart-archive.js", "web/station-map-data.js",
                     "web/observation-chart.js", "web/files-page.html", "web/files-page.js",
                     "web/yandex-location.js", "web/yandex-station-sdk.js", "web/coverage-overview.js",
                     "web/russia-map-data.js", "web/precip-boundary.js", "web/observation-timeline.js",

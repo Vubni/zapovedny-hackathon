@@ -4,10 +4,8 @@ from __future__ import annotations
 import csv
 import json
 import re
-import sqlite3
 import zlib
 from collections import Counter
-from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
 from io import BytesIO, StringIO
 from itertools import groupby
@@ -19,6 +17,7 @@ from analytics import PARAMS
 from build_data import LIMITS
 from external_fill import MAX_DAYS, MODELS, ZONES, apply_estimates
 from gap_fill import estimate_bounds, fill_settings, station_estimates
+from observations_db import connection
 from review_excel import (
     BAD, ESTIMATED, GOOD, _cell, _column, _header, _row, _sheet_open, _write_package,
 )
@@ -27,7 +26,7 @@ from review_filter import (
     number, prepare, quality_metadata, quality_options, resolve_conflicts, uploaded_observations,
 )
 from review_upload import MAX_BYTES, SourceRow, csv_rows, read_upload
-from station_catalog import catalog, local_db_path
+from station_catalog import catalog
 
 MIME_TYPES = {
     ".csv": "text/csv; charset=utf-8",
@@ -49,81 +48,14 @@ FILL_OPTIONS = [
 POINT_BUDGET = 1200
 TIMELINE_BUDGET = 1500
 MAX_CORRECTED_BYTES = 16 * 1024 * 1024
-CORRECTIONS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS file_corrections (
-    file_id TEXT NOT NULL REFERENCES files(id),
-    revision TEXT NOT NULL,
-    parent_revision TEXT NOT NULL,
-    filename TEXT NOT NULL,
-    original_csv BLOB NOT NULL,
-    parent_result BLOB NOT NULL,
-    parent_meta TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (file_id, revision)
-);
-"""
-SCHEMA = """
-BEGIN IMMEDIATE;
-CREATE TABLE IF NOT EXISTS files (
-    id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    mime TEXT NOT NULL,
-    original BLOB NOT NULL,
-    source BLOB,
-    columns TEXT NOT NULL,
-    rows INTEGER NOT NULL,
-    start TEXT,
-    end TEXT,
-    station TEXT NOT NULL,
-    error TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    generation INTEGER NOT NULL DEFAULT 0,
-    version INTEGER NOT NULL DEFAULT 0,
-    draft BLOB,
-    draft_meta TEXT,
-    confirmed BLOB,
-    confirmed_meta TEXT,
-    confirmed_order INTEGER
-);
-CREATE TABLE IF NOT EXISTS published (
-    file_id TEXT NOT NULL REFERENCES files(id),
-    station TEXT NOT NULL,
-    time TEXT NOT NULL,
-    synthetic INTEGER NOT NULL,
-    data TEXT NOT NULL,
-    PRIMARY KEY (file_id, time)
-);
-CREATE INDEX IF NOT EXISTS published_station_time ON published (station, time);
-COMMIT;
-"""
 FILE_COLUMNS = (
-    "id, filename, columns, rows, start, end, station, error, created_at, updated_at, "
+    'id, filename, columns, rows, start, "end", station, error, created_at, updated_at, '
     "generation, version, draft_meta, confirmed_meta"
 )
 
 
-@contextmanager
 def _database(*, write=False):
-    path = local_db_path().resolve()
-    if not write and not path.is_file():
-        yield None
-        return
-    if write:
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    target = path if write else path.as_uri() + "?mode=ro"
-    with closing(sqlite3.connect(target, timeout=15, uri=not write)) as db:
-        db.row_factory = sqlite3.Row
-        exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='published'").fetchone()
-        if not exists:
-            if not write:
-                yield None
-                return
-            db.executescript(SCHEMA)
-        with db:
-            if write:
-                db.execute("BEGIN IMMEDIATE")
-            yield db
+    return connection(write=write, require="published")
 
 
 def _now():
@@ -248,7 +180,7 @@ def upload_file(query, body, content_type):
     identifier, now = uuid4().hex, _now()
     with _database(write=True) as db:
         db.execute(
-            "INSERT INTO files (id, filename, mime, original, source, columns, rows, start, end, station, "
+            'INSERT INTO files (id, filename, mime, original, source, columns, rows, start, "end", station, '
             "error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (identifier, name or "исходный файл", MIME_TYPES.get(suffix, "application/octet-stream"),
              body, source, _dumps(fields or []), rows, start, end, station, error, now, now),
@@ -743,7 +675,6 @@ def corrected_file(query, body, content_type):
         if (current["generation"] != row["generation"] or current["version"] != row["version"]
                 or not current_parent or current_parent["revision"] != parent["revision"]):
             raise ValueError("Версия черновика изменилась. Скачайте актуальный CSV.")
-        db.execute(CORRECTIONS_SCHEMA)
         db.execute(
             "INSERT INTO file_corrections (file_id, revision, parent_revision, filename, original_csv, "
             "parent_result, parent_meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -773,7 +704,10 @@ def confirm_file(query):
     next_version = row["version"] + 1
     confirmed = dict(draft, version=next_version, confirmed_at=_now())
     station = settings["station"]
-    entries = [(row["id"], station, item["datetime"], item["synthetic"], _dumps(item)) for item in payload["rows"]]
+    entries = [
+        (row["id"], station, item["datetime"], int(item["synthetic"]), _dumps(item))
+        for item in payload["rows"]
+    ]
     with _database(write=True) as db:
         current = _lookup(db, query)
         current_record = _record(current)

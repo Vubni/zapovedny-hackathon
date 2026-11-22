@@ -27,7 +27,7 @@ class ObservationStoreTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         database = str(Path(self.directory.name) / ".local" / "test.sqlite3")
-        patcher = patch.dict(os.environ, METEO_OBSERVATION_DB=database)
+        patcher = patch.dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=database)
         patcher.start()
         self.addCleanup(patcher.stop)
 

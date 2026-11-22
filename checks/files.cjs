@@ -423,7 +423,7 @@ async function run() {
   const server = spawn(process.env.PYTHON || "python3", ["-u", "-c", qaServer, workbook], {
     cwd: root,
     env: {
-      ...process.env, METEO_OBSERVATION_DB: database, METEO_ADMIN_PASSWORD: operatorPassword,
+      ...process.env, METEO_DATABASE_URL: "", METEO_OBSERVATION_DB: database, METEO_ADMIN_PASSWORD: operatorPassword,
       METEO_ADMIN_ORIGIN: "", PYTHONDONTWRITEBYTECODE: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],

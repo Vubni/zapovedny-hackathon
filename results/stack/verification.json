@@ -1,0 +1,108 @@
+{
+  "date": "2026-11-22",
+  "environment": "Локальный Docker Desktop. Для проверок записи и отказа использованы отдельный проект Compose, том и синтетический CSV.",
+  "versions": {
+    "docker_engine": "29.9.3",
+    "docker_compose": "5.7.0",
+    "postgres_container": "17.12",
+    "python_container": "3.12.16",
+    "psycopg_container": "3.3.9",
+    "waitress_container": "3.0.2"
+  },
+  "checks": {
+    "python_discovery_passed": 121,
+    "python_discovery_skipped": 0,
+    "additional_external_source_tests_passed": 12,
+    "postgres_integration_suite": "PostgreSQL 15 через локальный Unix-сокет",
+    "real_http_workflow": "PostgreSQL 17 в Docker"
+  },
+  "deployment": {
+    "web_address": "127.0.0.1:8766",
+    "app_uid": 10001,
+    "db_port_published": false,
+    "db_role": "meteo_app",
+    "rolsuper": false,
+    "rolcreatedb": false,
+    "rolcreaterole": false,
+    "web_healthy": true,
+    "db_healthy": true,
+    "public_station_count": 3,
+    "archive_kr1_pressure_valid_days_april_2024": 2
+  },
+  "publication": {
+    "input_temperatures_C": [
+      7,
+      11,
+      -100
+    ],
+    "public_before_confirmation_C": null,
+    "public_after_confirmation_C": 9,
+    "file_without_operator_http": 401,
+    "original_csv_sha256": "e826c537cdb06736a34fd464795b5eaff5f09c31532bc8bf51c637cbb1b2cab5",
+    "both_containers_recreated": true,
+    "same_station_source_revision_and_mean_after_recreation": true,
+    "old_temporary_report_after_web_restart_http": 410
+  },
+  "backup": {
+    "format": "pg_dump custom",
+    "bytes": 10111,
+    "restored_to_separate_db": true,
+    "checked_over_http_against_restored_db": [
+      "station passport",
+      "original CSV SHA-256",
+      "published revision and version",
+      "daily mean 9 C",
+      "operator access"
+    ]
+  },
+  "migration": {
+    "legacy_station_sqlite_snapshot_mounted_read_only": true,
+    "legacy_stations_copied_in_container_test": 1,
+    "transactional_rollback_and_repeated_import_rejection_tested": true
+  },
+  "readiness_during_db_outage_http": [
+    200,
+    503,
+    200
+  ],
+  "browser": {
+    "engine": "Chromium",
+    "command": "METEO_TEST_PORT=8766 node checks/observations.cjs",
+    "passed": true,
+    "mobile_widths_px": [
+      390,
+      320
+    ]
+  },
+  "archive_via_docker_http": {
+    "query": {
+      "station": "ame60",
+      "param": "t_air",
+      "grain": "day",
+      "start": "1992-01-01",
+      "end": "2021-12-31"
+    },
+    "calendar_days": 10958,
+    "verification_months": 360,
+    "valid_daily_means_checked": 8337,
+    "missing_daily_means": 2621,
+    "json_bytes": 4782686,
+    "json_sha256": "454cf70b6c59bb14e19efc95be4168d1484c444312c74648957826e9738b5a3e",
+    "json_requests_ms": [
+      124.15,
+      103.7,
+      131.39
+    ],
+    "json_median_ms": 124.15,
+    "csv_bytes": 2477639,
+    "csv_sha256": "3fc1821f15bd25b444b1d8d8f2e29ec6455c9e828c965ea745ec338c36d14810",
+    "csv_request_ms": 115.24,
+    "note": "Замеры чтения ответов локального сервера на этой машине. Время выполнения работы специалистом отдельно не измерялось."
+  },
+  "limits": [
+    "Один экземпляр веб-сервера",
+    "Вход оператора и временные отчёты привязаны к процессу",
+    "Пропускная способность под многопользовательской нагрузкой не измерена",
+    "Проверка выполнена локально"
+  ]
+}

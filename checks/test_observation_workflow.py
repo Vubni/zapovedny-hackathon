@@ -97,7 +97,7 @@ class ObservationWorkflowTest(unittest.TestCase):
     def http_server(self):
         temporary = Path(self.temp.name)
         password = secrets.token_urlsafe(32)
-        env = dict(os.environ, METEO_OBSERVATION_DB=str(temporary / "observations.sqlite3"),
+        env = dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(temporary / "observations.sqlite3"),
                    METEO_ADMIN_PASSWORD=password, METEO_ADMIN_ORIGIN="")
         with (temporary / "server.log").open("w+", encoding="utf-8") as log:
             with subprocess.Popen(

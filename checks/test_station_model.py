@@ -20,7 +20,8 @@ class StationModelTest(unittest.TestCase):
     def setUp(self):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        env = patch.dict(os.environ, {"METEO_OBSERVATION_DB": str(Path(temporary.name) / "observations.sqlite")})
+        env = patch.dict(os.environ, METEO_DATABASE_URL="",
+                         METEO_OBSERVATION_DB=str(Path(temporary.name) / "observations.sqlite"))
         env.start()
         self.addCleanup(env.stop)
 

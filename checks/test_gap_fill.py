@@ -83,7 +83,7 @@ class GapFillChecks(unittest.TestCase):
 
     def test_file_preview_xlsx_confirmation_and_correction_preserve_methods(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
-            os.environ, METEO_OBSERVATION_DB=str(Path(directory) / "observations.sqlite")
+            os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(Path(directory) / "observations.sqlite")
         ):
             uploaded = store.upload_file({"filename": "station.csv"}, CSV, "text/csv")
             query = dict(COMBINED, id=uploaded["id"])

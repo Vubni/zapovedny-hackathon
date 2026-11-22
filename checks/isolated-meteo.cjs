@@ -24,7 +24,7 @@ async function withIsolatedMeteo(check, { stations = [] } = {}) {
   ], {
     cwd: path.join(__dirname, ".."),
     env: {
-      ...process.env, METEO_OBSERVATION_DB: path.join(temporary, "observations.sqlite3"),
+      ...process.env, METEO_DATABASE_URL: "", METEO_OBSERVATION_DB: path.join(temporary, "observations.sqlite3"),
       YANDEX_MAPS_BROWSER_KEY: "", PYTHONDONTWRITEBYTECODE: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],

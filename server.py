@@ -5,13 +5,14 @@ import mimetypes
 import os
 import re
 import sys
+from contextlib import closing
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from shlex import quote as shell_quote
 from urllib.parse import parse_qs, quote, urlsplit
 
 from admin_auth import OperatorHTTPServer, handle_operator_access
-from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, export_csv, latest_five_days, metadata, raw_day
+from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, database, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
 from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
 from review_service import ReportExpired, create_report, report_excel, report_page
@@ -104,27 +105,37 @@ def ready():
     build(ARCHIVE, DATABASE.parent)
 
 
-class Handler(BaseHTTPRequestHandler):
+def check_ready():
+    from observations_db import check_ready as check_observations
+
+    check_observations()
+    with closing(database()) as index:
+        if index.execute("SELECT 1 FROM daily LIMIT 1").fetchone() is None:
+            raise ValueError("Индекс архива пуст.")
+
+
+class Routes:
+    """Request routing shared by the loopback HTTP and container WSGI adapters."""
+
     def respond(self, body, content_type, status=200, filename=None, *, headers=None):
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        no_store = self.command == "POST" or self.path.startswith((
+        no_store = self.command == "POST" or self.cache_path.startswith((
             "/api/review", "/api/files", "/api/observation", "/api/stations", "/api/map-config", "/api/model",
-            "/api/operator", "/operator", "/files",
+            "/api/operator", "/operator", "/files", "/healthz",
         ))
-        self.send_header("Cache-Control", "no-store" if no_store else "no-cache")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        for name, value in (headers or {}).items():
-            self.send_header(name, value)
+        response_headers = [
+            ("Content-Type", content_type),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-store" if no_store else "no-cache"),
+            ("X-Content-Type-Options", "nosniff"),
+        ]
+        response_headers.extend((headers or {}).items())
         if filename:
             fallback = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
             disposition = f'attachment; filename="{fallback}"'
             if fallback != filename:
                 disposition += "; filename*=UTF-8''" + quote(filename, safe="")
-            self.send_header("Content-Disposition", disposition)
-        self.end_headers()
-        self.wfile.write(body)
+            response_headers.append(("Content-Disposition", disposition))
+        self.write_response(status, response_headers, body)
 
     def send_json(self, value, status=200, filename=None, *, headers=None):
         body = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -132,12 +143,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            parts = urlsplit(self.path)
-            route = parts.path
-            query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
+            route = self.route
+            query = {k: v[-1] for k, v in parse_qs(self.query_string, keep_blank_values=True).items()}
             if handle_operator_access(self, route, query):
                 return
-            if route == "/api":
+            if route == "/healthz":
+                try:
+                    check_ready()
+                except Exception:
+                    self.send_json({"status": "unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                else:
+                    self.send_json({"status": "ok"})
+            elif route == "/api":
                 self.send_json(API)
             elif route == "/api/stations":
                 self.send_json(station_list())
@@ -229,18 +246,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            parts = urlsplit(self.path)
-            query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
-            if handle_operator_access(self, parts.path, query):
+            route = self.route
+            query = {k: v[-1] for k, v in parse_qs(self.query_string, keep_blank_values=True).items()}
+            if handle_operator_access(self, route, query):
                 return
-            file_upload = parts.path in ("/api/files/upload", "/api/files/corrected")
-            action = parts.path in FILE_ACTIONS or parts.path == "/api/stations"
-            if parts.path not in ("/api/import", "/api/review") and not file_upload and not action:
+            file_upload = route in ("/api/files/upload", "/api/files/corrected")
+            action = route in FILE_ACTIONS or route == "/api/stations"
+            if route not in ("/api/import", "/api/review") and not file_upload and not action:
                 self.send_json({"error": "Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
                 return
             source_format = CONTENT_FORMATS.get(self.headers.get_content_type())
-            is_review = parts.path == "/api/review"
-            if parts.path == "/api/import" and source_format is None:
+            is_review = route == "/api/review"
+            if route == "/api/import" and source_format is None:
                 self.send_json({"error": "Выберите файл CSV или JSON"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
                 return
             lengths = self.headers.get_all("Content-Length", [])
@@ -251,18 +268,17 @@ class Handler(BaseHTTPRequestHandler):
                 size = int(lengths[0])
             except ValueError:
                 raise ValueError("Указан неверный размер файла") from None
-            if size < 0 or (parts.path == "/api/import" and size == 0):
+            if size < 0 or (route == "/api/import" and size == 0):
                 raise ValueError("Файл не содержит данных")
             maximum = 64 * 1024 if action else MAX_REVIEW_UPLOAD if is_review or file_upload else MAX_UPLOAD
-            if parts.path == "/api/files/corrected":
+            if route == "/api/files/corrected":
                 from observation_store import MAX_CORRECTED_BYTES
                 maximum = MAX_CORRECTED_BYTES
             if size > maximum:
                 self.send_json({"error": "Слишком большой запрос настроек" if action else
                                 f"Размер файла превышает {maximum // (1024*1024)} МиБ"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 return
-            self.connection.settimeout(10)
-            body = self.rfile.read(size)
+            body = self.read_body(size, timeout=10)
             if len(body) != size:
                 raise ValueError("Файл загружен не полностью")
             if action:
@@ -272,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
                     settings = json.loads(body)
                     if not isinstance(settings, dict):
                         raise ValueError("Настройки должны быть объектом JSON.")
-                    if parts.path in FILE_ACTIONS:
+                    if route in FILE_ACTIONS:
                         settings = {key: value for key, value in settings.items() if value is not None}
                         for key in ("filters", "sources"):
                             items = settings.get(key)
@@ -287,12 +303,12 @@ class Handler(BaseHTTPRequestHandler):
                             elif type(value) not in (str, int):
                                 raise ValueError("Проверьте настройки обработки, фильтры и источники.")
                     query.update(settings)
-                if parts.path == "/api/stations":
+                if route == "/api/stations":
                     self.send_json(register_station(query), 201)
                 else:
                     import observation_store as store
-                    self.send_json(getattr(store, FILE_ACTIONS[parts.path])(query))
-            elif parts.path == "/api/files/corrected":
+                    self.send_json(getattr(store, FILE_ACTIONS[route])(query))
+            elif route == "/api/files/corrected":
                 from observation_store import corrected_file
                 self.send_json(corrected_file(query, body, self.headers.get_content_type()))
             elif file_upload:
@@ -315,6 +331,42 @@ class Handler(BaseHTTPRequestHandler):
             self.log_error("Ошибка импорта: %r", error)
             self.send_json({"error": "Ошибка расчёта. Подробности в журнале сервера."},
                            HTTPStatus.INTERNAL_SERVER_ERROR)
+
+
+class Handler(Routes, BaseHTTPRequestHandler):
+    @property
+    def cache_path(self):
+        try:
+            return self.route
+        except ValueError:
+            return self.path
+
+    @property
+    def route(self):
+        return urlsplit(self.path).path
+
+    @property
+    def query_string(self):
+        return urlsplit(self.path).query
+
+    @property
+    def operator_auth(self):
+        return getattr(self.server, "operator_auth", None)
+
+    @property
+    def local_port(self):
+        return self.server.server_port
+
+    def read_body(self, size, *, timeout):
+        self.connection.settimeout(timeout)
+        return self.rfile.read(size)
+
+    def write_response(self, status, headers, body):
+        self.send_response(status)
+        for name, value in headers:
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(body)
 
 
 def main():

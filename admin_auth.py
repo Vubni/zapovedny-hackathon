@@ -86,7 +86,7 @@ class OperatorAuth:
         host = hosts[0].lower()
         if self.origin:
             return self.origin if host == urlsplit(self.origin).netloc else None
-        port = handler.server.server_port
+        port = handler.local_port
         expected = {"localhost", "127.0.0.1"}
         if port != 80:
             expected = {f"{hostname}:{port}" for hostname in expected}
@@ -102,11 +102,14 @@ class OperatorAuth:
         if not self.request_origin(handler):
             return None
         values = handler.headers.get_all("Cookie", [])
-        if not values:
+        if not values or any("," in value for value in values):
+            return None
+        pairs = "; ".join(values)
+        if sum(part.partition("=")[0].strip() == COOKIE_NAME for part in pairs.split(";")) != 1:
             return None
         cookies = SimpleCookie()
         try:
-            cookies.load("; ".join(values))
+            cookies.load(pairs)
         except CookieError:
             return None
         cookie = cookies.get(COOKIE_NAME)
@@ -172,8 +175,7 @@ def _password_input(handler):
     if not 0 < int(lengths[0]) <= MAX_LOGIN_BYTES:
         raise ValueError("Некорректный запрос входа.")
     size = int(lengths[0])
-    handler.connection.settimeout(5)
-    raw = handler.rfile.read(size)
+    raw = handler.read_body(size, timeout=5)
     if len(raw) != size:
         raise ValueError("Запрос входа передан не полностью.")
     fields = json.loads(raw)
@@ -214,7 +216,7 @@ def _account_request(handler, route, auth):
 
 def handle_operator_access(handler, route, query):
     """Return true when the request has already received a response."""
-    auth = getattr(handler.server, "operator_auth", None)
+    auth = handler.operator_auth
     if route in {SESSION, LOGIN, LOGOUT}:
         _account_request(handler, route, auth)
         return True

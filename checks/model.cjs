@@ -24,7 +24,7 @@ with OperatorHTTPServer(("127.0.0.1", 0), Handler, ROOT) as http:
 async function startServer(directory, password) {
   const child = spawn("python3", ["-c", serverProgram], {
     cwd: path.join(__dirname, ".."),
-    env: { ...process.env, METEO_ADMIN_PASSWORD: password, METEO_ADMIN_ORIGIN: "",
+    env: { ...process.env, METEO_DATABASE_URL: "", METEO_ADMIN_PASSWORD: password, METEO_ADMIN_ORIGIN: "",
       METEO_OBSERVATION_DB: path.join(directory, "observations.sqlite3"), PYTHONDONTWRITEBYTECODE: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });

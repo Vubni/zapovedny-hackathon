@@ -1,0 +1,49 @@
+name: meteoarchive
+services:
+  db:
+    image: postgres:17-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b
+    environment:
+      POSTGRES_DB: meteo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${METEO_PG_ADMIN_PASSWORD:?Run python3 setup_compose.py first}
+      METEO_APP_DB_PASSWORD: ${METEO_APP_DB_PASSWORD:?Run python3 setup_compose.py first}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/10-app-role.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "meteo_app", "-d", "meteo"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  web:
+    build: .
+    environment:
+      METEO_DATABASE_URL: postgresql://meteo_app@db:5432/meteo
+      PGPASSWORD: ${METEO_APP_DB_PASSWORD:?Run python3 setup_compose.py first}
+      METEO_ADMIN_PASSWORD: ${METEO_WEB_OPERATOR_PASSWORD:?Run python3 setup_compose.py first}
+      METEO_ADMIN_ORIGIN: ${METEO_ADMIN_ORIGIN:-}
+      YANDEX_MAPS_BROWSER_KEY: ${YANDEX_MAPS_BROWSER_KEY:-}
+      METEO_PORT: ${METEO_PORT:-8766}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${METEO_PORT:-8766}:${METEO_PORT:-8766}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['METEO_PORT'] + '/healthz', timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+volumes:
+  pg_data:
