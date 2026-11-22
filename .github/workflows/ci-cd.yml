@@ -1,0 +1,75 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Python checks
+        run: python -m unittest discover -s checks
+      - name: Start and check Docker stack
+        run: |
+          python setup_compose.py --up
+          curl -fsS http://127.0.0.1:8766/healthz
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop test containers
+        if: always()
+        run: |
+          if test -f .env; then docker compose down; fi
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.METEO_DEPLOY_ENABLED == 'true'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: meteo-production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy verified revision over SSH
+        env:
+          DEPLOY_HOST: ${{ vars.METEO_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.METEO_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.METEO_DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.METEO_DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?}" "${DEPLOY_USER:?}" "${DEPLOY_KEY:?}" "${DEPLOY_KNOWN_HOSTS:?}"
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf "$ssh_dir"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          target="$DEPLOY_USER@$DEPLOY_HOST"
+          connection=(ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" "$target")
+          git archive --format=tar.gz HEAD | "${connection[@]}" "bash -c '
+            set -euo pipefail
+            umask 077
+            mkdir -p ~/meteo/releases
+            cd ~/meteo
+            exec 9>deploy.lock
+            flock 9
+            release=\$(mktemp -d releases/$GITHUB_SHA.XXXXXX)
+            tar -xzf - -C \"\$release\"
+            python3 \"\$release/setup_compose.py\" --file \"\$PWD/.env\" --up
+            curl -fsS http://127.0.0.1:8766/healthz
+            ln -sfn \"\$release\" current
+          '"
