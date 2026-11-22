@@ -1,0 +1,146 @@
+{
+  "browser": "Chromium 153.0.8010.12",
+  "method": "Расстояние в CSS-пикселях от внешней верхней границы блока прокрутки до ближайшего прямоугольника текста заголовка (DOM Range). Для журнала и сводки загружен результат базовой фильтрации.",
+  "measurements": [
+    {
+      "width": 320,
+      "route": "model",
+      "tables": [
+        {
+          "heading": "Станция и даты теста",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 10,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 320,
+      "route": "review",
+      "tables": [
+        {
+          "heading": "Дата и время",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        },
+        {
+          "heading": "Дата",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 390,
+      "route": "model",
+      "tables": [
+        {
+          "heading": "Станция и даты теста",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 10,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 390,
+      "route": "review",
+      "tables": [
+        {
+          "heading": "Дата и время",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        },
+        {
+          "heading": "Дата",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 768,
+      "route": "model",
+      "tables": [
+        {
+          "heading": "Станция и даты теста",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 768,
+      "route": "review",
+      "tables": [
+        {
+          "heading": "Дата и время",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        },
+        {
+          "heading": "Дата",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 1280,
+      "route": "model",
+      "tables": [
+        {
+          "heading": "Станция и даты теста",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    },
+    {
+      "width": 1280,
+      "route": "review",
+      "tables": [
+        {
+          "heading": "Дата и время",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        },
+        {
+          "heading": "Дата",
+          "topBorderPx": 1,
+          "topToTextPx": 8,
+          "leftToFirstTextPx": 15,
+          "headerPaddingTopPx": 6
+        }
+      ],
+      "horizontalDocumentOverflowPx": 0
+    }
+  ]
+}
