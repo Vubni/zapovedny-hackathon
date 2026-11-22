@@ -55,7 +55,7 @@ h3{font-size:16px;line-height:1.4;font-weight:800;letter-spacing:-.012em}
 .tag.neutral{background:var(--canvas);color:var(--mute)}
 .fields{display:grid;grid-template-columns:.86fr 1.04fr 1.11fr 1fr;gap:12px}
 .field{min-width:0;display:block;padding:10px 13px 9px;border:1px solid var(--line);border-radius:10px;background:var(--canvas)}
-.field label,.field>span:first-child{display:block;color:var(--mute);font-size:10px;letter-spacing:.066em;font-weight:800;text-transform:uppercase}
+.field label,.field>span:first-child{display:block;color:var(--mute);font-size:12px;letter-spacing:.066em;font-weight:800;text-transform:uppercase}
 .field strong,.field select{display:block;width:100%;margin-top:4px;font-size:14px;font-weight:800;background:transparent;border:0;padding:0;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .field select{cursor:pointer}
 .filter-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}
@@ -96,7 +96,7 @@ h3{font-size:16px;line-height:1.4;font-weight:800;letter-spacing:-.012em}
 .big{font-size:40px;letter-spacing:-.045em;line-height:1.13;font-weight:800;white-space:nowrap}
 .rule{border:0;border-top:1px solid var(--line);width:100%;margin:1px 0}
 .month-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin:8px 0}
-.month-grid button{border:0;border-radius:5px;background:var(--mint);color:var(--dark);font-weight:800;min-height:25px;font-size:10px;padding:0 3px}
+.month-grid button{border:0;border-radius:5px;background:var(--mint);color:var(--dark);font-weight:800;min-height:25px;font-size:12px;padding:0 3px}
 .month-grid button.excluded{background:var(--empty);color:var(--mute)}
 .month-grid button[aria-pressed=true]{background:var(--lime);color:var(--ink)}
 .metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
@@ -113,7 +113,7 @@ h3{font-size:16px;line-height:1.4;font-weight:800;letter-spacing:-.012em}
 .nav-track input::-webkit-slider-thumb{appearance:none;width:14px;height:28px;border-radius:4px;border:1px solid #477244;background:linear-gradient(90deg,transparent 41%,#526436 42%,#526436 48%,transparent 49%,transparent 58%,#526436 59%,#526436 65%,transparent 66%),var(--lime);pointer-events:auto;cursor:ew-resize}
 .nav-track input::-moz-range-thumb{width:13px;height:25px;border-radius:4px;border:1px solid #477244;background:var(--lime);pointer-events:auto;cursor:ew-resize}
 .nav-track input:focus-visible::-webkit-slider-thumb{outline:2px solid var(--green);outline-offset:2px}
-.nav-caption{display:flex;justify-content:space-between;color:var(--mute);font-size:10px;margin-top:1px}
+.nav-caption{display:flex;justify-content:space-between;color:var(--mute);font-size:12px;margin-top:1px}
 .anchor{scroll-margin-top:15px}
 table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
 th,td{text-align:left;padding:10px 11px;vertical-align:middle}
@@ -138,7 +138,7 @@ td.numeric,th.numeric{text-align:right;font-variant-numeric:tabular-nums}
 .preview-card .arrow{color:var(--green)}
 .heatgrid{display:grid;grid-template-columns:155px repeat(12,minmax(34px,1fr));gap:5px;align-items:center}
 .heat-label{font-weight:800;font-size:12px}
-.heat-month{text-align:center;font-size:10px;font-weight:800;color:var(--mute)}
+.heat-month{text-align:center;font-size:12px;font-weight:800;color:var(--mute)}
 .heat{border:1px solid transparent;border-radius:6px;background:var(--mint);min-height:40px;text-align:center;font-size:12px;font-weight:800;color:var(--dark);padding:0 2px}
 .heat.bad{background:var(--cream);color:var(--orange)}
 .heat.partial{background:#f2f0dd;color:#68622b}

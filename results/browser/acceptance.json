@@ -17,14 +17,14 @@
               {
                 "text": "Метеожурнал",
                 "color": "rgb(255, 254, 250)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 11.746366414591575
+                "background": "rgb(32, 86, 59)",
+                "ratio": 8.47387116435255
               },
               {
                 "text": "Поляна и поле",
-                "color": "rgb(211, 224, 209)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 8.666321054347804
+                "color": "rgb(239, 249, 241)",
+                "background": "rgb(32, 86, 59)",
+                "ratio": 7.936929929318184
               }
             ]
           }
@@ -99,7 +99,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 144
+            "elapsedMs": 145
           }
         },
         {
@@ -131,15 +131,15 @@
             "navigation": [
               {
                 "text": "Метеожурнал",
-                "color": "rgb(211, 224, 209)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 8.666321054347804
+                "color": "rgb(239, 249, 241)",
+                "background": "rgb(32, 86, 59)",
+                "ratio": 7.936929929318184
               },
               {
                 "text": "Импорт",
                 "color": "rgb(255, 254, 250)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 11.746366414591575
+                "background": "rgb(32, 86, 59)",
+                "ratio": 8.47387116435255
               }
             ],
             "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
@@ -312,14 +312,14 @@
               {
                 "text": "Метеожурнал",
                 "color": "rgb(255, 254, 250)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 11.746366414591575
+                "background": "rgb(32, 86, 59)",
+                "ratio": 8.47387116435255
               },
               {
                 "text": "Поляна и поле",
-                "color": "rgb(211, 224, 209)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 8.666321054347804
+                "color": "rgb(239, 249, 241)",
+                "background": "rgb(32, 86, 59)",
+                "ratio": 7.936929929318184
               }
             ]
           }
@@ -394,7 +394,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 136
+            "elapsedMs": 140
           }
         },
         {
@@ -426,15 +426,15 @@
             "navigation": [
               {
                 "text": "Метеожурнал",
-                "color": "rgb(211, 224, 209)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 8.666321054347804
+                "color": "rgb(239, 249, 241)",
+                "background": "rgb(32, 86, 59)",
+                "ratio": 7.936929929318184
               },
               {
                 "text": "Импорт",
                 "color": "rgb(255, 254, 250)",
-                "background": "rgb(23, 62, 50)",
-                "ratio": 11.746366414591575
+                "background": "rgb(32, 86, 59)",
+                "ratio": 8.47387116435255
               }
             ],
             "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"

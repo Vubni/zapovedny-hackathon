@@ -4,24 +4,13 @@
     "ignoreFiles": [],
     "ignoreValues": [
       {
-        "rule": "cramped-padding",
+        "rule": "repeating-stripes-gradient",
         "value": "*",
         "files": [
-          "web/events.html",
-          "web/forecast.html"
+          "web/calendar.html"
         ],
-        "createdAt": "2026-11-22T08:51:04.431Z",
-        "reason": "Проверка Codex в Chromium при 390 и 1280 px: в трёх таблицах от верхней рамки прокрутки до текста заголовка 8 px, слева от края до текста первой ячейки 15 px. Скролл-контейнер охватывает таблицу, отступы задают ячейки."
-      },
-      {
-        "rule": "cramped-padding",
-        "value": "*",
-        "files": [
-          "web/model.html",
-          "web/review.html"
-        ],
-        "createdAt": "2026-11-22T10:30:22.190Z",
-        "reason": "Проверено в Chromium: от верхней рамки прокрутки до текста заголовков 8 px. Отступ задают ячейки таблиц. На страницах модели и фильтрации проверены ширины 320, 390, 768 и 1280 px; замеры в results/browser/table-header-insets.json."
+        "createdAt": "2026-11-22T11:18:50.851Z",
+        "reason": "Codex сверил легенду календаря: штриховка обозначает сутки, не прошедшие контроль качества, и различает их без опоры на цвет."
       }
     ]
   }

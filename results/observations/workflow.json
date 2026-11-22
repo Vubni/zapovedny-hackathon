@@ -1,0 +1,45 @@
+{
+  "command": "python3 -m unittest -v checks.test_observation_workflow",
+  "transport": "127.0.0.1, ephemeral HTTP port, real server.Handler",
+  "observation_database": "METEO_OBSERVATION_DB in a temporary directory",
+  "passed": 3,
+  "station_imports": {
+    "files": 2,
+    "csv_rows": 22,
+    "xlsx_rows": 20,
+    "xlsx_first_timestamp": "2026-05-14 00:30",
+    "stations": ["exact GPS", "coordinates omitted"],
+    "marked_cells_primary": 1,
+    "marked_cells_with_hampel_and_spike": 2,
+    "temperature_mean_before_reprocessing_c": 10.80952380952381,
+    "temperature_mean_after_reprocessing_c": 10,
+    "confirmed_data_available_after_server_restart": true,
+    "original_downloads_equal_source_bytes": true
+  },
+  "overlap": {
+    "station": "kr1",
+    "day": "2025-01-01",
+    "overlapping_timestamps": 2,
+    "archive_pressure_before_during_and_after_hpa": 970.0575,
+    "older_humidity_retained_when_column_absent": true,
+    "previous_temperatures_masked_when_column_empty_or_rejected": true,
+    "discard_reveals_previous_file_and_then_archive": true
+  },
+  "fixed_range": {
+    "start": "2005-01-01",
+    "end": "2015-12-31",
+    "months": 132,
+    "kr1_has_no_data": true,
+    "ame60_has_data_and_gaps": true
+  },
+  "saved_source_audit": {
+    "original_available_after_discard": true,
+    "published_status_after_audit": "original",
+    "registered_station_minimum_slots": 20,
+    "original_temperature_rows": 22,
+    "original_values_verified_in_xlsx_c": [-100, 27],
+    "unknown_file_status": 400,
+    "chromium_command": "node checks/files.cjs",
+    "chromium_saved_source_open_and_xlsx_download": true
+  }
+}

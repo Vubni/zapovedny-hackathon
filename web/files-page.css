@@ -21,7 +21,7 @@
 .files-main .outlier-chart .graph { min-width: 460px; }
 .files-main .file-context h2,
 .files-dialog h2 { overflow-wrap: anywhere; }
-.files-dialog { border: 1px solid var(--line); color: var(--ink); width: min(650px, calc(100vw - 28px)); }
+.files-dialog { border: 0; color: var(--ink); width: min(650px, calc(100vw - 28px)); }
 .files-dialog::backdrop { background: #172c2379; }
 .files-dialog .dialog-header .icon-btn { flex: none; }
 .files-dialog .dialog-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }

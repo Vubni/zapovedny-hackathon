@@ -1,0 +1,130 @@
+[
+  {
+    "route": "events",
+    "width": 320,
+    "tables": [
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "review",
+    "width": 320,
+    "tables": [
+      {
+        "header": "Дата и время",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Дата",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "events",
+    "width": 390,
+    "tables": [
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "review",
+    "width": 390,
+    "tables": [
+      {
+        "header": "Дата и время",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Дата",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "events",
+    "width": 768,
+    "tables": [
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "review",
+    "width": 768,
+    "tables": [
+      {
+        "header": "Дата и время",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Дата",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "events",
+    "width": 1280,
+    "tables": [
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Станция",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  },
+  {
+    "route": "review",
+    "width": 1280,
+    "tables": [
+      {
+        "header": "Дата и время",
+        "topPx": 10,
+        "leftPx": 15
+      },
+      {
+        "header": "Дата",
+        "topPx": 10,
+        "leftPx": 15
+      }
+    ]
+  }
+]
