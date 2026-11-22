@@ -2,9 +2,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const {chromium} = require('playwright');
-const {withIsolatedMeteo} = require('./isolated-meteo.cjs');
+const {withIsolatedMeteo, loginAccount} = require('./isolated-meteo.cjs');
 
-async function verify(base) {
+async function verify(base, {globalAdmin}) {
   const browser = await chromium.launch({executablePath: process.env.METEO_CHROMIUM || undefined});
   try {
     const page = await browser.newPage({viewport: {width: 390, height: 844}, acceptDownloads: true});
@@ -25,6 +25,11 @@ async function verify(base) {
     assert.match(await fs.readFile(await download.path(), 'utf8'), /2021-11-06/);
     await panel.getByLabel('Показатель').selectOption('wind_dir');
     await panel.getByText('01.11.2020', {exact: true}).waitFor();
+    assert.equal(await panel.getByLabel('Станция').locator('option[value="fresh"]').count(), 0);
+    await loginAccount(page.request, base, globalAdmin);
+    await page.goto(base + '/?stations=ame60&start=2005-01-01&end=2005-01-31');
+    await panel.locator('summary').click();
+    await panel.getByLabel('Станция').locator('option[value="fresh"]').waitFor({state: 'attached'});
     await panel.getByLabel('Станция').selectOption('fresh');
     await panel.getByText('Измерений этого показателя пока нет.').waitFor();
     assert.equal(await panel.locator('tbody tr').count(), 0);
@@ -36,5 +41,7 @@ async function verify(base) {
   }
 }
 
-withIsolatedMeteo(verify, {stations: [{id: 'fresh', label: 'Новый пост', latitude: 58, longitude: 33, params: ['rh']}]})
+withIsolatedMeteo(verify, {accounts: true, stations: [
+  {id: 'fresh', label: 'Новый пост', latitude: 58, longitude: 33, params: ['rh']},
+]})
   .catch(error => {console.error(error); process.exitCode = 1;});

@@ -9,11 +9,12 @@ from io import StringIO
 import analytics
 import observation_store
 from observations import calendar_days, load_daily, observed_slots, raw_days, station_params
+from observations_db import uses_archive
 from station_catalog import catalog
 
 
 def _last_archive_day(station, parameter, before=None):
-    if station not in analytics.STATIONS:
+    if not uses_archive() or station not in analytics.STATIONS:
         return None
     condition = " AND day < ?" if before is not None else ""
     args = (station, parameter, before) if before is not None else (station, parameter)

@@ -29,6 +29,10 @@ const groups = [
 ];
 const indicators = groups.flatMap(([, items]) => items);
 const known = new Set(indicators.map(([id]) => id));
+export function normalizeIndicatorSelection(ids) {
+  const selected = new Set(Array.isArray(ids) ? ids : []);
+  return [...known].filter(id => selected.has(id));
+}
 const icons = {
   plus: 'M12 5v14M5 12h14',
   check: 'm5 12 4 4L19 6',
@@ -215,8 +219,9 @@ function boardCard([id, title], mountId, change) {
 }
 
 /** Mounts the numeric card catalog and board, independently of displayed charts. */
-export function mountObservationIndicators({ catalog, container, onChange }) {
-  const selected = restoreSelection();
+export function mountObservationIndicators({ catalog, container, onChange, initialSelection }) {
+  const managed = initialSelection !== undefined;
+  const selected = managed ? new Set(normalizeIndicatorSelection(initialSelection)) : restoreSelection();
   const mountId = ++nextMount;
   const details = node('details', '', 'observation-indicator-catalog');
   const summary = node('summary', 'Числовые карточки');
@@ -315,9 +320,9 @@ export function mountObservationIndicators({ catalog, container, onChange }) {
   function change(id, enabled) {
     if (enabled) selected.add(id);
     else selected.delete(id);
-    saveSelection(selected);
+    if (!managed) saveSelection(selected);
     loadSelection();
-    onChange?.(selected.size);
+    onChange?.(selected.size, normalizeIndicatorSelection([...selected]));
   }
 
   render();

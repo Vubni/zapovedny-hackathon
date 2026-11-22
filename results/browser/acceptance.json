@@ -99,7 +99,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 211
+            "elapsedMs": 147
           }
         },
         {
@@ -121,14 +121,13 @@
           }
         },
         {
-          "label": "Загрузка JSON и сообщение о неверной дате",
+          "label": "Гостевой переход к импорту и входу",
           "status": "passed",
           "observed": {
-            "inputRows": 48,
-            "accepted": 38,
-            "usableHours": 19,
-            "meanHpa": 1005.4499999999999,
-            "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
+            "redirectStatus": 303,
+            "filesStatus": 401,
+            "gate": "/files",
+            "login": "/account"
           }
         },
         {
@@ -151,6 +150,11 @@
         {
           "path": "/api/series",
           "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
+          "query": "",
           "status": 200
         },
         {
@@ -219,12 +223,17 @@
           "status": 200
         },
         {
-          "path": "/api/files",
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         },
         {
-          "path": "/api/stations",
+          "path": "/api/account/me",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         },
@@ -239,12 +248,22 @@
           "status": 200
         },
         {
+          "path": "/api/account/me",
+          "query": "",
+          "status": 200
+        },
+        {
           "path": "/api/series",
           "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
           "status": 200
         },
         {
           "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         },
@@ -269,7 +288,17 @@
           "status": 200
         },
         {
+          "path": "/api/account/me",
+          "query": "",
+          "status": 200
+        },
+        {
           "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         }
@@ -375,7 +404,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 232
+            "elapsedMs": 140
           }
         },
         {
@@ -397,14 +426,13 @@
           }
         },
         {
-          "label": "Загрузка JSON и сообщение о неверной дате",
+          "label": "Гостевой переход к импорту и входу",
           "status": "passed",
           "observed": {
-            "inputRows": 48,
-            "accepted": 38,
-            "usableHours": 19,
-            "meanHpa": 1005.4499999999999,
-            "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
+            "redirectStatus": 303,
+            "filesStatus": 401,
+            "gate": "/files",
+            "login": "/account"
           }
         },
         {
@@ -427,6 +455,11 @@
         {
           "path": "/api/series",
           "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
+          "query": "",
           "status": 200
         },
         {
@@ -495,17 +528,27 @@
           "status": 200
         },
         {
-          "path": "/api/files",
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         },
         {
-          "path": "/api/stations",
+          "path": "/api/account/me",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         },
         {
           "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         },
@@ -530,6 +573,11 @@
           "status": 200
         },
         {
+          "path": "/api/account/me",
+          "query": "",
+          "status": 200
+        },
+        {
           "path": "/api/meta",
           "query": "",
           "status": 200
@@ -540,12 +588,22 @@
           "status": 200
         },
         {
+          "path": "/api/account/me",
+          "query": "",
+          "status": 200
+        },
+        {
           "path": "/api/series",
           "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
           "status": 200
         },
         {
           "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/account/me",
           "query": "",
           "status": 200
         }

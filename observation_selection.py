@@ -7,6 +7,7 @@ from itertools import groupby
 from operator import itemgetter
 
 from build_data import STATIONS
+from observations_db import uses_archive
 from review_filter import archive_observations, checked_date, minute_bounds
 from review_upload import MAX_ROWS
 
@@ -22,7 +23,7 @@ def _row(stamp, parameter, value, origin, *, line=None, flags="", decision=""):
 
 
 def _archived_terms(station, parameter, start, end):
-    if station not in STATIONS:
+    if not uses_archive() or station not in STATIONS:
         return
     first, last = minute_bounds(checked_date(start), checked_date(end))
     rows = archive_observations(station, parameter, first, last, {})

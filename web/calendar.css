@@ -22,7 +22,7 @@ footer.temperature-shell, .masthead .brand small { font-size: .8rem; }
   padding: 0;
   accent-color: var(--forest);
 }
-.temperature-range input:enabled { cursor: ew-resize; }
+.temperature-range input:enabled { cursor: pointer; }
 .temperature-year-range {
   grid-column: 1 / -1;
   display: flex;

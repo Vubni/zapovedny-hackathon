@@ -1,0 +1,100 @@
+[
+  {
+    "width": 1280,
+    "localRequests": [
+      "/reserve-detail-osm.js",
+      "/reserve-detail.webp"
+    ],
+    "externalRequests": [],
+    "bounds": [
+      32.9,
+      56.415,
+      33.045,
+      56.512
+    ],
+    "size": [
+      1740,
+      1164
+    ],
+    "correlation": 0.8762312816666336,
+    "opaques": 6016,
+    "coversStations": true,
+    "roads": 11,
+    "paths": 32,
+    "buildings": 101,
+    "labels": [
+      "Большое Фёдоровское",
+      "Заповедный",
+      "Староселье",
+      "Березники — Хмелевка",
+      "Межа",
+      "Тюзьма",
+      "Экотропа",
+      "Визит-центр ЦЛЗ"
+    ],
+    "bounded": true,
+    "maximum": {
+      "scale": "50 м",
+      "canvas": [
+        652,
+        298
+      ],
+      "display": [
+        652,
+        298
+      ],
+      "croppedDraws": 14,
+      "viewportBounded": true,
+      "buildingPixels": 773
+    }
+  },
+  {
+    "width": 390,
+    "localRequests": [
+      "/reserve-detail-osm.js",
+      "/reserve-detail.webp"
+    ],
+    "externalRequests": [],
+    "bounds": [
+      32.9,
+      56.415,
+      33.045,
+      56.512
+    ],
+    "size": [
+      1740,
+      1164
+    ],
+    "correlation": 0.8762312816666336,
+    "opaques": 6016,
+    "coversStations": true,
+    "roads": 11,
+    "paths": 32,
+    "buildings": 101,
+    "labels": [
+      "Большое Фёдоровское",
+      "Заповедный",
+      "Староселье",
+      "Березники — Хмелевка",
+      "Межа",
+      "Тюзьма",
+      "Экотропа",
+      "Визит-центр ЦЛЗ"
+    ],
+    "bounded": true,
+    "maximum": {
+      "scale": "50 м",
+      "canvas": [
+        326,
+        236
+      ],
+      "display": [
+        326,
+        236
+      ],
+      "croppedDraws": 7,
+      "viewportBounded": true,
+      "buildingPixels": 616
+    }
+  }
+]

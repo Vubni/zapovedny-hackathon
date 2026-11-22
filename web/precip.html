@@ -20,14 +20,14 @@
         <div class="breadcrumb"><a href="/">Метеоархив</a><span aria-hidden="true">›</span><a href="/forecast">Прогноз</a><span aria-hidden="true">›</span><strong>Карта осадков</strong></div>
         <div>
           <h1 id="weather-heading">Карта осадков</h1>
-          <p class="sub">Окрестности Центрально-Лесного заповедника · почасовой прогноз</p>
+          <p class="sub" id="precip-location">Почасовой прогноз осадков</p>
         </div>
         <div class="weather-actions">
-          <button class="btn primary" type="button" id="precip-refresh">Обновить прогноз</button>
+          <button class="btn primary" type="button" id="precip-refresh" disabled>Обновить прогноз</button>
           <a class="btn line" href="/forecast">Прогноз на 3 дня</a>
         </div>
       </header>
-      <p class="weather-status" id="precip-status" role="status">Запрашиваем данные Open-Meteo…</p>
+      <p class="weather-status" id="precip-status" role="status">Проверяем активный заповедник…</p>
       <section id="precip-data" class="precip-panel" aria-labelledby="precip-title" hidden>
         <div class="precip-time">
           <div>
@@ -47,7 +47,7 @@
         <div class="precip-layout">
           <figure class="precip-figure">
             <figcaption>
-              <span>Центрально-Лесной заповедник и окрестности</span>
+              <span id="precip-map-location"></span>
               <div class="precip-map-tools" role="group" aria-label="Масштаб карты">
                 <button class="btn line" type="button" id="precip-zoom-out" aria-label="Уменьшить карту" disabled>−</button>
                 <button class="btn line" type="button" id="precip-zoom-in" aria-label="Увеличить карту">+</button>
@@ -91,8 +91,8 @@
               <li><span class="precip-swatch" data-level="4"></span>3 и больше</li>
               <li><span class="precip-swatch" data-level="missing"></span>Нет данных</li>
             </ul>
-            <p class="precip-reserve"><span class="precip-marker" aria-hidden="true"></span><span>Точка краткосрочного прогноза<br>56,464310° с. ш., 32,970290° в. д.</span></p>
-            <p class="precip-reserve"><span class="precip-boundary-key" aria-hidden="true"></span>Граница заповедника</p>
+            <p class="precip-reserve"><span class="precip-marker" aria-hidden="true"></span><span>Точка краткосрочного прогноза<br><span id="precip-forecast-point"></span></span></p>
+            <p class="precip-reserve" id="precip-boundary-key" hidden><span class="precip-boundary-key" aria-hidden="true"></span>Граница заповедника</p>
             <div class="precip-selection">
               <h3>Выбранная ячейка</h3>
               <p class="precip-selected-value" id="precip-cell" aria-live="polite"></p>
@@ -102,12 +102,13 @@
           </aside>
         </div>
       </section>
-      <footer class="card precip-source">
-        <p>Сумма дождя и снега в водном эквиваленте за указанный час. Источник — модельный прогноз DWD ICON Europe с разрешением около 7 км. Измерения метеостанций доступны в метеожурнале.</p>
-        <p>Каждая ячейка показывает прогноз ближайшего узла ICON для своей центральной точки. Шаг сетки — около 7 км с севера на юг и 8 км с запада на восток. Соседние ячейки могут ссылаться на один узел.</p>
-        <p>Спутниковый фон · <a href="https://esa-worldcover.org/en/data-access">© ESA WorldCover project 2021</a> / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>).</p>
-        <p>Географическая основа · <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth</a> · <a href="https://www.geonames.org/export/">GeoNames</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>) · <a href="https://www.clgz.ru/node/18448">Границы заповедника, ГИС 2023</a></p>
-        <p><a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> · <a href="https://open-meteo.com/en/docs/dwd-api">О модели ICON Europe</a> · <a href="/precip-example.json" download>Сохранённый ответ API</a></p>
+      <footer class="card precip-source" id="precip-provenance" hidden>
+        <p>Сумма дождя и снега в водном эквиваленте за указанный час. Источник — модельный прогноз <span id="precip-model"></span>. Измерения метеостанций доступны в метеожурнале.</p>
+        <p>Каждая ячейка показывает прогноз ближайшего узла ICON для своей центральной точки. Шаг сетки — <span id="precip-step"></span>. Соседние ячейки могут ссылаться на один узел.</p>
+        <p data-precip-local hidden>Спутниковый фон · <a href="https://esa-worldcover.org/en/data-access">© ESA WorldCover project 2021</a> / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>).</p>
+        <p data-precip-local hidden>Географическая основа · <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth</a> · <a href="https://www.geonames.org/export/">GeoNames</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>) · <a href="https://www.clgz.ru/node/18448">Границы заповедника, ГИС 2023</a></p>
+        <p id="precip-russia-source" hidden>Географическая основа · <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth</a></p>
+        <p><a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> · <a id="precip-model-link" href="https://open-meteo.com/en/docs/dwd-api"></a><span data-precip-local hidden> · <a href="/precip-example.json" download>Сохранённый ответ API</a></span></p>
       </footer>
     </section>
   </main>

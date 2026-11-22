@@ -6,7 +6,7 @@ import uuid
 
 from analytics import PARAMS, metadata
 from build_data import STATIONS
-from observations_db import connection
+from observations_db import connection, uses_archive
 
 
 COLORS = ("#2b7650", "#426583", "#735579", "#945320", "#507f76", "#854f64")
@@ -27,7 +27,7 @@ def parameter_options(params=PARAMS):
 
 
 def catalog():
-    stations = metadata()["stations"]
+    stations = metadata()["stations"] if uses_archive() else []
     for item in stations:
         key = item["id"]
         passport = STATIONS[key]
@@ -42,8 +42,10 @@ def catalog():
             return stations
         if db.table_exists("registered_stations"):
             order = "ordinal" if db.is_postgres else "rowid"
-            stations.extend(json.loads(body) for (body,) in
-                            db.execute(f"SELECT passport FROM registered_stations ORDER BY {order}"))
+            for (body,) in db.execute(f"SELECT passport FROM registered_stations ORDER BY {order}"):
+                station = json.loads(body)
+                if station["id"] not in STATIONS:
+                    stations.append(station)
 
     from observation_store import all_date_bounds
     published = all_date_bounds()
@@ -59,8 +61,8 @@ def catalog():
 def station_list():
     stations = catalog()
     return {"stations": stations, "param_options": parameter_options(),
-            "start": min(item["start"] for item in stations if item["start"]),
-            "end": max(item["end"] for item in stations if item["end"])}
+            "start": min((item["start"] for item in stations if item["start"]), default=None),
+            "end": max((item["end"] for item in stations if item["end"]), default=None)}
 
 
 def coordinate(value, limit):
@@ -106,12 +108,14 @@ def register_station(payload):
     minimum = payload.get("minimum_slots", defaults.minimum_slots)
     if type(step) is not int or step not in (1, 60) or type(minimum) is not int or not 1 <= minimum <= 1440 // step:
         raise ValueError("Проверьте единицу учёта покрытия и суточный порог в паспорте станции.")
-    if key in STATIONS or label.casefold() in {s["label"].casefold() for s in metadata()["stations"]}:
+    archive_labels = {s["label"].casefold() for s in metadata()["stations"]} if uses_archive() else set()
+    if key in STATIONS or label.casefold() in archive_labels:
         raise ValueError("Станция с таким кодом или названием уже есть.")
     with connection(write=True) as db:
         count, = db.execute("SELECT COUNT(*) FROM registered_stations").fetchone()
         item = dict(id=key, label=label, terrain=terrain, minimum_slots=minimum, slot_minutes=step,
-                    color=COLORS[(len(STATIONS) + count) % len(COLORS)], latitude=lat, longitude=lon,
+                    color=COLORS[((len(STATIONS) if uses_archive() else 0) + count) % len(COLORS)],
+                    latitude=lat, longitude=lon,
                     location_precision="exact" if lat is not None else "unknown", archive=False,
                     start=None, end=None, params=parameter_options(dict.fromkeys(params)))
         if profile:

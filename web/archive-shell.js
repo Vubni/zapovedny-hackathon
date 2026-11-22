@@ -3,6 +3,8 @@ const paths = {
   chart: '<path d="M3 19h18M5 15l4-5 4 3 6-8"/><circle cx="19" cy="5" r="1.3"/>',
   cloud: '<path d="M6.5 18a4.5 4.5 0 0 1-.7-9 6.1 6.1 0 0 1 11.7-1.3A5.15 5.15 0 0 1 17 18H6.5Z"/>',
   file: '<path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10Zm0 0v7h7M8 14h8m-8 3h8"/>',
+  account: '<circle cx="12" cy="8" r="3.2"/><path d="M5 20v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>',
+  center: '<path d="M3 21h18M5 21V8l7-5 7 5v13M10 21v-5h4v5M9 10h.1m5.9 0h.1"/>',
   collapse: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16m7-11-3 3 3 3"/>',
   expand: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16m4-11 3 3-3 3"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
@@ -12,6 +14,7 @@ const links = [
   { path: "/", label: "Наблюдения", glyph: "chart" },
   { path: "/forecast", label: "Прогноз", glyph: "cloud" },
   { path: "/files", label: "Файлы и импорт", glyph: "file" },
+  { path: "/account", label: "Личный кабинет", glyph: "account" },
 ];
 
 const storageKey = "meteoarchive.navigation.v1";
@@ -48,6 +51,7 @@ function activeSection() {
   const route = location.pathname.replace(/\.html$/, "").replace(/\/$/, "");
   if (["/forecast", "/precip"].includes(route)) return "/forecast";
   if (["/files", "/review", "/import"].includes(route)) return "/files";
+  if (route === "/account") return "/account";
   if (route === "/operator") return null;
   return "/";
 }
@@ -59,17 +63,18 @@ function mountSidebar(sidebar) {
     <div class="archive-sidebar-head">
       <a href="/" class="brand archive-sidebar-brand" aria-label="Центрально-Лесной заповедник · Метеоархив">
         <img class="reserve-logo" src="/clgz-logo.png" width="80" height="80" alt="">
+        <i class="archive-sidebar-center-icon" hidden>${icon("center", 25)}</i>
         <span class="archive-sidebar-name"><span>Центрально-Лесной</span> заповедник</span>
       </a>
-      <button type="button" class="archive-sidebar-toggle" aria-controls="archive-sidebar-links"></button>
+      <button type="button" class="archive-sidebar-toggle" aria-controls="archive-sidebar-menu"></button>
     </div>
-    <nav id="archive-sidebar-links" class="nav archive-sidebar-links" aria-label="Основная навигация">${links.map(({ path, label, glyph }) =>
+    <nav id="archive-sidebar-menu" class="nav archive-sidebar-links" aria-label="Основная навигация">${links.map(({ path, label, glyph }) =>
       `<a href="${path}" ${path === active ? 'aria-current="page"' : ''} aria-label="${label}" title="${label}">${icon(glyph)}<span>${label}</span></a>`).join("")}</nav>
     <div class="archive-sidebar-resize" role="separator" tabindex="0" aria-orientation="vertical"
-      aria-controls="archive-sidebar-links" aria-label="Ширина боковой панели" title="Изменить ширину боковой панели"></div>`;
+      aria-controls="archive-sidebar-menu" aria-label="Ширина боковой панели" title="Изменить ширину боковой панели"></div>`;
 
   const root = document.documentElement;
-  const nav = sidebar.querySelector("nav");
+  const menu = sidebar.querySelector("#archive-sidebar-menu");
   const toggle = sidebar.querySelector(".archive-sidebar-toggle");
   const separator = sidebar.querySelector(".archive-sidebar-resize");
   let preferences = readPreferences();
@@ -96,7 +101,7 @@ function mountSidebar(sidebar) {
       toggle.title = buttonLabel;
     }
     toggle.setAttribute("aria-expanded", String(expanded));
-    nav.hidden = mobile && !expanded;
+    menu.hidden = mobile && !expanded;
     separator.hidden = layout !== "sidebar";
     separator.setAttribute("aria-valuemin", minWidth);
     separator.setAttribute("aria-valuemax", viewportLimit());
@@ -201,7 +206,58 @@ function mountSidebar(sidebar) {
     render();
   });
   render();
+  const brand = sidebar.querySelector(".archive-sidebar-brand");
+  const logo = sidebar.querySelector(".reserve-logo");
+  const centerIcon = sidebar.querySelector(".archive-sidebar-center-icon");
+  const brandName = sidebar.querySelector(".archive-sidebar-name");
+  const centralName = brandName.innerHTML;
+  async function renderCenter(refresh = false) {
+    try {
+      const { accountContext } = await import("/account-client.js");
+      const context = await accountContext({ refresh });
+      const central = !context.center?.id || context.center.id === "central-forest";
+      logo.hidden = !central;
+      centerIcon.hidden = central;
+      if (central) brandName.innerHTML = centralName;
+      else brandName.textContent = context.center.name;
+      brand.setAttribute("aria-label", `${brandName.textContent} · Метеоархив`);
+    } catch {
+      // Public sections remain usable if the account service is temporarily unavailable.
+    }
+  }
+  renderCenter();
+  window.addEventListener("storage", event => {
+    if (event.key === "meteoarchive.account.revision") renderCenter(true);
+  });
 }
 
 const sidebar = document.querySelector("[data-archive-nav]");
 if (sidebar) mountSidebar(sidebar);
+
+const saveTrigger = document.querySelector("main [data-save-observation-workspace]");
+if (saveTrigger) {
+  async function prepareSave(workspace) {
+    if (saveTrigger.disabled) return;
+    saveTrigger.disabled = true;
+    try {
+      const { openSaveSession } = await import("/account-actions.js");
+      await openSaveSession({ workspace });
+    } catch {
+      const status = document.createElement("p");
+      status.className = "archive-session-feedback";
+      status.setAttribute("role", "status");
+      status.textContent = "Не удалось открыть сохранение сессии.";
+      document.body.append(status);
+      setTimeout(() => status.remove(), 6500);
+    } finally {
+      saveTrigger.disabled = false;
+    }
+  }
+  saveTrigger.addEventListener("click", () => prepareSave());
+  const url = new URL(location.href);
+  if (url.searchParams.get("save-session") === "1") {
+    url.searchParams.delete("save-session");
+    history.replaceState(history.state, "", url);
+    prepareSave(url.search ? url.pathname + url.search : undefined);
+  }
+}

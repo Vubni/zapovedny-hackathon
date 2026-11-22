@@ -2,6 +2,10 @@
 .files-dialog a.btn { text-decoration: none; }
 .files-main .heading-actions { flex-wrap: wrap; gap: 8px; }
 .files-main .source-mode { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.files-main .file-access { display: grid; gap: 10px; }
+.files-main .file-access .row { flex-wrap: wrap; }
+.files-main .file-access .card-head { margin: 0; }
+.files-main .preview-downloads { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .files-main .file-message { margin-top: 6px; }
 .files-main .file-queue { container-type: inline-size; }

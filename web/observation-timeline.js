@@ -112,7 +112,11 @@ export function mountTimeline(panel, onEdit) {
     return left + Math.round(clamp((event.clientX - rect.left) / rect.width, 0, 1) * (right - left));
   };
   const preview = find('.timeline-preview');
-  function clearDrag() { dragPointer = undefined; preview.hidden = true; }
+  function clearDrag() {
+    dragPointer = undefined;
+    preview.hidden = true;
+    delete track.dataset.selecting;
+  }
   track.addEventListener('pointerdown', event => {
     if (event.target !== track || event.button !== 0 || pending || !periods.length) return;
     const day = at(event);
@@ -122,6 +126,7 @@ export function mountTimeline(panel, onEdit) {
       return;
     }
     dragPointer = event.pointerId; dragStart = dragEnd = day;
+    track.dataset.selecting = '';
     track.setPointerCapture(dragPointer);
   });
   track.addEventListener('pointermove', event => {
@@ -154,6 +159,7 @@ export function mountTimeline(panel, onEdit) {
       const selectionChanged = nextActive !== active;
       active = nextActive;
       pending = hasDraft;
+      track.toggleAttribute('data-pending', pending);
       help.textContent = pending
         ? 'Нажмите «Показать», чтобы применить введённые интервалы и продолжить выбор на шкале.'
         : instructions;

@@ -144,7 +144,7 @@ function makeBlock(station, year, months, selected, onPick, controls, statuses) 
   return block;
 }
 
-export function mountCoverageOverview(container, { compact = false } = {}) {
+export function mountCoverageOverview(container, { compact = false, initialParameter, onParameterChange } = {}) {
   const panel = element("section", compact ? "coverage-overview coverage-overview-embedded" : "card coverage-overview");
   const heading = element("h2", compact ? "coverage-overview-sr" : "", "Покрытие по месяцам");
   heading.id = `coverage-title-${++nextCoverageId}`;
@@ -182,7 +182,7 @@ export function mountCoverageOverview(container, { compact = false } = {}) {
   let currentKey;
   let currentFilters;
   let chart;
-  let parameter;
+  let parameter = initialParameter || undefined;
   let enabled = true;
 
   function pick(control) {
@@ -238,8 +238,11 @@ export function mountCoverageOverview(container, { compact = false } = {}) {
       intervals: (filters.intervals || []).map(({ start, end }) => ({ start, end }))
     };
     if (chart !== (filters.chart || "air")) {
+      if (chart !== undefined && parameter) {
+        parameter = undefined;
+        onParameterChange?.("");
+      }
       chart = filters.chart || "air";
-      parameter = undefined;
     }
     if (!enabled) return;
     const { stations, start, end, intervals } = currentFilters;
@@ -290,6 +293,7 @@ export function mountCoverageOverview(container, { compact = false } = {}) {
 
   select.addEventListener("change", () => {
     parameter = select.value;
+    onParameterChange?.(parameter);
     update(currentFilters);
   });
   function refresh() {

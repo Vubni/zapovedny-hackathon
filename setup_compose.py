@@ -21,6 +21,19 @@ def create_settings(target):
     print(f"Настройки сохранены в {target} с правами 600.")
 
 
+def start_stack(root, settings):
+    # macOS can present the same project basename as NFC and NFD. Bake accepts
+    # either spelling when the build context is a child of its working directory.
+    compose = ["docker", "compose", "-f", str(root / "compose.yaml"), "--env-file", str(settings)]
+    subprocess.run([*compose, "up", "-d", "--wait", "db"], cwd=root.parent, check=True)
+    # The first-time role script does not run again on an existing database volume.
+    subprocess.run([*compose, "exec", "-T", "--user", "postgres", "db", "psql", "-X",
+                    "-U", "postgres", "-d", "meteo", "-v", "ON_ERROR_STOP=1",
+                    "-c", "GRANT CREATE ON DATABASE meteo TO meteo_app"],
+                   cwd=root.parent, check=True)
+    subprocess.run([*compose, "up", "--build", "-d", "--wait"], cwd=root.parent, check=True)
+
+
 def main():
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description=__doc__)
@@ -30,10 +43,7 @@ def main():
     target = args.file.absolute()
     create_settings(target)
     if args.up:
-        # macOS can present the same project basename as NFC and NFD. Bake accepts
-        # either spelling when the build context is a child of its working directory.
-        subprocess.run(["docker", "compose", "-f", str(root / "compose.yaml"), "--env-file", str(target),
-                        "up", "--build", "-d", "--wait"], cwd=root.parent, check=True)
+        start_stack(root, target)
 
 
 if __name__ == "__main__":

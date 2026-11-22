@@ -1,0 +1,40 @@
+{
+  "verified_moscow": "2026-11-22",
+  "local_instances": {
+    "8766": "Docker, Waitress, PostgreSQL",
+    "8765": "локальный Python, SQLite"
+  },
+  "checks": {
+    "unittest_discover": {
+      "run": 156,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0
+    },
+    "chromium": [
+      "checks/accounts.cjs",
+      "checks/account-ui.cjs",
+      "checks/observation-workspace.cjs",
+      "checks/files.cjs",
+      "checks/calendar-alignment.cjs",
+      "checks/map-calendar.cjs",
+      "checks/weather-centers.cjs"
+    ]
+  },
+  "live_smoke_both_instances": [
+    "гость получает 401 на /api/files",
+    "вход общего администратора по HTTP",
+    "кнопка открытия диалога только в основной части наблюдений, рядом с графиками",
+    "кабинет открывается и показывает выход",
+    "после выхода файлы снова требуют входа"
+  ],
+  "scenarios": {
+    "data_isolation": "два центра, владелец и пользователи другого центра, исходные и опубликованные данные",
+    "researcher": "предпросмотр, обработка существующих наблюдений, скачивание; публикация и загрузка недоступны",
+    "center_admin": "все нынешние и будущие станции своего центра, учётные записи исследователей",
+    "global_admin": "новые заповедники, назначение администраторов центра и выбор рабочего центра",
+    "session": "личное сохранение в выбранном центре, вход через новый браузерный контекст, восстановление станций, графиков, периодов, покрытия. Проверены возврат гостевого выбора после входа и удаление по подтверждению."
+  },
+  "map_and_calendar": "../observations/map-calendar-check.json",
+  "map_layers": "../browser/station-map-detail.json"
+}

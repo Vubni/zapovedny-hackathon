@@ -20,7 +20,7 @@ from external_fill import (
     MAX_DAYS, MODELS, apply_estimates, external_reference, external_warnings, reference_inputs, station_location, time_zone,
 )
 from gap_fill import VERIFICATION_LABELS, estimate_bounds, fill_settings, station_estimates, verification_history, verify_estimates
-from observations_db import connection
+from observations_db import connection, current_center
 from review_excel import (
     BAD, ESTIMATED, GOOD, _cell, _column, _header, _row, _sheet_open, _write_package,
 )
@@ -608,7 +608,8 @@ def from_observations(query):
         if provenance.get("fingerprint") == fingerprint:
             return _record(row)
 
-    identifier = uuid5(NAMESPACE_URL, f"meteoarchive:observations:{station_id}:{parameter}:{start}:{end}:{fingerprint}").hex
+    identity = f"meteoarchive:observations:{current_center()}:{station_id}:{parameter}:{start}:{end}:{fingerprint}"
+    identifier = uuid5(NAMESPACE_URL, identity).hex
     filename = f"{station_id}-{parameter}-{start}-{end}-observations.csv"
     settings, _ = _settings({"station": station_id}, station_id)
     payload = _review(records, fields, filename, settings, station, first, last)

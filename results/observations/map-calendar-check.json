@@ -1,0 +1,108 @@
+{
+  "command": "node checks/map-calendar.cjs",
+  "browser": "153.0.8010.12",
+  "map": {
+    "source": {
+      "publication": "Кадастровые сведения о Центрально-Лесном биосферном заповеднике за 2017–2020 гг.",
+      "url": "https://clgz.ru/sites/default/files/%D0%9A%D0%B0%D0%B4%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B2%D1%8B%D0%B5%20%D1%81%D0%B2%D0%B5%D0%B4%D0%B5%D0%BD%D0%B8%D1%8F%20%D0%BE%20%D0%A6%D0%B5%D0%BD%D1%82%D1%80%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE-%D0%9B%D0%B5%D1%81%D0%BD%D0%BE%D0%BC%20%D0%B1%D0%B8%D0%BE%D1%81%D1%84%D0%B5%D1%80%D0%BD%D0%BE%D0%BC%20%D0%B7%D0%B0%D0%BF%D0%BE%D0%B2%D0%B5%D0%B4%D0%BD%D0%B8%D0%BA%D0%B5%20%D0%B7%D0%B0%202017-2020%20%D0%B3%D0%B3..pdf",
+      "description": "Точки биологических сборов 26.07.2019, использованные как ориентиры",
+      "station_coordinates_confirmed": false,
+      "points": {
+        "kr1": {
+          "latitude": 56.46431,
+          "longitude": 32.97029,
+          "sample": "MYX12013",
+          "extracted_line": 4870
+        },
+        "kr2": {
+          "latitude": 56.4638,
+          "longitude": 32.97037,
+          "sample": "MYX12012",
+          "extracted_line": 5043
+        }
+      }
+    },
+    "distance_metres": 56.9,
+    "marker_centres_css_px": {
+      "ame60": {
+        "x": 546,
+        "y": 321.296875
+      },
+      "kr1": {
+        "x": 658,
+        "y": 321.296875
+      },
+      "kr2": {
+        "x": 602.03125,
+        "y": 427.6875
+      }
+    },
+    "selected_station_ids": [
+      "kr2"
+    ],
+    "checked_station_rows": 1
+  },
+  "calendar": {
+    "api_original_dates": [
+      "2024-01-05",
+      "2024-07-05",
+      "2025-07-05"
+    ],
+    "chronological_css_x": [
+      327,
+      516.5,
+      896.7
+    ],
+    "shared_axis": {
+      "january": {
+        "heading": "5 января",
+        "source_dates": [
+          "05.01.2024"
+        ],
+        "circles": [
+          {
+            "svg_x": 46,
+            "css_x": 327
+          }
+        ]
+      },
+      "july": {
+        "heading": "5 июля",
+        "source_dates": [
+          "05.07.2024",
+          "05.07.2025"
+        ],
+        "circles": [
+          {
+            "svg_x": 616,
+            "css_x": 896.7
+          },
+          {
+            "svg_x": 616,
+            "css_x": 896.7
+          }
+        ]
+      },
+      "plotted_x_svg": [
+        46,
+        616,
+        616
+      ]
+    },
+    "csv_original_date_and_calendar_date": [
+      [
+        "2024-01-05",
+        "05.01"
+      ],
+      [
+        "2024-07-05",
+        "05.07"
+      ],
+      [
+        "2025-07-05",
+        "05.07"
+      ]
+    ],
+    "mode_and_original_ranges_persisted_after_reload": true
+  }
+}

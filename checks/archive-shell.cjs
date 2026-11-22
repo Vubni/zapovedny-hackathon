@@ -32,7 +32,8 @@ async function check(base) {
     const resize = sidebar.getByRole("separator", { name: "Ширина боковой панели" });
     await checkBrand(sidebar);
     assert.deepEqual(await nav.getByRole("link").evaluateAll(links => links.map(link => [link.textContent, link.getAttribute("href")])),
-      [["Наблюдения", "/"], ["Прогноз", "/forecast"], ["Файлы и импорт", "/files"]]);
+      [["Наблюдения", "/"], ["Прогноз", "/forecast"], ["Файлы и импорт", "/files"], ["Личный кабинет", "/account"]]);
+    assert.equal(await sidebar.getByRole("button", { name: "Сохранить сессию", exact: true, includeHidden: true }).count(), 0);
 
     await page.keyboard.press("Tab");
     assert.equal(await page.evaluate(() => document.activeElement.textContent), "К наблюдениям");

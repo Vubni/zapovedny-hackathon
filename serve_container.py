@@ -13,6 +13,7 @@ REQUEST_LIMIT = 17 * 1024 * 1024
 LOGGER = logging.getLogger("meteo.http")
 REQUEST_HEADERS = {
     "Host": "HTTP_HOST",
+    "Cookie": "HTTP_COOKIE",
     "Origin": "HTTP_ORIGIN",
     "Sec-Fetch-Site": "HTTP_SEC_FETCH_SITE",
     "Content-Length": "CONTENT_LENGTH",
@@ -68,6 +69,7 @@ def make_application(port=DEFAULT_PORT, public_origin=None):
 def main():
     from waitress import serve
 
+    from accounts import initialize as initialize_accounts
     from observations_db import initialize
 
     try:
@@ -84,6 +86,7 @@ def main():
     ready()
     try:
         initialize()
+        initialize_accounts()
     except Exception as error:
         sys.exit(f"Не удалось открыть хранилище наблюдений ({type(error).__name__}).")
 

@@ -163,6 +163,7 @@
 .obs-chart__tooltip-station { color: var(--ink, #162820); font-weight: 800; }
 .obs-chart__tooltip-row { display: flex; align-items: baseline; justify-content: space-between; gap: 13px; }
 .obs-chart__tooltip-row > span { display: inline-flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.obs-chart__tooltip-source-date { display: block; color: var(--mute, #53645a); font-size: 10px; }
 .obs-chart__tooltip-row b { color: var(--ink, #162820); white-space: nowrap; }
 
 .obs-chart__empty {
@@ -190,6 +191,29 @@
 
 .obs-chart__footer:has(.obs-chart__legend:empty):has(.obs-chart__zoom[hidden]) { display: none; }
 .obs-chart .obs-chart__legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0; }
+.obs-chart__legend-disclosure { min-width: 0; }
+.obs-chart__legend-disclosure[open] { flex-basis: 100%; }
+.obs-chart__legend-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 29px;
+  padding: 3px 8px;
+  border: 1px solid var(--line, #dce5db);
+  border-radius: 6px;
+  color: var(--dark, #20563b);
+  background: var(--paper, #fff);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.obs-chart__legend-trigger::-webkit-details-marker { display: none; }
+.obs-chart__legend-trigger:hover { background: var(--mint, #e5f0e5); }
+.obs-chart__legend-count { color: var(--mute, #53645a); font-size: 11px; font-weight: 650; }
+.obs-chart__legend-disclosure[open] .obs-chart__legend-trigger svg { transform: rotate(180deg); }
+.obs-chart .obs-chart__legend-disclosure[open] .obs-chart__legend { margin-top: 7px; }
 .obs-chart .obs-chart__legend .legend-key {
   display: inline-flex;
   align-items: center;
@@ -269,6 +293,11 @@
 .obs-chart__fullscreen .obs-chart__panel { min-height: calc(100% - 1px); }
 .obs-chart__fullscreen:not([open]) { display: none; }
 .obs-chart :is(button, summary):focus-visible { outline: 2px solid var(--green, #2b7650); outline-offset: 3px; }
+
+@media (pointer: coarse) {
+  .obs-chart__legend-trigger,
+  .obs-chart .obs-chart__legend .legend-key { min-height: 36px; }
+}
 
 @media (max-width: 1120px) {
   .obs-chart__panel { padding-inline: 17px; }

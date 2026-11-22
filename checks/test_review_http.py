@@ -1,15 +1,18 @@
 """Exercise the same HTTP endpoints used by the review form and Excel downloads."""
+from contextlib import ExitStack
 from datetime import datetime
 from http.server import ThreadingHTTPServer
 from io import BytesIO
 import json
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
-from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from unittest.mock import patch
 from zipfile import ZipFile
 
+from checks.http_accounts import HttpClient, bootstrap_admin, create_account, isolated_database
 from server import Handler, XLSX_TYPE
 
 try:
@@ -27,51 +30,54 @@ class QuietHandler(Handler):
 class ReviewHttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.http = ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler)
+        resources = ExitStack()
+        cls.addClassCleanup(resources.close)
+        directory = resources.enter_context(TemporaryDirectory())
+        config = isolated_database(Path(directory) / "observations.sqlite3")
+        resources.enter_context(patch.dict(os.environ, config))
+        credentials = bootstrap_admin(config)
+        cls.http = resources.enter_context(ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler))
         cls.thread = Thread(target=cls.http.serve_forever, daemon=True)
         cls.thread.start()
+        resources.callback(cls.thread.join)
+        resources.callback(cls.http.shutdown)
         cls.root = "http://127.0.0.1:" + str(cls.http.server_port)
+        cls.guest = HttpClient(cls.root)
+        cls.admin = HttpClient(cls.root)
+        cls.admin.login(credentials)
+        center_admin = HttpClient(cls.root)
+        center_admin.login(create_account(cls.admin, "center_admin"))
+        cls.researcher = HttpClient(cls.root)
+        cls.researcher.login(create_account(center_admin, "researcher"))
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.http.shutdown()
-        cls.thread.join()
-        cls.http.server_close()
-
-    def fetch(self, path, query, body=None, content_type="text/csv"):
-        req = Request(self.root + path + "?" + urlencode(query), data=body,
-                      headers={"Content-Type": content_type})
-        try:
-            response = urlopen(req, timeout=15)
-        except HTTPError as exc:
-            response = exc
-        with response:
-            kind = response.headers.get_content_type()
-            contents = response.read()
-            return response.status, (json.loads(contents) if kind == "application/json" else contents)
+    def fetch(self, path, query, body=None, content_type="text/csv", *, client=None):
+        status, headers, contents = (client or self.admin).request(path, query=query, body=body, mime=content_type)
+        return status, (json.loads(contents) if headers.get_content_type() == "application/json" else contents)
 
     def test_consistent_pages_download_and_expiry(self):
         params = dict(station="kr1", param="pressure_hpa", start="2024-04-01", end="2024-04-05")
-        status, report = self.fetch("/api/review", params, b"")
+        self.assertEqual(self.fetch("/api/review", params, b"", client=self.guest)[0], 401)
+        status, report = self.fetch("/api/review", params, b"", client=self.researcher)
         self.assertEqual(status, 200)
         self.assertEqual((report["counts"]["raw_n"], report["total_rows"], len(report["rows"])), (240, 240, 100))
         self.assertFalse(report["original_workbook"])
         token = {"token": report["token"]}
         pages = [report["rows"]]
         for offset in (100, 200):
-            status, page = self.fetch("/api/review", dict(token, offset=offset))
+            status, page = self.fetch("/api/review", dict(token, offset=offset), client=self.researcher)
             self.assertEqual((status, page["counts"]), (200, report["counts"]))
             pages.append(page["rows"])
         lines = [row["line"] for page in pages for row in page]
         self.assertEqual(len(set(lines)), 240)
-        status, body = self.fetch("/api/review.xlsx", token)
+        status, body = self.fetch("/api/review.xlsx", token, client=self.researcher)
         self.assertEqual(status, 200)
         with ZipFile(BytesIO(body)) as book:
             self.assertIsNone(book.testzip())
             self.assertIn(b'A1:U241', book.read("xl/worksheets/sheet2.xml"))
-        self.assertEqual(self.fetch("/api/review-original.xlsx", token)[0], 400)
-        self.assertEqual(self.fetch("/api/review", dict(token, offset=240))[0], 400)
-        self.assertEqual(self.fetch("/api/review.xlsx", {"token": "expired"})[0], 410)
+        self.assertEqual(self.fetch("/api/review.xlsx", token, client=self.guest)[0], 401)
+        self.assertEqual(self.fetch("/api/review-original.xlsx", token, client=self.researcher)[0], 400)
+        self.assertEqual(self.fetch("/api/review", dict(token, offset=240), client=self.researcher)[0], 400)
+        self.assertEqual(self.fetch("/api/review.xlsx", {"token": "expired"}, client=self.researcher)[0], 410)
 
     def test_bad_upload_and_timezone(self):
         params = dict(station="kr1", param="t_air", filename="station.csv")
@@ -79,18 +85,20 @@ class ReviewHttpTest(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(self.fetch("/api/review", params, body)[0], 400)
         body = b"datetime;t_air\n2024-04-01 05:02;1,75"
+        self.assertEqual(self.fetch("/api/review", params, body, client=self.guest)[0], 401)
+        self.assertEqual(self.fetch("/api/review", params, body, client=self.researcher)[0], 403)
         self.assertEqual(self.fetch("/api/review", dict(params, fill="1"), body)[0], 400)
         _, report = self.fetch("/api/review", params, body)
         self.assertEqual((report["rows"][0]["original"]["t_air"], report["rows"][0]["value"]), ("1,75", 1.75))
 
     def test_multiyear_period_depends_on_available_rows(self):
         params = dict(station="kr1", param="t_air", start="2022-01-01", end="2025-12-31")
-        status, report = self.fetch("/api/review", params, b"")
+        status, report = self.fetch("/api/review", params, b"", client=self.researcher)
         self.assertEqual(status, 200)
         self.assertEqual(len(report["summaries"]["monthly"]), 48)
         self.assertGreater(report["total_rows"], 20000)
         status, message = self.fetch("/api/review", dict(params, station="ame60", start="1992-01-01",
-                                                        end="2021-12-31"), b"")
+                                                        end="2021-12-31"), b"", client=self.researcher)
         self.assertEqual(status, 400)
         self.assertIn("60 000", message["error"])
 

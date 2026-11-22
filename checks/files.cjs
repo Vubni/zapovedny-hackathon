@@ -1,11 +1,13 @@
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
+const { randomBytes } = require("node:crypto");
 const { once } = require("node:events");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 const { chromium } = require("playwright");
+const { bootstrapAdmin, loginAccount, createAccount, createCenter } = require("./isolated-meteo.cjs");
 
 const root = path.resolve(__dirname, "..");
 const images = path.join(root, "results", "browser");
@@ -111,6 +113,63 @@ async function prepareFullExcel(page, fileId, parameter) {
   assert.equal(response.status(), 200, await response.text());
   await dialog.getByRole("link", { name: "Скачать Excel с решениями" }).waitFor();
   return { dialog, report: await response.json() };
+}
+
+async function verifyGuest(browser, base) {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    const protectedRequests = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/files")) protectedRequests.push(request.url());
+    });
+    await page.goto(`${base}/files?source=upload`);
+    await page.getByRole("heading", { name: "Войдите для работы с файлами" }).waitFor();
+    const signIn = new URL(await page.locator(".file-access").getByRole("link", { name: "Войти" }).getAttribute("href"), base);
+    assert.equal(signIn.pathname, "/account");
+    assert.equal(signIn.searchParams.get("return"), "/files?source=upload");
+    assert.equal(await page.locator(".file-access").getByRole("link", { name: "К наблюдениям" }).getAttribute("href"), "/");
+    assert.deepEqual(protectedRequests, []);
+    assert.equal(await page.locator("#dropzone, #observation-selection, .history-table").count(), 0);
+    assert.equal((await context.request.get(base + "/api/files")).status(), 401);
+  } finally {
+    await context.close();
+  }
+}
+
+async function verifyResearcher(browser, base, credentials) {
+  const context = await browser.newContext();
+  try {
+    const actor = await loginAccount(context.request, base, credentials);
+    assert.equal(actor.user.role, "researcher");
+    const page = await context.newPage();
+    page.setDefaultTimeout(10000);
+    await page.goto(`${base}/files?source=upload&station=kr1&param=t_air&start=2025-07-04&end=2025-07-06`);
+    await page.getByText("Загрузка файлов и публикация доступны администратору центра.").waitFor();
+    assert.equal(await page.getByRole("button", { name: "Загрузить файлы", exact: true }).count(), 0);
+    assert.equal(await page.locator("#dropzone, #upload-station, [data-file-action=remove]").count(), 0);
+    const [prepared] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === "/api/files/from-observations"),
+      page.getByRole("button", { name: "Подготовить данные" }).click(),
+    ]);
+    assert.ok(prepared.ok(), await prepared.text());
+    const file = await prepared.json();
+    await applyFilters(page);
+    await page.getByText("Предпросмотр и выгрузка", { exact: true }).waitFor();
+    await page.getByText("Публикация и правка исходных данных доступны администратору центра.").waitFor();
+    assert.equal(await page.locator("[data-file-action=publish], [data-file-action=corrected-browse], #file-station").count(), 0);
+    const csv = await download(page, page.getByRole("link", { name: "Скачать CSV", exact: true }));
+    assert.match(csv.bytes.toString("utf8"), /datetime;t_air/);
+    const excel = await download(page, page.getByRole("link", { name: "Скачать отфильтрованный файл" }));
+    assert.equal(excel.bytes.subarray(0, 4).toString("hex"), "504b0304");
+    assert.equal((await context.request.get(`${base}/api/files/original?id=${file.id}`)).status(), 200);
+    const blocked = await context.request.post(base + "/api/files/confirm", {
+      data: { id: file.id }, headers: { Origin: base },
+    });
+    assert.equal(blocked.status(), 403);
+  } finally {
+    await context.close();
+  }
 }
 
 async function verifyJsonImport(page, base) {
@@ -607,42 +666,73 @@ async function run() {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "meteo-files-qa-"));
   const database = path.join(temporary, "observations.sqlite3");
   const workbook = path.join(temporary, "observations.xlsx");
-  // All writes use a fresh database and an operating-system-assigned local port.
-  const server = spawn(process.env.PYTHON || "python3", ["-u", "-c", qaServer, workbook], {
-    cwd: root,
-    env: {
-      ...process.env, METEO_DATABASE_URL: "", METEO_OBSERVATION_DB: database, PYTHONDONTWRITEBYTECODE: "1",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const lines = readline.createInterface({ input: server.stdout });
+  const env = {
+    ...process.env, METEO_DATABASE_URL: "", METEO_OBSERVATION_DB: database, METEO_PUBLIC_ORIGIN: "",
+    PYTHONDONTWRITEBYTECODE: "1",
+  };
   let serverErrors = "";
-  server.stderr.on("data", (chunk) => { serverErrors += chunk.toString(); });
   let browser;
+  let server;
+  let stopped;
+  let lines;
   try {
+    // Accounts and observations both live in this temporary workspace.
+    const globalAdmin = await bootstrapAdmin(env);
+    server = spawn(process.env.PYTHON || "python3", ["-u", "-c", qaServer, workbook], {
+      cwd: root, env, stdio: ["ignore", "pipe", "pipe"],
+    });
+    stopped = once(server, "close");
+    lines = readline.createInterface({ input: server.stdout });
+    server.stderr.on("data", (chunk) => { serverErrors += chunk.toString(); });
     const port = await Promise.race([
       once(lines, "line", { signal: AbortSignal.timeout(10000) }).then(([line]) => line),
-      once(server, "exit").then(([code]) => { throw new Error(`Тестовый сервер завершился с кодом ${code}`); }),
+      stopped.then(([code]) => { throw new Error(`Тестовый сервер завершился с кодом ${code}`); }),
     ]);
     assert.match(port, /^\d+$/);
+    const base = `http://127.0.0.1:${port}`;
     await fs.mkdir(images, { recursive: true });
     browser = await chromium.launch({ executablePath: process.env.METEO_CHROMIUM || undefined });
+    await verifyGuest(browser, base);
+    const globalContext = await browser.newContext();
+    const global = await loginAccount(globalContext.request, base, globalAdmin);
+    assert.equal(global.user.role, "global_admin");
+    const center = global.center ?? global.centers[0];
+    assert.ok(center);
+    const admin = { name: "Администратор тестового центра", email: "files-admin@example.test",
+      password: randomBytes(24).toString("base64url"), role: "center_admin", center_id: center.id };
+    await createAccount(globalContext.request, base, admin);
+    const separate = await createCenter(globalContext.request, base, { name: "Тестовый отдельный центр" });
+    const switched = await globalContext.request.post(base + "/api/account/select-center", {
+      data: { center_id: separate.id }, headers: { Origin: base },
+    });
+    assert.equal(switched.status(), 200);
+    const globalPage = await globalContext.newPage();
+    globalPage.setDefaultTimeout(10000);
+    await globalPage.goto(base + "/files?source=upload");
+    await globalPage.locator(".files-main .breadcrumb").getByText(separate.name).waitFor();
+    await globalPage.getByLabel("Название новой станции").waitFor();
+    assert.equal(await globalPage.getByLabel("Станция для загрузки").inputValue(), "new");
+    await globalContext.close();
     const context = await browser.newContext({ viewport: { width: 1280, height: 960 }, locale: "ru-RU", reducedMotion: "reduce" });
+    const actor = await loginAccount(context.request, base, admin);
+    assert.equal(actor.user.role, "center_admin");
+    assert.equal(actor.center.id, center.id);
+    const researcher = { name: "Исследователь тестового центра", email: "files-researcher@example.test",
+      password: randomBytes(24).toString("base64url"), role: "researcher", center_id: center.id };
+    await createAccount(context.request, base, researcher);
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
-    await runChecks(page, `http://127.0.0.1:${port}`, await fs.readFile(workbook));
-    console.log("PASS /files: архив и сохранённые данные, CSV/XLSX/JSON, модель и сверка, Excel, регистрация и публикация");
+    await runChecks(page, base, await fs.readFile(workbook));
+    await verifyResearcher(browser, base, researcher);
+    console.log("PASS /files: гостевой экран, выгрузки исследователя, импорт и публикация администратора, CSV/XLSX/JSON, Excel и восстановление");
   } catch (error) {
     if (serverErrors) console.error(serverErrors.trim());
     throw error;
   } finally {
     if (browser) await browser.close();
-    if (server.exitCode === null && server.signalCode === null) {
-      const stopped = once(server, "close");
-      server.kill();
-      await stopped;
-    }
-    lines.close();
+    if (server && server.exitCode === null && server.signalCode === null) server.kill();
+    await stopped?.catch(() => {});
+    lines?.close();
     await fs.rm(temporary, { recursive: true, force: true });
   }
 }

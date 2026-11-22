@@ -4,13 +4,14 @@ import argparse
 from dataclasses import dataclass
 from email.message import Message
 from hashlib import sha256
+from http.cookiejar import CookieJar
 import json
 import os
 from pathlib import Path
 from secrets import token_hex
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
 DAY = "2026-01-15"
@@ -46,7 +47,8 @@ class Response:
 class Client:
     def __init__(self, base):
         self.base = base
-        self.opener = build_opener(ProxyHandler({}), NoRedirect())
+        self.cookies = CookieJar()
+        self.opener = build_opener(ProxyHandler({}), HTTPCookieProcessor(self.cookies), NoRedirect())
 
     def request(self, path, *, query=None, payload=None, body=None, mime=None, origin=None, status=200):
         url = self.base + path + ("?" + urlencode(query) if query else "")
@@ -64,6 +66,24 @@ class Client:
             contents = response.read()
             check(response.status == status, f"{request.get_method()} {path}: HTTP {response.status}, ожидался {status}.")
             return Response(response.headers, contents)
+
+    def login(self, email, password):
+        result = self.request("/api/account/login", payload={"email": email, "password": password},
+                              origin=self.base).json()
+        check(result["user"]["role"] in {"global_admin", "center_admin"} and bool(list(self.cookies)),
+              "Для smoke требуется действующая сессия администратора.")
+
+
+def check_public_archive(client):
+    files_page = client.request("/files")
+    check(files_page.headers.get_content_type() == "text/html", "Страница входа в раздел файлов недоступна.")
+    client.request("/api/files", status=401)
+    stations = client.request("/api/stations").json()["stations"]
+    check(any(station["id"] == "kr1" for station in stations), "Публичный каталог не вернул архивную станцию Кр1.")
+    temperatures = client.request("/api/observations", query={
+        "stations": "kr1", "chart": "air", "grain": "day", "start": "2024-04-01", "end": "2024-04-01",
+    }).json()["series"]
+    check(any(series["station"] == "kr1" for series in temperatures), "Публичный архив не вернул график Кр1.")
 
 
 def chart_value(client, station, expected):
@@ -108,8 +128,6 @@ def create(client):
         "id": station_id, "label": f"Стек · {station_id}", "profile": "kr1",
         "minimum_slots": 2, "params": ["t_air", "rh"], "latitude": 56.52, "longitude": 32.87,
     }
-    files_page = client.request("/files")
-    check(files_page.headers.get_content_type() == "text/html", "Страница файлов недоступна без входа.")
     client.request("/api/stations", payload=station, origin=FOREIGN_ORIGIN, status=403)
     registered = client.request("/api/stations", payload=station, origin=client.base, status=201).json()["station"]
     check(registered["id"] == station_id and registered["minimum_slots"] == 2,
@@ -155,7 +173,8 @@ def verify(client, state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
-        "Передайте METEO_SMOKE_URL через окружение. "
+        "Передайте METEO_SMOKE_URL и учётные данные тестового администратора через "
+        "METEO_SMOKE_EMAIL и METEO_SMOKE_PASSWORD. "
         "Режим create пишет синтетические данные. После перезапуска сервера "
         "выполните verify с тем же временным файлом состояния."
     ))
@@ -168,19 +187,26 @@ def main():
     if (parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username is not None
             or parsed.path or parsed.query or parsed.fragment):
         parser.error("Задайте METEO_SMOKE_URL в виде HTTP(S)-адреса без пути.")
+    email = os.environ.get("METEO_SMOKE_EMAIL", "").strip()
+    password = os.environ.get("METEO_SMOKE_PASSWORD", "")
+    if not email or not password:
+        parser.error("Укажите учётные данные тестового администратора через METEO_SMOKE_EMAIL и METEO_SMOKE_PASSWORD.")
     if args.mode == "create" and (args.state.exists() or not args.state.parent.is_dir()):
         parser.error("Для create укажите новый файл состояния в существующей временной папке.")
     try:
         state = json.loads(args.state.read_text(encoding="utf-8")) if args.mode == "verify" else None
+        guest = Client(base)
+        check(guest.request("/healthz").json() == {"status": "ok"}, "Проверка готовности не вернула status=ok.")
+        check_public_archive(guest)
         client = Client(base)
-        check(client.request("/healthz").json() == {"status": "ok"}, "Проверка готовности не вернула status=ok.")
+        client.login(email, password)
         if args.mode == "create":
             state = create(client)
             fd = os.open(args.state, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as destination:
                 json.dump(state, destination, ensure_ascii=False, indent=2)
                 destination.write("\n")
-            print(f"PASS create: CSV подтверждён без входа, график показывает {EXPECTED_MEAN} °C, чужой Origin отклонён.")
+            print(f"PASS create: CSV подтверждён после входа, график показывает {EXPECTED_MEAN} °C, чужой Origin отклонён.")
         else:
             verify(client, state)
             print(f"PASS verify: паспорт, исходник и {EXPECTED_MEAN} °C сохранены, старый аудит истёк.")

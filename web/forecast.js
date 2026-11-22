@@ -1,18 +1,21 @@
-'use strict';
+import {activeWeatherLocation, coordinates, distanceKm} from './weather-center.js';
 
 const dailyFields = [
   ['temperature_2m_min', '°C'], ['temperature_2m_max', '°C'],
   ['precipitation_sum', 'mm'], ['wind_speed_10m_max', 'm/s'],
 ];
 const hourlyFields = [['temperature_2m', '°C'], ['wind_speed_10m', 'm/s']];
-const forecastPoint = {latitude: '56.464310', longitude: '32.970290'};
-const endpoint = new URL('https://api.open-meteo.com/v1/forecast');
-endpoint.search = new URLSearchParams({
-  ...forecastPoint,
-  daily: [...dailyFields.map(([key]) => key), 'weather_code'].join(','),
-  hourly: hourlyFields.map(([key]) => key).join(','),
-  wind_speed_unit: 'ms', timezone: 'Europe/Moscow', forecast_days: '3',
-});
+function forecastEndpoint({point, bundled}) {
+  const endpoint = new URL('https://api.open-meteo.com/v1/forecast');
+  endpoint.search = new URLSearchParams({
+    latitude: bundled ? point.latitude.toFixed(6) : point.latitude,
+    longitude: bundled ? point.longitude.toFixed(6) : point.longitude,
+    daily: [...dailyFields.map(([key]) => key), 'weather_code'].join(','),
+    hourly: hourlyFields.map(([key]) => key).join(','),
+    wind_speed_unit: 'ms', timezone: 'Europe/Moscow', forecast_days: '3',
+  });
+  return endpoint;
+}
 
 const numberFormat = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 2});
 const signedNumber = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 2, signDisplay: 'exceptZero'});
@@ -40,6 +43,7 @@ const source = byId('forecast-source');
 const periodControl = byId('forecast-hours');
 let hourly = [];
 let selectedHours = 24;
+let forecastRequest = 0;
 
 function hasValues(data, units, key, unit) {
   const values = data[key];
@@ -47,17 +51,13 @@ function hasValues(data, units, key, unit) {
     values.length === data.time.length && values.every(value => value === null || Number.isFinite(value));
 }
 
-function dailyRows(response) {
+function dailyRows(response, point) {
   const daily = response.daily;
   if (!Array.isArray(daily?.time) || daily.time.length !== 3 ||
       response.daily_units?.time !== 'iso8601' || response.timezone !== 'Europe/Moscow') {
     throw new Error('Провайдер вернул неполный период');
   }
-  if (!Number.isFinite(response.latitude) || !Number.isFinite(response.longitude) ||
-      Math.abs(response.latitude - Number(forecastPoint.latitude)) > 0.15 ||
-      Math.abs(response.longitude - Number(forecastPoint.longitude)) > 0.2) {
-    throw new Error('Ответ относится к другой местности');
-  }
+  if (distanceKm(response, point) > 30) throw new Error('Ответ относится к другой местности.');
   if (!dailyFields.every(([key, unit]) => hasValues(daily, response.daily_units, key, unit))) {
     throw new Error('Провайдер вернул неполную таблицу');
   }
@@ -226,8 +226,8 @@ function renderHourly() {
   renderTable('forecast-hourly-rows', rows.map(row => ({label: wallTime.format(row.time), values: row.values})));
 }
 
-function render(response, retrieved, saved) {
-  const rows = dailyRows(response);
+function render(response, retrieved, saved, point) {
+  const rows = dailyRows(response, point);
   if (rows[0].iso !== moscowDay.format(retrieved)) throw new Error('Ответ относится к другой дате');
   const expired = rows.at(-1).iso < moscowDay.format(new Date());
   hourly = hourlyRows(response, rows[0].iso, retrieved);
@@ -244,36 +244,72 @@ function render(response, retrieved, saved) {
   return expired;
 }
 
+function showLocation(location) {
+  byId('forecast-location').textContent = location.name + ' · московское время';
+  byId('forecast-place').textContent = location.point
+    ? (location.bundled ? 'Прогноз для района ' : 'Прогноз для станции ') +
+      location.label + ' · ' + coordinates(location.point)
+    : 'Прогноз строится для станции с указанными координатами.';
+  for (const item of document.querySelectorAll('[data-forecast-place]')) item.textContent = location.label || '';
+  byId('forecast-local-links').hidden = !location.bundled;
+}
+
 async function loadForecast() {
+  const request = ++forecastRequest;
   button.disabled = true;
   panel.hidden = true;
   source.hidden = true;
-  statusLine.textContent = 'Запрашиваем свежий прогноз Open-Meteo…';
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5500);
+  byId('forecast-local-links').hidden = true;
+  byId('forecast-location').textContent = 'Краткосрочный прогноз · московское время';
+  byId('forecast-place').textContent = 'Прогноз строится для станции с указанными координатами.';
+  statusLine.textContent = 'Проверяем активный заповедник…';
+  let location;
   try {
-    const response = await fetch(endpoint, {signal: controller.signal, cache: 'no-store', credentials: 'omit'});
-    if (!response.ok) throw new Error('Сервис недоступен');
-    render(await response.json(), new Date(), false);
-    statusLine.textContent = 'Получен актуальный прогноз от Open-Meteo.';
-  } catch {
+    location = await activeWeatherLocation();
+    if (request !== forecastRequest) return;
+    showLocation(location);
+    if (!location.point) {
+      statusLine.textContent = 'Добавьте метеостанцию с координатами в этом заповеднике, чтобы открыть прогноз.';
+      return;
+    }
+    statusLine.textContent = 'Запрашиваем свежий прогноз Open-Meteo…';
+    const endpoint = forecastEndpoint(location);
     try {
-      const response = await fetch('/forecast-example.json');
+      const response = await fetch(endpoint, {
+        signal: AbortSignal.timeout(5500), cache: 'no-store', credentials: 'omit',
+      });
+      if (!response.ok) throw new Error('Сервис недоступен');
+      const data = await response.json();
+      if (request !== forecastRequest) return;
+      render(data, new Date(), false, location.point);
+      statusLine.textContent = 'Получен актуальный прогноз от Open-Meteo.';
+    } catch {
+      if (request !== forecastRequest) return;
+      if (!location.bundled) {
+        statusLine.textContent = 'Не удалось получить прогноз для выбранной станции. Попробуйте обновить страницу позже.';
+        return;
+      }
+      const response = await fetch('/forecast-example.json', {signal: AbortSignal.timeout(5500)});
       if (!response.ok) throw new Error('Копия недоступна');
       const snapshot = await response.json();
+      if (request !== forecastRequest) return;
       const retrieved = new Date(snapshot.retrieved_utc);
-      if (!Number.isFinite(retrieved.getTime())) throw new Error('Неизвестная дата сохранения');
-      if (new URL(snapshot.source_url).href !== endpoint.href) throw new Error('Копия относится к другому запросу');
-      const expired = render(snapshot.response, retrieved, true);
+      if (!Number.isFinite(retrieved.getTime()) || new URL(snapshot.source_url).href !== endpoint.href) {
+        throw new Error('Копия относится к другому запросу');
+      }
+      const expired = render(snapshot.response, retrieved, true, location.point);
       statusLine.textContent = expired
         ? 'Свежий прогноз недоступен. Показана архивная копия за прошедшие даты.'
         : 'Свежий прогноз недоступен. Показана сохранённая копия с датами ниже.';
-    } catch {
-      statusLine.textContent = 'Не удалось получить прогноз или открыть сохранённую копию. Попробуйте обновить страницу позже.';
+    }
+  } catch {
+    if (request === forecastRequest) {
+      statusLine.textContent = location?.bundled
+        ? 'Не удалось получить прогноз или открыть сохранённую копию. Попробуйте обновить страницу позже.'
+        : 'Не удалось определить заповедник или загрузить его станции. Попробуйте обновить страницу.';
     }
   } finally {
-    clearTimeout(timer);
-    button.disabled = false;
+    if (request === forecastRequest) button.disabled = false;
   }
 }
 
@@ -291,4 +327,6 @@ for (const control of periodControl.querySelectorAll('button')) {
   });
 }
 button.addEventListener('click', loadForecast);
+window.addEventListener('meteoarchive:account-change', loadForecast);
+window.addEventListener('pageshow', event => { if (event.persisted) loadForecast(); });
 loadForecast();

@@ -5,6 +5,7 @@ import mimetypes
 import re
 import sys
 from contextlib import closing
+from functools import wraps
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlsplit
@@ -12,6 +13,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, database, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
 from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
+from observations_db import CENTRAL_CENTER, center_scope, uses_archive
 from request_origin import allow_browser_write, configured_origin
 from review_service import ReportExpired, create_report, report_excel, report_page
 from review_upload import MAX_BYTES as MAX_REVIEW_UPLOAD
@@ -41,6 +43,8 @@ API = {
     "/api/observation-coverage": "Матрица покрытия выбранных станций за отмеченные интервалы",
     "/api/files": "Очередь, исходные файлы, предпросмотр и подтверждённые наборы наблюдений",
     "/api/files/from-observations": "POST создаёт рабочий файл из выбранных наблюдений",
+    "/api/account/me": "Учётная запись, роль и активный заповедник",
+    "/api/account/sessions": "Сохранённые рабочие сессии текущего пользователя",
 }
 WEB_FILES = {
     "/": "observations.html",
@@ -48,6 +52,8 @@ WEB_FILES = {
     "/observations": "observations.html",
     "/journal": "index.html",
     "/files": "files-page.html",
+    "/account": "account.html",
+    "/account.html": "account.html",
     "/app.js": "app.js",
     "/style.css": "style.css",
     "/forecast": "forecast.html",
@@ -66,7 +72,8 @@ WEB_FILES = {
 }
 for asset in ("observation-timeline.js", "clgz-logo.png", "reserve-brand.css", "archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js", "chart-report.js",
               "station-map.js", "station-map.css", "station-map-data.js", "russia-map-data.js", "precip-boundary.js", "observation-chart.js",
-              "station-map-raster.js", "russia-relief.webp", "reserve-imagery.webp",
+              "station-map-raster.js", "russia-relief.webp", "reserve-imagery.webp", "reserve-detail.webp", "reserve-detail-osm.js",
+              "account-client.js", "account.js", "account.css", "account-actions.js", "observation-session.js", "weather-center.js",
               "coverage-overview.js", "coverage-overview.css", "observation-indicators.js", "observation-indicators.css", "recent-days.js",
               "observation-chart.css", "files-page.js", "files-page.css", "weather-pages.css",
               "fonts/manrope.ttf", "fonts/OFL-Manrope.txt"):
@@ -83,6 +90,51 @@ LEGACY_REDIRECTS = {
     "/model": "/forecast",
     "/model.html": "/forecast",
 }
+
+ARCHIVE_ENDPOINTS = {
+    "/api/series", "/api/export", "/api/export/latest-five", "/api/raw", "/api/compare",
+    "/api/events", "/api/events/export", "/api/import", "/api/import/example",
+}
+ADMIN_WRITES = {
+    "/api/stations", "/api/files/upload", "/api/files/corrected", "/api/files/confirm",
+    "/api/files/discard", "/api/import",
+}
+ADMIN_ROLES = {"global_admin", "center_admin"}
+
+
+def workspace_request(handler):
+    @wraps(handler)
+    def scoped(self):
+        try:
+            route = self.route
+            if not route.startswith("/api/"):
+                return handler(self)
+            if self.command == "POST" and not allow_browser_write(
+                self.headers, local_port=self.local_port, request_scheme=self.request_scheme, public_origin=self.public_origin
+            ):
+                return self.send_json({"error": "Отправьте запрос со страницы этого Метеоархива."}, HTTPStatus.FORBIDDEN)
+            self.cookies = ",".join(self.headers.get_all("Cookie", []))
+            if route.startswith("/api/account/"):
+                return handler(self)
+            # Static pages can be opened before signing in; their data requests use this boundary.
+            from accounts import current_viewer
+            self.actor = current_viewer(self.cookies) if self.cookies else None
+            private = self.command == "POST" or route.startswith(("/api/files", "/api/review"))
+            if private and not self.actor:
+                return self.send_json({"error": "Войдите в личный кабинет."}, HTTPStatus.UNAUTHORIZED)
+            if self.command == "POST" and route in ADMIN_WRITES and self.actor["role"] not in ADMIN_ROLES:
+                return self.send_json({"error": "Для изменения данных нужен администратор центра."}, HTTPStatus.FORBIDDEN)
+            center = self.actor["active_center_id"] if self.actor else CENTRAL_CENTER
+            with center_scope(center, public_only=self.actor is None):
+                if route in ARCHIVE_ENDPOINTS and not uses_archive():
+                    return self.send_json({"error": "Этот архив относится к Центрально-Лесному заповеднику."}, HTTPStatus.NOT_FOUND)
+                return handler(self)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as error:
+            self.log_error("Ошибка определения рабочего центра: %r", error)
+            self.send_json({"error": "Не удалось открыть рабочее пространство."}, HTTPStatus.SERVICE_UNAVAILABLE)
+    return scoped
 
 
 def ready():
@@ -114,9 +166,7 @@ class Routes:
 
     def respond(self, body, content_type, status=200, filename=None, *, headers=None):
         route = self.cache_path
-        no_store = self.command == "POST" or route.startswith((
-            "/api/review", "/api/files", "/api/observation", "/api/stations", "/files", "/healthz",
-        )) or route in LEGACY_REDIRECTS
+        no_store = self.command == "POST" or route.startswith(("/api/", "/account", "/files", "/healthz")) or route in LEGACY_REDIRECTS
         response_headers = [
             ("Content-Type", content_type),
             ("Content-Length", str(len(body))),
@@ -136,11 +186,20 @@ class Routes:
         body = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
         self.respond(body, "application/json; charset=utf-8", status, filename, headers=headers)
 
+    def account_response(self, query, body=b""):
+        from accounts import handle
+        secure = self.request_scheme == "https" or bool(self.public_origin and self.public_origin[0] == "https")
+        status, payload, headers = handle(self.command, self.route, query, body, self.cookies, secure=secure)
+        self.send_json(payload, status, headers=headers)
+
+    @workspace_request
     def do_GET(self):
         try:
             route = self.route
             query = {k: v[-1] for k, v in parse_qs(self.query_string, keep_blank_values=True).items()}
-            if route == "/healthz":
+            if route.startswith("/api/account/"):
+                self.account_response(query)
+            elif route == "/healthz":
                 try:
                     check_ready()
                 except Exception:
@@ -191,7 +250,7 @@ class Routes:
                     self.respond(body, XLSX_TYPE, filename=name)
             elif route == "/api/meta":
                 from review_filter import quality_metadata
-                self.send_json({**metadata(), "quality": quality_metadata()})
+                self.send_json({**(metadata() if uses_archive() else station_list()), "quality": quality_metadata()})
             elif route == "/api/series":
                 self.send_json(analyze(query))
             elif route in ("/api/export", "/api/export/latest-five"):
@@ -246,18 +305,19 @@ class Routes:
             self.log_error("Ошибка обработки: %r", error)
             self.send_json({"error":"Ошибка чтения данных. Подробности в журнале сервера."}, 500)
 
+    @workspace_request
     def do_POST(self):
         try:
             route = self.route
             query = {k: v[-1] for k, v in parse_qs(self.query_string, keep_blank_values=True).items()}
             file_upload = route in ("/api/files/upload", "/api/files/corrected")
             action = route in FILE_ACTIONS or route == "/api/stations"
-            if route not in ("/api/import", "/api/review") and not file_upload and not action:
+            account_action = route.startswith("/api/account/")
+            if route not in ("/api/import", "/api/review") and not file_upload and not action and not account_action:
                 self.send_json({"error": "Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
                 return
-            if not allow_browser_write(self.headers, local_port=self.local_port,
-                                       request_scheme=self.request_scheme, public_origin=self.public_origin):
-                self.send_json({"error": "Отправьте запрос со страницы этого Метеоархива."}, HTTPStatus.FORBIDDEN)
+            if account_action and self.headers.get_content_type() != "application/json":
+                self.send_json({"error": "Для личного кабинета используйте JSON."}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
                 return
             source_format = CONTENT_FORMATS.get(self.headers.get_content_type())
             is_review = route == "/api/review"
@@ -274,7 +334,13 @@ class Routes:
                 raise ValueError("Указан неверный размер файла") from None
             if size < 0 or (route == "/api/import" and size == 0):
                 raise ValueError("Файл не содержит данных")
-            maximum = 64 * 1024 if action else MAX_REVIEW_UPLOAD if is_review or file_upload else MAX_UPLOAD
+            if is_review and size and self.actor["role"] not in ADMIN_ROLES:
+                self.send_json({"error": "Загрузка нового файла доступна администратору центра."}, HTTPStatus.FORBIDDEN)
+                return
+            if is_review and not uses_archive() and not query.get("file_id"):
+                self.send_json({"error": "Выберите сохранённый файл вашего центра."}, HTTPStatus.NOT_FOUND)
+                return
+            maximum = 64 * 1024 if action or account_action else MAX_REVIEW_UPLOAD if is_review or file_upload else MAX_UPLOAD
             if route == "/api/files/corrected":
                 from observation_store import MAX_CORRECTED_BYTES
                 maximum = MAX_CORRECTED_BYTES
@@ -285,7 +351,9 @@ class Routes:
             body = self.read_body(size, timeout=10)
             if len(body) != size:
                 raise ValueError("Файл загружен не полностью")
-            if action:
+            if account_action:
+                self.account_response(query, body)
+            elif action:
                 if body:
                     if self.headers.get_content_type() != "application/json":
                         raise ValueError("Для настроек используйте JSON.")
@@ -376,10 +444,12 @@ class Handler(Routes, BaseHTTPRequestHandler):
 
 
 def main():
+    from accounts import initialize as initialize_accounts
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     ready()
+    initialize_accounts()
     try:
         origin = configured_origin()
         server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)

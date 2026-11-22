@@ -82,11 +82,12 @@ def _prune(now):
 
 
 def _save(report, original):
+    from observations_db import current_center
     token = secrets.token_urlsafe(24)
     with _lock:
         now = monotonic()
         _prune(now)
-        _cache[token] = (now + LIFETIME, report, original)
+        _cache[(current_center(), token)] = (now + LIFETIME, report, original)
         while len(_cache) > 1 and (len(_cache) > MAX_REPORTS or
                 sum(len(r["rows"]) for _, r, _ in _cache.values()) > MAX_CACHED_ROWS):
             _cache.popitem(last=False)
@@ -98,14 +99,16 @@ class ReportExpired(ValueError):
 
 
 def _get(token):
+    from observations_db import current_center
+    key = (current_center(), token)
     with _lock:
         now = monotonic()
         _prune(now)
-        if token not in _cache:
+        if key not in _cache:
             raise ReportExpired("Расчёт больше не хранится. Выполните расчёт ещё раз.")
-        _, report, original = _cache[token]
-        _cache[token] = (now + LIFETIME, report, original)
-        _cache.move_to_end(token)
+        _, report, original = _cache[key]
+        _cache[key] = (now + LIFETIME, report, original)
+        _cache.move_to_end(key)
         return report, original
 
 

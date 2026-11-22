@@ -26,6 +26,7 @@
 .precip-stepper .btn { min-width: 40px; padding: 0; font-size: 1.1rem; }
 .precip-stepper .btn:hover:enabled { background: var(--mint); }
 .precip-stepper input { flex: 1; width: 100%; min-width: 0; height: 34px; margin: 0; accent-color: var(--green); }
+.precip-stepper input:enabled { cursor: pointer; }
 .precip-time-labels {
   display: flex;
   justify-content: space-between;

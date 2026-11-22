@@ -1,38 +1,68 @@
 import {land, lakes, rivers, roads, places} from './station-map-data.js';
 import {reserveBoundary} from './precip-boundary.js';
 
-const latitudes = [56.625, 56.5625, 56.5, 56.4375, 56.375];
-const longitudes = [32.625, 32.75, 32.875, 33, 33.125];
-const points = latitudes.flatMap(latitude => longitudes.map(longitude => ({latitude, longitude})));
-const forecastPoint = {latitude: 56.464310, longitude: 32.970290};
+import {activeWeatherLocation, coordinates, distanceKm, wrapLongitude} from './weather-center.js';
+import {russiaRaster, reserveRaster, rasterOffsets} from './station-map-raster.js';
+
 const northSouthKmPerDegree = 111.2;
-const eastWestKmPerDegree = northSouthKmPerDegree * Math.cos(forecastPoint.latitude * Math.PI / 180);
-const dx = longitudes[1] - longitudes[0];
-const dy = latitudes[0] - latitudes[1];
-const forecastIndex = points.findIndex(point =>
-  Math.abs(point.latitude - forecastPoint.latitude) < dy / 2 &&
-  Math.abs(point.longitude - forecastPoint.longitude) < dx / 2);
-const area = {
-  west: longitudes[0] - dx / 2,
-  east: longitudes.at(-1) + dx / 2,
-  south: latitudes.at(-1) - dy / 2,
-  north: latitudes[0] + dy / 2,
-};
-// Outer pixel bounds of the north-up WGS84 crop used by the basemap.
-const imagery = {west: 32.10, south: 56.10, east: 33.75, north: 56.95};
-const overview = {latitude: (area.south + area.north) / 2, longitude: (area.west + area.east) / 2};
 const step = 3600;
 const hours = 24;
-const endpoint = new URL('https://api.open-meteo.com/v1/forecast');
-endpoint.search = new URLSearchParams({
-  latitude: points.map(point => point.latitude).join(','),
-  longitude: points.map(point => point.longitude).join(','),
-  hourly: 'precipitation',
-  forecast_hours: String(hours),
-  timeformat: 'unixtime',
-  models: 'dwd_icon_eu',
-  cell_selection: 'nearest',
-});
+
+function gridFor({point, bundled}) {
+  let latitudes, longitudes, dx, dy;
+  const eastWestKmPerDegree = northSouthKmPerDegree * Math.max(.05, Math.cos(point.latitude * Math.PI / 180));
+  if (bundled) {
+    latitudes = [56.625, 56.5625, 56.5, 56.4375, 56.375];
+    longitudes = [32.625, 32.75, 32.875, 33, 33.125];
+    dx = .125;
+    dy = .0625;
+  } else {
+    dy = .12;
+    dx = Number((13.3 / eastWestKmPerDegree).toFixed(5));
+    const latitude = Math.max(-90 + 2 * dy, Math.min(90 - 2 * dy, point.latitude));
+    const offsets = [-2, -1, 0, 1, 2];
+    latitudes = offsets.map(offset => Number((latitude - dy * offset).toFixed(6)));
+    longitudes = offsets.map(offset => Number((point.longitude + dx * offset).toFixed(6)));
+  }
+  const points = latitudes.flatMap(latitude => longitudes.map(longitude => ({latitude, longitude})));
+  const forecastIndex = points.findIndex(item => Math.abs(item.latitude - point.latitude) <= dy / 2 &&
+    Math.abs(item.longitude - point.longitude) <= dx / 2);
+  const area = {
+    west: longitudes[0] - dx / 2, east: longitudes.at(-1) + dx / 2,
+    south: latitudes.at(-1) - dy / 2, north: latitudes[0] + dy / 2,
+  };
+  const overview = {latitude: (area.south + area.north) / 2, longitude: (area.west + area.east) / 2};
+  return {latitudes, longitudes, points, dx, dy, forecastIndex, area, overview, eastWestKmPerDegree};
+}
+
+function forecastEndpoint({points}, bundled) {
+  const endpoint = new URL('https://api.open-meteo.com/v1/forecast');
+  endpoint.search = new URLSearchParams({
+    latitude: points.map(point => point.latitude).join(','),
+    longitude: points.map(point => bundled ? point.longitude : Number(wrapLongitude(point.longitude).toFixed(6))).join(','),
+    hourly: 'precipitation', forecast_hours: String(hours), timeformat: 'unixtime',
+    models: bundled ? 'dwd_icon_eu' : 'dwd_icon_global', cell_selection: 'nearest',
+  });
+  return endpoint;
+}
+
+const localPlaces = new Set(['Посёлок Заповедный', 'Староселье', 'Барсуки', 'Стулово', 'Гусевка', 'Васьково', 'Кисловка', 'Падоры']);
+const localBase = {
+  raster: reserveRaster,
+  layers: [['land', land, true], ['rivers', rivers], ['lakes', lakes, true], ['roads', roads], ['boundary', reserveBoundary, true]],
+  places: [...places.filter(([name]) => localPlaces.has(name)), ...places.filter(([name]) => !localPlaces.has(name))],
+};
+
+async function mapBase(bundled) {
+  if (bundled) return localBase;
+  const {russiaLand, russiaRivers, russiaLakes, russiaRoads, russiaPlaces} = await import('./russia-map-data.js');
+  return {
+    raster: russiaRaster,
+    layers: [['land', russiaLand, true], ['rivers', russiaRivers], ['lakes', russiaLakes, true],
+      ['roads', russiaRoads], ['boundary', [], true]],
+    places: russiaPlaces,
+  };
+}
 
 const dateTime = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
@@ -67,15 +97,18 @@ const zoomReset = document.querySelector('#precip-zoom-reset');
 const zoomLevels = [1, 1.5, 2.25, 3];
 const svgNamespace = 'http://www.w3.org/2000/svg';
 let shown;
-let selected = forecastIndex;
-let center = overview;
+let geometry;
+let locationKey;
+let selected;
+let center;
 let zoom = 0;
+let cells = [];
+let forecastRequest = 0;
 
-relief.addEventListener('load', () => { relief.dataset.loaded = 'true'; }, {once: true});
-relief.setAttribute('href', '/reserve-imagery.webp');
+relief.addEventListener('load', () => { relief.dataset.loaded = 'true'; });
 
-function coordinates(point) {
-  return `${number.format(point.latitude)}° с. ш., ${number.format(point.longitude)}° в. д.`;
+function pointLabel(point) {
+  return coordinates({...point, longitude: Number(wrapLongitude(point.longitude).toFixed(6))});
 }
 
 function level(value) {
@@ -88,6 +121,7 @@ function level(value) {
 }
 
 function parseForecast(response, retrieved, bundled = false) {
+  const {points} = geometry;
   const times = response?.[0]?.hourly?.time;
   if (!Array.isArray(response) || response.length !== points.length ||
       !Array.isArray(times) || times.length !== hours ||
@@ -100,8 +134,7 @@ function parseForecast(response, retrieved, bundled = false) {
   const nodes = response.map((node, index) => {
     const point = points[index];
     const precipitation = node?.hourly?.precipitation;
-    if (!Number.isFinite(node?.latitude) || !Number.isFinite(node?.longitude) ||
-        Math.abs(node.latitude - point.latitude) > 0.15 || Math.abs(node.longitude - point.longitude) > 0.2 ||
+    if (distanceKm(node, {...point, longitude: wrapLongitude(point.longitude)}) > 24 ||
         node.hourly_units?.time !== 'unixtime' || node.hourly_units?.precipitation !== 'mm' ||
         node.hourly?.time?.length !== hours || !node.hourly.time.every((time, i) => time === times[i]) ||
         !Array.isArray(precipitation) || precipitation.length !== hours ||
@@ -135,13 +168,11 @@ function shapesPath(shapes, bounds, project, closed = false) {
   }).join('');
 }
 
-const placePins = new Set(['Посёлок Заповедный', 'Староселье', 'Барсуки', 'Стулово', 'Гусевка', 'Васьково', 'Кисловка', 'Падоры']);
-const mapPlaces = [...places.filter(([name]) => placePins.has(name)), ...places.filter(([name]) => !placePins.has(name))];
-
 function renderPlaces(bounds, project, width, height, reserveX, reserveY) {
   const occupied = [[reserveX - 10, reserveY - 10, reserveX + 10, reserveY + 10]];
   const labels = [];
-  for (const [name, longitude, latitude] of mapPlaces) {
+  for (const [name, rawLongitude, latitude] of geometry.base.places) {
+    const longitude = center.longitude + wrapLongitude(rawLongitude - center.longitude);
     if (longitude < bounds.west || longitude > bounds.east || latitude < bounds.south || latitude > bounds.north) continue;
     const [x, y] = project(longitude, latitude);
     const end = x + 10 + name.length * 7;
@@ -161,36 +192,38 @@ function renderPlaces(bounds, project, width, height, reserveX, reserveY) {
 function selectCell(index, focus = false) {
   selected = index;
   if (zoom && !cells[index].visible) {
-    center = points[index];
+    center = geometry.points[index];
     renderMap();
   }
   renderHour();
   if (focus) cells[index].button.focus({preventScroll: true});
 }
 
-const cells = points.map((point, index) => {
-  const rect = svgElement('rect', {class: 'precip-map-cell'});
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'precip-map-target';
-  button.addEventListener('click', () => selectCell(index));
-  button.addEventListener('keydown', event => {
-    const row = Math.floor(index / longitudes.length);
-    const column = index % longitudes.length;
-    const offsets = {
-      ArrowLeft: column > 0 ? -1 : 0,
-      ArrowRight: column + 1 < longitudes.length ? 1 : 0,
-      ArrowUp: row > 0 ? -longitudes.length : 0,
-      ArrowDown: row + 1 < latitudes.length ? longitudes.length : 0,
-    };
-    if (!Object.hasOwn(offsets, event.key)) return;
-    event.preventDefault();
-    if (offsets[event.key]) selectCell(index + offsets[event.key], true);
+function buildCells({points, latitudes, longitudes}) {
+  cells = points.map((point, index) => {
+    const rect = svgElement('rect', {class: 'precip-map-cell'});
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'precip-map-target';
+    button.addEventListener('click', () => selectCell(index));
+    button.addEventListener('keydown', event => {
+      const row = Math.floor(index / longitudes.length);
+      const column = index % longitudes.length;
+      const offsets = {
+        ArrowLeft: column > 0 ? -1 : 0,
+        ArrowRight: column + 1 < longitudes.length ? 1 : 0,
+        ArrowUp: row > 0 ? -longitudes.length : 0,
+        ArrowDown: row + 1 < latitudes.length ? longitudes.length : 0,
+      };
+      if (!Object.hasOwn(offsets, event.key)) return;
+      event.preventDefault();
+      if (offsets[event.key]) selectCell(index + offsets[event.key], true);
+    });
+    return {button, rect, point, visible: true};
   });
-  return {button, rect, point, visible: true};
-});
-pointsGroup.append(...cells.map(cell => cell.button));
-shading.append(...cells.map(cell => cell.rect));
+  pointsGroup.replaceChildren(...cells.map(cell => cell.button));
+  shading.replaceChildren(...cells.map(cell => cell.rect));
+}
 
 function renderSelection() {
   const {rect} = cells[selected];
@@ -200,7 +233,8 @@ function renderSelection() {
 function renderMap() {
   const width = map.clientWidth;
   const height = map.clientHeight;
-  if (!width || !height) return;
+  if (!geometry || !width || !height) return;
+  const {area, dx, dy, latitudes, longitudes, location, base, eastWestKmPerDegree} = geometry;
   const fitted = Math.min(
     (width - 24) / ((area.east - area.west) * eastWestKmPerDegree),
     (height - 58) / ((area.north - area.south) * northSouthKmPerDegree),
@@ -219,18 +253,25 @@ function renderMap() {
     north: center.latitude + height / (2 * yScale),
   };
   drawing.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  const [imageX, imageY] = project(imagery.west, imagery.north);
-  const [imageRight, imageBottom] = project(imagery.east, imagery.south);
-  relief.setAttribute('x', imageX);
-  relief.setAttribute('y', imageY);
-  relief.setAttribute('width', imageRight - imageX);
-  relief.setAttribute('height', imageBottom - imageY);
-  const layers = [
-    ['land', land, true], ['rivers', rivers], ['lakes', lakes, true],
-    ['roads', roads], ['boundary', reserveBoundary, true],
-  ];
-  for (const [layer, shapes, closed] of layers) {
-    document.querySelector('#precip-map-' + layer).setAttribute('d', shapesPath(shapes, bounds, project, closed));
+  const rasterShift = rasterOffsets(base.raster.bounds, bounds)[0];
+  if (rasterShift == null) {
+    relief.setAttribute('visibility', 'hidden');
+  } else {
+    const [west, south, east, north] = base.raster.bounds;
+    const [imageX, imageY] = project(west + rasterShift, north);
+    const [imageRight, imageBottom] = project(east + rasterShift, south);
+    relief.removeAttribute('visibility');
+    relief.setAttribute('x', imageX);
+    relief.setAttribute('y', imageY);
+    relief.setAttribute('width', imageRight - imageX);
+    relief.setAttribute('height', imageBottom - imageY);
+  }
+  const wraps = bounds.east > 180 ? [0, 360] : bounds.west < -180 ? [0, -360] : [0];
+  for (const [layer, shapes, closed] of base.layers) {
+    const path = wraps.map(shift => shapesPath(shapes, {
+      ...bounds, west: bounds.west - shift, east: bounds.east - shift,
+    }, (longitude, latitude) => project(longitude + shift, latitude), closed)).join('');
+    document.querySelector('#precip-map-' + layer).setAttribute('d', path);
   }
 
   const minX = project(area.west, area.south)[0];
@@ -259,7 +300,7 @@ function renderMap() {
   }
   renderSelection();
 
-  const [reserveX, reserveY] = project(forecastPoint.longitude, forecastPoint.latitude);
+  const [reserveX, reserveY] = project(location.point.longitude, location.point.latitude);
   const marker = document.querySelector('#precip-map-marker');
   marker.setAttribute('cx', reserveX);
   marker.setAttribute('cy', reserveY);
@@ -274,7 +315,7 @@ function renderMap() {
 
 function setZoom(value) {
   zoom = value;
-  center = zoom ? points[selected] : overview;
+  center = zoom ? geometry.points[selected] : geometry.overview;
   renderMap();
 }
 
@@ -284,6 +325,7 @@ zoomOut.addEventListener('click', () => setZoom(zoom - 1));
 zoomReset.addEventListener('click', () => setZoom(0));
 
 function renderHour() {
+  const {points, forecastIndex} = geometry;
   const index = Number(range.value);
   const time = shown.times[index];
   const interval = dateTime.formatRange((time - step) * 1000, time * 1000) + ' МСК';
@@ -299,7 +341,7 @@ function renderHour() {
     rect.dataset.level = button.dataset.level;
     button.tabIndex = i === selected ? 0 : -1;
     button.setAttribute('aria-pressed', String(i === selected));
-    button.setAttribute('aria-label', `${coordinates(points[i])}, ${display}` +
+    button.setAttribute('aria-label', `${pointLabel(points[i])}, ${display}` +
       (i === forecastIndex ? ', ячейка с точкой краткосрочного прогноза' : ''));
     button.title = display;
   }
@@ -308,7 +350,7 @@ function renderHour() {
   const value = node.precipitation[index];
   cellDetails.textContent = value === null ? 'Нет данных' : number.format(value) + ' мм';
   mapReading.textContent = cellDetails.textContent;
-  coordinateDetails.textContent = 'Центр ячейки · ' + coordinates(points[selected]);
+  coordinateDetails.textContent = 'Центр ячейки · ' + pointLabel(points[selected]);
   nodeDetails.textContent = 'Узел модели ' + coordinates(node);
 }
 
@@ -341,34 +383,107 @@ function recorded(forecast) {
   return recordedDateTime.format(forecast.retrieved) + ' МСК';
 }
 
+function showLocation(location) {
+  document.querySelector('#precip-location').textContent = location.name + ' · почасовой прогноз';
+  document.querySelector('#precip-map-location').textContent = location.bundled
+    ? 'Центрально-Лесной заповедник и окрестности' : 'Окрестности станции ' + (location.label || '');
+  document.querySelector('#precip-forecast-point').textContent = location.point ? coordinates(location.point) : '';
+  document.querySelector('#precip-model').textContent = location.bundled
+    ? 'DWD ICON Europe с разрешением около 7 км' : 'DWD ICON Global с разрешением около 11 км';
+  document.querySelector('#precip-step').textContent = location.bundled
+    ? 'около 7 км с севера на юг и 8 км с запада на восток' : 'около 13 км';
+  document.querySelector('#precip-model-link').textContent = location.bundled ? 'О модели ICON Europe' : 'О модели ICON Global';
+  document.querySelector('#precip-boundary-key').hidden = !location.bundled;
+  document.querySelector('#precip-provenance').hidden = !location.point;
+  document.querySelector('#precip-russia-source').hidden = location.bundled || !location.point;
+  for (const item of document.querySelectorAll('[data-precip-local]')) item.hidden = !location.bundled;
+}
+
+function clearLocation() {
+  shown = geometry = locationKey = undefined;
+  cells = [];
+  pointsGroup.replaceChildren();
+  shading.replaceChildren();
+  relief.removeAttribute('href');
+  delete relief.dataset.loaded;
+}
+
+async function prepareMap(location, request) {
+  const key = JSON.stringify([location.id, location.point.latitude, location.point.longitude]);
+  if (locationKey === key) return;
+  clearLocation();
+  const base = await mapBase(location.bundled);
+  if (request !== forecastRequest) return;
+  geometry = {...gridFor(location), location, base};
+  locationKey = key;
+  selected = geometry.forecastIndex;
+  center = geometry.overview;
+  zoom = 0;
+  relief.setAttribute('href', geometry.base.raster.src);
+  buildCells(geometry);
+}
+
 async function loadForecast() {
+  const request = ++forecastRequest;
   refresh.disabled = true;
-  statusLine.textContent = 'Запрашиваем свежий прогноз Open-Meteo…';
+  panel.hidden = true;
+  document.querySelector('#precip-location').textContent = 'Почасовой прогноз осадков';
+  document.querySelector('#precip-provenance').hidden = true;
+  statusLine.textContent = 'Проверяем активный заповедник…';
   delete statusLine.dataset.error;
+  let location;
   try {
-    const response = await requestJSON(endpoint);
-    const retrieved = new Date();
-    const forecast = parseForecast(response, retrieved);
-    const currentHour = Math.floor(retrieved.getTime() / 1000 / step) * step;
-    if (forecast.times[0] > currentHour || forecast.times[0] < currentHour - step) {
-      throw new Error('Устаревший прогноз');
+    location = await activeWeatherLocation();
+    if (request !== forecastRequest) return;
+    showLocation(location);
+    if (!location.point) {
+      clearLocation();
+      statusLine.textContent = 'Добавьте метеостанцию с координатами в этом заповеднике, чтобы открыть карту осадков.';
+      return;
     }
-    renderForecast(forecast);
-    statusLine.textContent = 'Прогноз получен ' + recorded(forecast) + '.';
-  } catch {
+    await prepareMap(location, request);
+    if (request !== forecastRequest) return;
+    statusLine.textContent = 'Запрашиваем свежий прогноз Open-Meteo…';
+    const endpoint = forecastEndpoint(geometry, location.bundled);
     try {
-      if (!shown) {
-        const snapshot = await requestJSON('/precip-example.json');
-        renderForecast(parseForecast(snapshot.response, new Date(snapshot.retrieved_utc), true));
+      const response = await requestJSON(endpoint);
+      if (request !== forecastRequest) return;
+      const retrieved = new Date();
+      const forecast = parseForecast(response, retrieved);
+      const currentHour = Math.floor(retrieved.getTime() / 1000 / step) * step;
+      if (forecast.times[0] > currentHour || forecast.times[0] < currentHour - step) {
+        throw new Error('Устаревший прогноз');
       }
-      const source = shown.bundled ? 'сохранённый' : 'ранее полученный';
-      statusLine.textContent = `Свежий прогноз недоступен. Показан ${source} прогноз от ${recorded(shown)}.`;
+      renderForecast(forecast);
+      statusLine.textContent = 'Прогноз получен ' + recorded(forecast) + '.';
     } catch {
+      if (request !== forecastRequest) return;
+      let saved = shown;
+      if (!saved && location.bundled) {
+        const snapshot = await requestJSON('/precip-example.json');
+        if (request !== forecastRequest) return;
+        if (new URL(snapshot.request_url).href !== endpoint.href) throw new Error('Копия относится к другому району');
+        saved = parseForecast(snapshot.response, new Date(snapshot.retrieved_utc), true);
+      }
+      if (!saved) {
+        statusLine.dataset.error = 'true';
+        statusLine.textContent = 'Не удалось получить прогноз осадков для выбранной станции. Попробуйте обновить страницу позже.';
+        return;
+      }
+      renderForecast(saved);
+      const source = saved.bundled ? 'сохранённый' : 'ранее полученный';
+      statusLine.textContent = `Свежий прогноз недоступен. Показан ${source} прогноз от ${recorded(saved)}.`;
+    }
+  } catch {
+    if (request === forecastRequest) {
+      if (!location) clearLocation();
       statusLine.dataset.error = 'true';
-      statusLine.textContent = 'Свежий прогноз и сохранённая копия недоступны. Повторите попытку позже.';
+      statusLine.textContent = location?.bundled
+        ? 'Свежий прогноз и сохранённая копия недоступны. Повторите попытку позже.'
+        : 'Не удалось определить район прогноза. Попробуйте обновить страницу.';
     }
   } finally {
-    refresh.disabled = false;
+    if (request === forecastRequest) refresh.disabled = false;
   }
 }
 
@@ -382,4 +497,6 @@ next.addEventListener('click', () => {
   renderHour();
 });
 refresh.addEventListener('click', loadForecast);
+window.addEventListener('meteoarchive:account-change', loadForecast);
+window.addEventListener('pageshow', event => { if (event.persisted) loadForecast(); });
 loadForecast();

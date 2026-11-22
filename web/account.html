@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172c23">
+  <title>Личный кабинет · Метеоархив</title>
+  <link rel="stylesheet" href="/archive.css">
+  <link rel="stylesheet" href="/account.css">
+  <script type="module" src="/archive-shell.js"></script>
+  <script type="module" src="/account.js"></script>
+</head>
+<body>
+  <a class="skip-archive" href="#main">К личному кабинету</a>
+  <aside class="side" data-archive-nav></aside>
+  <main id="main" class="account-page" tabindex="-1">
+    <section aria-labelledby="account-title">
+      <header class="account-header">
+        <div>
+          <div class="breadcrumb"><a href="/">Метеоархив</a><span aria-hidden="true">/</span><strong>Личный кабинет</strong></div>
+          <h1 id="account-title">Личный кабинет</h1>
+        </div>
+        <button id="account-logout" class="btn line" type="button" hidden>Выйти</button>
+      </header>
+      <p id="account-status" class="account-status" role="status">Проверяем вход…</p>
+
+      <section id="account-guest" class="card account-login-card" aria-labelledby="account-login-title" hidden>
+        <h2 id="account-login-title">Вход</h2>
+        <p class="muted">Войдите, чтобы открыть сохранённые сессии и файлы своего центра.</p>
+        <form id="account-login" class="account-form" method="post" action="/api/account/login">
+          <label for="account-email">Электронная почта</label>
+          <input id="account-email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          <label for="account-password">Пароль</label>
+          <input id="account-password" name="password" type="password" autocomplete="current-password" required>
+          <p class="account-status account-error" role="status" data-message hidden></p>
+          <div class="account-actions"><button class="btn primary" type="submit">Войти</button></div>
+        </form>
+        <p class="account-help">Чтобы получить доступ или восстановить пароль, обратитесь к администратору своего центра.</p>
+      </section>
+
+      <section id="account-profile" class="card account-profile" aria-labelledby="account-name" hidden>
+        <div class="account-profile-identity">
+          <h2 id="account-name"></h2>
+          <p id="account-profile-email" class="muted"></p>
+        </div>
+        <dl class="account-profile-details">
+          <div><dt>Рабочий центр</dt><dd id="account-center-name"></dd></div>
+          <div><dt>Доступ</dt><dd id="account-role"></dd></div>
+        </dl>
+      </section>
+
+      <section id="account-sessions" class="card account-panel" aria-labelledby="account-sessions-title" hidden>
+        <h2 id="account-sessions-title" tabindex="-1">Сохранённые сессии</h2>
+        <p id="account-sessions-status" class="account-status muted" role="status"></p>
+        <ul id="account-session-list" class="account-list"></ul>
+      </section>
+
+      <section id="account-centers" class="card account-panel" aria-labelledby="account-centers-title" hidden>
+        <h2 id="account-centers-title">Управление центрами</h2>
+        <div class="account-admin-grid">
+          <form id="account-switch-center" class="account-form" method="post" action="/api/account/select-center">
+            <label for="account-center-choice">Рабочий центр</label>
+            <select id="account-center-choice" name="center_id"></select>
+            <p class="account-status account-error" role="status" data-message hidden></p>
+            <div class="account-actions"><button class="btn line" type="submit">Сменить центр</button></div>
+          </form>
+          <form id="account-create-center" class="account-form" method="post" action="/api/account/centers">
+            <label for="account-new-center">Название нового центра</label>
+            <input id="account-new-center" name="name" type="text" maxlength="100" required>
+            <p class="account-status" role="status" data-message hidden></p>
+            <div class="account-actions"><button class="btn line" type="submit">Создать центр</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section id="account-users" class="card account-panel" aria-labelledby="account-users-title" hidden>
+        <h2 id="account-users-title">Пользователи</h2>
+        <div class="account-admin-grid">
+          <div>
+            <p id="account-users-status" class="account-status muted" role="status"></p>
+            <ul id="account-user-list" class="account-list"></ul>
+          </div>
+          <form id="account-add-user" class="account-form" method="post" action="/api/account/users" aria-labelledby="account-add-user-title">
+            <h3 id="account-add-user-title"></h3>
+            <label id="account-user-center-label" for="account-user-center" hidden>Центр</label>
+            <select id="account-user-center" name="center_id" hidden></select>
+            <label for="account-user-name">Имя</label>
+            <input id="account-user-name" name="name" type="text" autocomplete="off" maxlength="100" required>
+            <label for="account-user-email">Электронная почта</label>
+            <input id="account-user-email" name="email" type="email" autocomplete="off" maxlength="254" required>
+            <label for="account-user-password">Начальный пароль</label>
+            <input id="account-user-password" name="password" type="password" autocomplete="new-password" required>
+            <p class="account-status" role="status" data-message hidden></p>
+            <div class="account-actions"><button id="account-user-submit" class="btn primary" type="submit">Добавить</button></div>
+          </form>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

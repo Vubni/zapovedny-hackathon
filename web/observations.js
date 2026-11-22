@@ -2,9 +2,14 @@ import { mountTimeline } from "/observation-timeline.js";
 import { renderChartCard, download, periodFilename } from "/observation-chart.js";
 import { pickStations, mountStationOverview } from "/station-map.js";
 import { mountCoverageOverview } from "/coverage-overview.js";
-import { mountObservationIndicators } from "/observation-indicators.js";
+import { mountObservationIndicators, normalizeIndicatorSelection } from "/observation-indicators.js";
 import { createChartArchive } from "/chart-archive.js";
 import { mountRecentDays } from "/recent-days.js";
+import { accountContext, accountScope, canRegisterStations } from "/account-client.js";
+import {
+  defaultObservationWorkspace, maxObservationWorkspaceBytes, readObservationWorkspace,
+  rememberObservationWorkspace, registerObservationWorkspace,
+} from "/observation-session.js";
 
 const chartGroups = [
   ["Температура воздуха", [
@@ -51,14 +56,18 @@ const sources = {
   semenov: ["Учебный ориентир", "https://doi.org/10.12737/textbook_5c863163b4d2a8.92898948"],
 };
 const grains = new Set(["day", "decade", "month", "year"]);
-const storageKey = "meteoarchive.observations.v1";
 const defaultState = {
-  selected: ["kr1"],
-  start: "2025-07-01",
-  end: "2025-07-31",
-  mode: "modern",
-  grain: "day",
-  charts: ["air"],
+  selected: [defaultObservationWorkspace.stations],
+  start: defaultObservationWorkspace.start,
+  end: defaultObservationWorkspace.end,
+  mode: defaultObservationWorkspace.mode,
+  grain: defaultObservationWorkspace.grain,
+  calendarAligned: false,
+  charts: [defaultObservationWorkspace.charts],
+  coverage: false,
+  coverageParameter: "",
+  indicators: [],
+  presentation: {},
 };
 const emptySelection = "Выберите хотя бы одну станцию";
 const defaultIntervals = [{ start: defaultState.start, end: defaultState.end }];
@@ -122,53 +131,100 @@ function notifyDates() {
   document.dispatchEvent(new CustomEvent("observations:dates", { detail: observationDates() }));
 }
 
-function restoreLocalState() {
+function normalizePresentationEntry(value) {
+  if (!value || typeof value !== "object") return null;
+  const hidden = Array.isArray(value.hidden)
+    ? [...new Set(value.hidden.filter(id => typeof id === "string" && /^[a-z0-9:_@|.-]{1,120}$/i.test(id)))].sort().slice(0, 128) : [];
+  const zoom = Array.isArray(value.zoom) && value.zoom.length === 2 &&
+    value.zoom.every(coordinate => Number.isFinite(coordinate) && Math.abs(coordinate) <= 8.64e15) &&
+    value.zoom[0] < value.zoom[1] ? value.zoom.slice() : null;
+  if (!hidden.length && !zoom) return null;
+  return { ...(hidden.length ? { hidden } : {}), ...(zoom ? { zoom } : {}) };
+}
+
+function parsePresentation(value) {
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (!saved) return { ...defaultState, intervals: defaultIntervals };
-    const intervals = normalizeIntervals(saved.intervals) || normalizeIntervals([{ start: saved.start, end: saved.end }]) || defaultIntervals;
-    return {
-      selected: Array.isArray(saved.selected) ? [...new Set(saved.selected.filter(id => typeof id === "string"))] : defaultState.selected,
-      ...periodSelection(intervals),
-      mode: Object.hasOwn(sources, saved.mode) ? saved.mode : defaultState.mode,
-      grain: grains.has(saved.grain) ? saved.grain : defaultState.grain,
-      charts: Array.isArray(saved.charts) ? [...new Set(saved.charts.filter(id => charts.has(id)))] : defaultState.charts,
-    };
+    return Object.fromEntries(Object.entries(JSON.parse(value)).flatMap(([id, settings]) => {
+      const entry = charts.has(id) && normalizePresentationEntry(settings);
+      return entry ? [[id, entry]] : [];
+    }));
   } catch {
-    return { ...defaultState, intervals: defaultIntervals };
+    return {};
   }
 }
 
 let invalidSharedIntervals = false;
 
-function restoreState() {
-  const saved = restoreLocalState();
-  const query = new URLSearchParams(location.search);
+function settingsFromQuery(query, saved, isCurrentAddress = false) {
   const start = query.get("start") ?? saved.start;
   const end = query.get("end") ?? saved.end;
   const mode = query.get("mode");
   const grain = query.get("grain");
+  const calendar = query.get("calendar");
+  const coverage = query.get("coverage");
+  const coverageParameter = query.get("coverageParameter");
+  const indicators = query.get("indicators");
+  const presentation = query.get("presentation");
   const selected = query.get("stations");
   const chartIds = query.get("charts");
   const givenIntervals = query.get("intervals");
   const intervals = givenIntervals !== null ? parseIntervals(givenIntervals)
     : query.has("start") || query.has("end") ? normalizeIntervals([{ start, end }]) : saved.intervals;
-  invalidSharedIntervals = givenIntervals !== null && !intervals;
+  if (isCurrentAddress) invalidSharedIntervals = givenIntervals !== null && !intervals;
   return {
     selected: selected === null ? saved.selected : [...new Set(selected.split(",").filter(Boolean))],
     ...periodSelection(intervals || saved.intervals),
     mode: Object.hasOwn(sources, mode) ? mode : saved.mode,
     grain: grains.has(grain) ? grain : saved.grain,
+    calendarAligned: calendar === "1" ? true : calendar === "0" ? false : saved.calendarAligned,
     charts: chartIds === null ? saved.charts : [...new Set(chartIds.split(",").filter(id => charts.has(id)))],
+    coverage: coverage === "1" ? true : coverage === "0" ? false : saved.coverage,
+    coverageParameter: coverageParameter !== null && /^[a-z0-9._-]{0,80}$/i.test(coverageParameter)
+      ? coverageParameter : saved.coverageParameter,
+    indicators: indicators === null ? saved.indicators : normalizeIndicatorSelection(indicators.split(",")),
+    presentation: presentation === null ? saved.presentation : parsePresentation(presentation),
   };
 }
 
-function saveState({ updateAddress = true, deferAddress = false } = {}) {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(state));
-  } catch {
-    // The page remains usable when browser storage is unavailable.
+function restoreState() {
+  const stored = readObservationWorkspace(workspaceScope);
+  const defaults = { ...defaultState, intervals: defaultIntervals };
+  const saved = stored ? settingsFromQuery(new URL(stored, location.origin).searchParams, defaults) : defaults;
+  return settingsFromQuery(new URLSearchParams(location.search), saved, true);
+}
+
+function workspacePath() {
+  const base = "/observations?";
+  const params = new URLSearchParams({
+    stations: state.selected.join(","),
+    ...observationDateQuery(),
+    grain: state.grain,
+    mode: state.mode,
+    charts: state.charts.join(","),
+    calendar: state.calendarAligned ? "1" : "0",
+    coverage: state.coverage ? "1" : "0",
+    coverageParameter: state.coverageParameter,
+    indicators: state.indicators.join(","),
+    presentation: "{}",
+  });
+  const included = {};
+  for (const id of state.charts) {
+    const card = cards.get(id);
+    const entry = card?.status === "ready" && card.instance
+      ? normalizePresentationEntry(card.instance.getPresentation()) : state.presentation[id];
+    if (!entry) continue;
+    included[id] = entry;
+    params.set("presentation", JSON.stringify(included));
+    if (base.length + params.toString().length > maxObservationWorkspaceBytes) {
+      delete included[id];
+      params.set("presentation", JSON.stringify(included));
+    }
   }
+  return base + params.toString();
+}
+
+function saveState({ updateAddress = true, deferAddress = false } = {}) {
+  rememberObservationWorkspace(workspaceScope, workspacePath());
   if (!updateAddress) return;
   clearTimeout(addressTimer);
   if (deferAddress) addressTimer = setTimeout(saveAddress, 180);
@@ -179,21 +235,20 @@ function saveAddress() {
   clearTimeout(addressTimer);
   addressTimer = undefined;
   const url = new URL(location.href);
-  const dates = observationDateQuery();
-  const filters = {
-    stations: state.selected.join(","),
-    ...dates,
-    grain: state.grain,
-    mode: state.mode,
-    charts: state.charts.join(","),
-  };
-  if (!dates.intervals) url.searchParams.delete("intervals");
-  for (const [key, value] of Object.entries(filters)) url.searchParams.set(key, value);
+  const filters = new URL(workspacePath(), location.origin).searchParams;
+  if (!filters.has("intervals")) {
+    url.searchParams.delete("intervals");
+    url.searchParams.delete("calendar");
+    filters.delete("calendar");
+  }
+  for (const [key, value] of filters) url.searchParams.set(key, value);
   if (url.href !== location.href) history.replaceState(history.state, "", url);
 }
 
+const workspaceScope = accountScope(await accountContext());
 const state = restoreState();
 state.charts = orderedCharts(state.charts);
+registerObservationWorkspace(workspaceScope, workspacePath);
 let stations = [];
 let bounds;
 let waitingForStations = true;
@@ -215,6 +270,10 @@ const clearStations = get("clear-stations");
 const modeSource = get("mode-source");
 const modeButtons = document.querySelectorAll(".dash-modes [data-mode]");
 const grainInput = get("observation-grain");
+const calendarAlignment = get("calendar-alignment");
+const calendarInput = get("align-observation-calendar");
+const calendarHelp = get("calendar-alignment-help");
+const calendarHelpText = calendarHelp.textContent;
 const catalog = get("chart-catalog");
 const catalogGroups = get("observation-catalog-groups");
 const observationGroups = get("observation-groups");
@@ -366,8 +425,10 @@ async function chooseStations() {
   if (openingStationPicker) return;
   openingStationPicker = true;
   try {
+    const context = await verifyWorkspaceAccount({ refresh: true });
+    if (!context) return;
     await loadStationCatalog();
-    const selected = await pickStations(stations, [...state.selected]);
+    const selected = await pickStations(stations, [...state.selected], { canRegister: canRegisterStations(context) });
     if (Array.isArray(selected)) updateStations(selected);
     await loadStationCatalog();
     if (selected) updateCharts();
@@ -378,12 +439,29 @@ async function chooseStations() {
   }
 }
 
+async function verifyWorkspaceAccount(options) {
+  const context = await accountContext(options);
+  if (accountScope(context) === workspaceScope) return context;
+  document.getElementById("main").hidden = true;
+  location.replace("/observations");
+  return null;
+}
+
 function renderMode() {
   for (const button of modeButtons) button.setAttribute("aria-pressed", String(button.dataset.mode === state.mode));
   const [label, href] = sources[state.mode];
   modeSource.textContent = `${label} ↗`;
   modeSource.href = href;
   grainInput.value = state.grain;
+}
+
+function renderCalendarAlignment() {
+  const yearly = state.grain === "year";
+  calendarAlignment.hidden = state.intervals.length < 2;
+  calendarInput.disabled = yearly;
+  calendarInput.checked = state.calendarAligned && !yearly;
+  const description = yearly ? "При группировке по годам используется ось лет." : calendarHelpText;
+  if (calendarHelp.textContent !== description) calendarHelp.textContent = description;
 }
 
 function syncHandles(activeIndex) {
@@ -560,6 +638,7 @@ function updateCatalog() {
 function toggleChart(id, keepFocus = false) {
   const index = state.charts.indexOf(id);
   state.charts = index < 0 ? orderedCharts([...state.charts, id]) : state.charts.filter(current => current !== id);
+  if (index >= 0) delete state.presentation[id];
   saveState();
   updateCatalog();
   updateCharts();
@@ -590,6 +669,14 @@ function renderCard(card) {
     const { start, end, grain, mode } = state;
     card.instance = renderChartCard(card.mount, card.data, {
       mode, grain, from: start, to: end, intervals: card.data.intervals ?? state.intervals, primary: card.primary,
+      calendarAligned: card.calendarAligned,
+      presentation: state.presentation[card.id],
+      onPresentationChange(value) {
+        const entry = normalizePresentationEntry(value);
+        if (entry) state.presentation[card.id] = entry;
+        else delete state.presentation[card.id];
+        saveState({ deferAddress: true });
+      },
       onHide: () => toggleChart(card.id, true),
     });
   }
@@ -619,18 +706,19 @@ function updateCard(card, retry) {
   });
   const queryKey = waitingForStations ? "waiting" : state.selected.length ? query.toString() : "no-stations";
   const primaryCard = card.id === state.charts[0];
+  const calendarAligned = state.calendarAligned && state.intervals.length > 1 && state.grain !== "year";
+  const presentationChanged = card.primary !== primaryCard ||
+    (card.calendarAligned !== calendarAligned && card.data?.axis === "time");
+  card.primary = primaryCard;
+  card.calendarAligned = calendarAligned;
   card.element.classList.toggle("is-primary", primaryCard);
   if (card.key === queryKey && !(retry && card.status === "error")) {
-    if (card.primary !== primaryCard) {
-      card.primary = primaryCard;
-      renderCard(card);
-    }
+    if (presentationChanged) renderCard(card);
     return;
   }
 
   card.controller?.abort();
   card.key = queryKey;
-  card.primary = primaryCard;
   card.status = waitingForStations ? "waiting" : state.selected.length ? "loading" : "no-stations";
   card.data = undefined;
   renderCard(card);
@@ -717,6 +805,7 @@ function renderSummary(card) {
 }
 
 function updateCharts({ retry = false } = {}) {
+  renderCalendarAlignment();
   updateExtraPanels({retry});
   clearTimeout(renderTimer);
   const dateKey = encodeIntervals(state.intervals);
@@ -813,6 +902,11 @@ grainInput.addEventListener("change", () => {
   saveState();
   updateCharts();
 });
+calendarInput.addEventListener("change", () => {
+  state.calendarAligned = calendarInput.checked;
+  saveState();
+  updateCharts();
+});
 get("open-chart-catalog").addEventListener("click", () => catalog.showModal());
 catalog.addEventListener("click", event => {
   if (event.target === catalog || event.target.closest("[data-close-catalog]")) catalog.close();
@@ -855,11 +949,17 @@ async function refreshPublishedData() {
     setStatus(stationError, "Не удалось обновить список станций.");
   }
 }
-window.addEventListener("pageshow", event => {
-  if (event.persisted) refreshPublishedData();
+window.addEventListener("pageshow", async event => {
+  if (event.persisted && await verifyWorkspaceAccount({ refresh: true })) refreshPublishedData();
 });
-window.addEventListener("storage", event => {
-  if (event.key === "meteoarchive.dataRevision") refreshPublishedData();
+window.addEventListener("meteoarchive:account-change", () => {
+  verifyWorkspaceAccount();
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) verifyWorkspaceAccount({ refresh: true });
+});
+window.addEventListener("storage", async event => {
+  if (event.key === "meteoarchive.dataRevision" && await verifyWorkspaceAccount({ refresh: true })) refreshPublishedData();
 });
 
 const timeline = mountTimeline(archiveRange, editTimeline);
@@ -868,28 +968,40 @@ const stationOverview = mountStationOverview(get("station-overview"), {
   onExpand: chooseStations,
 });
 const coverageToggle = get("show-coverage");
-const coverageOverview = mountCoverageOverview(get("coverage-overview"));
-const indicators = mountObservationIndicators({
-  catalog: get("indicator-catalog"), container: get("observation-indicators"), onChange: updateCatalog,
+const coverageOverview = mountCoverageOverview(get("coverage-overview"), {
+  initialParameter: state.coverageParameter,
+  onParameterChange(value) {
+    state.coverageParameter = value;
+    saveState();
+  },
 });
-const coverageKey = "meteoarchive.observations.coverage";
-try {
-  coverageToggle.checked = localStorage.getItem(coverageKey) === "1";
-} catch {}
+const indicators = mountObservationIndicators({
+  catalog: get("indicator-catalog"),
+  container: get("observation-indicators"),
+  initialSelection: state.indicators,
+  onChange(_count, selection) {
+    state.indicators = selection;
+    saveState();
+    updateCatalog();
+  },
+});
+coverageToggle.checked = state.coverage;
 function showCoverage() {
   get("coverage-overview").hidden = !coverageToggle.checked;
   coverageOverview.setEnabled(coverageToggle.checked);
 }
 coverageToggle.addEventListener("change", () => {
-  try { localStorage.setItem(coverageKey, coverageToggle.checked ? "1" : "0"); } catch {}
+  state.coverage = coverageToggle.checked;
+  saveState();
   showCoverage();
   updateExtraPanels();
   updateCatalog();
 });
 function updateExtraPanels(options = {}) {
   const dates = {start: state.start, end: state.end, intervals: state.intervals};
-  coverageOverview.update({...dates, stations: state.selected, chart: state.charts[0]});
-  indicators.update({...options, ...dates, stations: stations.filter(station => state.selected.includes(station.id))});
+  const availableSelection = waitingForStations ? [] : state.selected;
+  coverageOverview.update({...dates, stations: availableSelection, chart: state.charts[0]});
+  indicators.update({...options, ...dates, stations: stations.filter(station => availableSelection.includes(station.id))});
 }
 showCoverage();
 start();

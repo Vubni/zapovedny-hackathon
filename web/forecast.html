@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/archive.css">
   <link rel="stylesheet" href="/weather-pages.css">
   <script type="module" src="/archive-shell.js"></script>
-  <script defer src="/forecast.js"></script>
+  <script type="module" src="/forecast.js"></script>
 </head>
 <body>
   <a class="skip-archive" href="#content">К прогнозу</a>
@@ -20,7 +20,7 @@
         <div class="heading-line weather-heading">
           <div>
             <h1 id="forecast-heading">Прогноз</h1>
-            <p class="sub">Краткосрочный прогноз для района заповедника · московское время</p>
+            <p class="sub" id="forecast-location">Краткосрочный прогноз · московское время</p>
           </div>
           <span class="tag" id="forecast-source" hidden></span>
         </div>
@@ -30,7 +30,7 @@
         </div>
       </header>
 
-      <p class="weather-status" id="forecast-status" role="status">Запрашиваем данные Open-Meteo…</p>
+      <p class="weather-status" id="forecast-status" role="status">Проверяем активный заповедник…</p>
 
       <div id="forecast-data" class="stack" hidden>
         <section class="card" aria-labelledby="forecast-title">
@@ -67,7 +67,7 @@
           <div class="half" id="forecast-charts" hidden>
             <figure class="card forecast-chart">
               <div class="card-head">
-                <div><h3>Температура по часам</h3><p>Урочище «Красное» · <span data-hourly-period></span></p></div>
+                <div><h3>Температура по часам</h3><p><span data-forecast-place></span> · <span data-hourly-period></span></p></div>
                 <span class="tag">°C</span>
               </div>
               <div class="chart-host" id="forecast-temperature"></div>
@@ -75,7 +75,7 @@
             </figure>
             <figure class="card forecast-chart forecast-wind">
               <div class="card-head">
-                <div><h3>Скорость ветра</h3><p>Урочище «Красное» · <span data-hourly-period></span></p></div>
+                <div><h3>Скорость ветра</h3><p><span data-forecast-place></span> · <span data-hourly-period></span></p></div>
                 <span class="tag">м/с</span>
               </div>
               <div class="chart-host" id="forecast-wind"></div>
@@ -95,8 +95,9 @@
       </div>
 
       <footer class="card forecast-provenance">
-        <p class="note">Прогноз Open-Meteo для района урочища «Красное» (56,464310° с. ш., 32,970290° в. д.). Измерения метеостанций доступны в разделе «Наблюдения».</p>
-        <p><a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> · <a href="/forecast-example.json" download>Сохранённый ответ API</a> · <a href="https://www.clgz.ru/node/19196?language=ru">Границы заповедника</a></p>
+        <p class="note" id="forecast-place"></p>
+        <p class="note">Измерения метеостанций доступны в разделе «Наблюдения».</p>
+        <p><a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a><span id="forecast-local-links" hidden> · <a href="/forecast-example.json" download>Сохранённый ответ API</a> · <a href="https://www.clgz.ru/node/19196?language=ru">Границы заповедника</a></span></p>
       </footer>
       <noscript><p class="note">Включите JavaScript, чтобы загрузить прогноз.</p></noscript>
     </section>

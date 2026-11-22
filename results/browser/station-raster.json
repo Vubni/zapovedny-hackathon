@@ -9,11 +9,26 @@
       "status": 200,
       "mime": "image/webp"
     },
-    "archiveReference": [
-      56.46431,
-      32.97029
-    ],
+    "detailRaster": {
+      "status": 200,
+      "mime": "image/webp"
+    },
+    "archiveAnchors": {
+      "ame60": [
+        56.46431,
+        32.97029
+      ],
+      "kr1": [
+        56.46431,
+        32.97029
+      ],
+      "kr2": [
+        56.4638,
+        32.97037
+      ]
+    },
     "markerCount": 3,
+    "individualFrameSelection": true,
     "outerRequests": []
   },
   {
@@ -26,11 +41,26 @@
       "status": 200,
       "mime": "image/webp"
     },
-    "archiveReference": [
-      56.46431,
-      32.97029
-    ],
+    "detailRaster": {
+      "status": 200,
+      "mime": "image/webp"
+    },
+    "archiveAnchors": {
+      "ame60": [
+        56.46431,
+        32.97029
+      ],
+      "kr1": [
+        56.46431,
+        32.97029
+      ],
+      "kr2": [
+        56.4638,
+        32.97037
+      ]
+    },
     "markerCount": 3,
+    "individualFrameSelection": true,
     "outerRequests": []
   }
 ]

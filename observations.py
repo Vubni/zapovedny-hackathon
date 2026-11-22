@@ -18,6 +18,7 @@ import analytics
 import build_data
 import observation_store
 import station_catalog
+from observations_db import uses_archive
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,10 @@ def station_params(station):
     return {param["id"] for param in station["params"]}
 
 
+def _archive_station(station):
+    return uses_archive() and station.get("archive", True) and station["id"] in build_data.STATIONS
+
+
 def query_dates(query):
     first = parse_day(query.get("start", "2025-01-01"))
     last = parse_day(query.get("end", "2025-12-31"))
@@ -263,7 +268,7 @@ def raw_days(station, start, end, params, imports_only=False, include_estimates=
     station_id = station["id"]
     imported = iter(confirmed_day_groups(station_id, start, end, set(params), include_estimates, count_all_slots))
     updated = next(imported, None)
-    has_archive = station_id in build_data.STATIONS
+    has_archive = _archive_station(station)
     if not has_archive:
         if updated is not None:
             yield updated
@@ -351,7 +356,7 @@ def load_daily(station, params, start, end, station_valid=None, working=None):
     daily = {param: {} for param in params}
     if not allowed:
         return daily
-    if station["id"] in build_data.STATIONS:
+    if _archive_station(station):
         with closing(analytics.database()) as connection:
             for param in allowed:
                 rows = connection.execute(
@@ -405,7 +410,7 @@ def valid_months(start, end, valid):
 def overview_slots(station, start, end, param=None):
     """Read archived daily slot counts and refresh only dates touched by published rows."""
     station_id = station["id"]
-    archive = build_data.STATIONS.get(station_id)
+    archive = build_data.STATIONS[station_id] if _archive_station(station) else None
     station_counts, parameter_counts = {}, {}
     if archive:
         archive_param = param or archive.params[0]
@@ -542,7 +547,8 @@ def coverage(station, start, end, daily, allowed, param, *, valid=None):
         reason = "Ни в одних сутках не набралось достаточно пригодных сроков."
     else:
         reason = "Месяц учитывается при наличии не более 10 неполных суток и не более 4 подряд."
-    if station["id"] == "kr1" and param == "pressure_hpa" and start <= "2024-04-01" and end >= "2024-04-30" and "2024-04" not in months:
+    if (_archive_station(station) and station["id"] == "kr1" and param == "pressure_hpa"
+            and start <= "2024-04-01" and end >= "2024-04-30" and "2024-04" not in months):
         reason += " Апрель 2024 не прошёл проверку покрытия давления."
     return {
         "station": station["id"], "label": station["label"], "parameter": param,
@@ -877,7 +883,10 @@ def _chart_interval(chart_id, grain, mode, stations, first, last, working_suppor
 
 def add_difference(result, daily, intervals, start, end, grain):
     if not set(PAIR) <= daily.keys():
-        result["notes"].append("Для разницы выберите Кр1 и Кр2.")
+        if uses_archive():
+            result["notes"].append("Для разницы выберите Кр1 и Кр2.")
+        else:
+            result["notes"].append("Для этого центра расчёт разницы температур не настроен.")
         return
     kr1, kr2 = (daily[station]["t_air"] for station in PAIR)
     common = {day for day, row in kr1.items() if row.valid and day in kr2 and kr2[day].valid}
@@ -1052,7 +1061,7 @@ def archived_wind(path, revision, station_id, slot_minutes, year):
 def wind_days(station, start, end):
     summary = {}
     station_id = station["id"]
-    if station_id in build_data.STATIONS:
+    if _archive_station(station):
         path = analytics.ARCHIVE
         metadata = path.stat()
         revision = metadata.st_ino, metadata.st_mtime_ns, metadata.st_size
@@ -1142,7 +1151,7 @@ def wind_data(result, stations, intervals, chart_id, start, end, grain, mode):
         summary = wind_days(station, start, end)
         if chart_id != "calm":
             add_rose(result, station, summary, start, end, chart_id, mode)
-            if station["id"] == "ame60":
+            if _archive_station(station) and station["id"] == "ame60":
                 if start <= "1998-12-31" and end >= "1998-01-01":
                     result["notes"].append("АМЕ-60, 1998 год: направление ветра в исходном архиве отсутствует.")
                 if start <= "2021-12-31" and end >= "2021-01-01":

@@ -6,7 +6,7 @@ const {chromium} = require('playwright');
 
 const root = path.resolve(__dirname, '..');
 const base = 'http://127.0.0.1:' + (process.env.METEO_TEST_PORT || '8765');
-const evidenceDir = path.join(root, 'results', 'browser');
+const evidenceDir = process.env.METEO_BROWSER_EVIDENCE_DIR || path.join(root, 'results', 'browser');
 const exampleDir = path.join(root, 'results', 'examples');
 
 async function downloaded(locator, page) {
@@ -220,30 +220,30 @@ async function runViewport(browser, viewport) {
       assert.equal(await page.locator('#compare-chart path.chart-baseline').count(),1);
       return {months:12,hours:24,temperatureCurves:2};
     });
-    await step('Загрузка JSON и сообщение о неверной дате',async()=>{
-      await page.goto(base+'/import');
+    await step('Гостевой переход к импорту и входу',async()=>{
+      const navigation=await page.goto(base+'/import');
+      const redirect=await navigation.request().redirectedFrom()?.response();
+      assert.equal(redirect?.status(),303);
       const address=new URL(page.url());
       assert.equal(address.pathname,'/files');
       assert.equal(address.searchParams.get('source'),'upload');
-      await page.locator('#dropzone').waitFor({state:'visible'});
-      const endpoint=base+'/api/import?station=kr1&year=2024&param=pressure_hpa&grain=day';
-      const headers={'Content-Type':'application/json'};
-      const data=await fs.readFile(path.join(exampleDir,'kr1-station-2024-04-01.json'));
-      const response=await page.request.post(endpoint,{headers,data});
-      assert.equal(response.status(),200);
-      const imported=await response.json();
-      const [day]=imported.rows;
-      assert.deepEqual([imported.raw_rows,day.n,day.slots,day.flagged],[48,38,19,10]);
-      assert.equal(day.mean.toFixed(2),'1005.45');
-      const broken=await page.request.post(endpoint,{
-        headers,data:[{datetime:'2024-02-30 12:00',qc_flag:'',pressure_hpa:1005}]
-      });
-      assert.equal(broken.status(),400);
-      const {error}=await broken.json();
-      assert.match(error,/элемент 1/);
+      const gate=page.locator('.file-access');
+      await gate.getByRole('heading',{name:'Войдите для работы с файлами'}).waitFor({state:'visible'});
+      assert.equal(await page.locator('#dropzone').count(),0);
+      const denied=await page.request.get(base+'/api/files');
+      assert.equal(denied.status(),401);
+      assert.match((await denied.json()).error,/войдите/i);
+      const context=await page.request.get(base+'/api/account/me');
+      assert.equal(context.status(),200);
+      assert.equal((await context.json()).user,null);
       await checkWidth(page);
       await page.screenshot({path:path.join(evidenceDir,'import-'+viewport.width+'.png')});
-      return {inputRows:imported.raw_rows,accepted:day.n,usableHours:day.slots,meanHpa:day.mean,invalidInput:error};
+      await gate.getByRole('link',{name:'Войти',exact:true}).click();
+      await page.locator('#account-login').waitFor({state:'visible'});
+      const login=new URL(page.url());
+      assert.equal(login.pathname,'/account');
+      assert.equal(login.searchParams.get('return'),'/files?source=upload');
+      return {redirectStatus:redirect.status(),filesStatus:denied.status(),gate:address.pathname,login:login.pathname};
     });
     await step('Воспроизведение результата по ссылке после перезагрузки',async()=>{
       await page.goto(base+'/journal?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month');
@@ -290,7 +290,7 @@ async function main() {
       const checks = runs.flatMap(r=>r.steps.filter(s=>s.observed?.navigation).map(s=>({
         viewport:r.viewport,stage:s.label,colors:s.observed.navigation
       })));
-      await fs.writeFile(path.join(root,'results','contrast-check.json'),JSON.stringify({browser:browser.version(),checks},null,2)+'\n');
+      await fs.writeFile(path.join(evidenceDir,'..','contrast-check.json'),JSON.stringify({browser:browser.version(),checks},null,2)+'\n');
     }
   } finally { await browser.close(); }
 }

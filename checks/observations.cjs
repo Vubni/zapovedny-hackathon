@@ -183,6 +183,90 @@ async function checkDisjointIntervals(browser) {
   }
 }
 
+async function checkCalendarAlignment(browser) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: "ru-RU" });
+  const periods = [
+    "2024-07-05:2024-07-07",
+    "2025-01-05:2025-01-07",
+    "2025-07-05:2025-07-07",
+  ];
+  const selectionUrl = `${root}/?stations=kr1&intervals=${periods.join(",")}&grain=day&charts=air,temp_diurnal,wind_rose`;
+  const label = "Считать от одной точки отсчёта";
+  const toggle = page.getByRole("checkbox", { name: label, exact: true });
+  const air = chart(page, "air");
+  const chartAxis = (id, axis) => chart(page, id).locator(`svg.obs-chart__svg[data-axis="${axis}"]`);
+  const readDates = () => page.locator("[data-date-interval] input").evaluateAll(inputs => inputs.map(input => input.value));
+  const lineStarts = async svg => svg.locator('path[stroke-linecap="round"][stroke-linejoin="round"][fill="none"]').evaluateAll(paths =>
+    paths.map(path => Number(path.getAttribute("d").match(/^M([\d.]+)/)?.[1])));
+  const observationsRequests = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname === "/api/observations") observationsRequests.push(request.url());
+  });
+
+  try {
+    await page.goto(selectionUrl);
+    const original = chartAxis("air", "time");
+    await original.waitFor();
+    await chartAxis("temp_diurnal", "hour").waitFor();
+    await chartAxis("wind_rose", "direction").waitFor();
+    assert.equal(await toggle.isChecked(), false);
+    assert.equal(await page.locator("#archive-range .nav-track").evaluate(node => getComputedStyle(node).cursor), "pointer");
+    const [july2024, , july2025] = await lineStarts(original);
+    assert.ok(july2024 < july2025);
+    const requestsBefore = observationsRequests.length;
+    const datesBefore = await readDates();
+
+    await toggle.press("Space");
+    const projected = chartAxis("air", "calendar");
+    await projected.waitFor();
+    const [projectedJuly2024, projectedJanuary, projectedJuly2025] = await lineStarts(projected);
+    assert.ok(projectedJanuary < projectedJuly2024);
+    assert.equal(projectedJuly2024, projectedJuly2025);
+    const hover = projected.locator(".obs-chart__target");
+    await hover.press("End");
+    const tooltip = air.locator(".obs-chart__tooltip");
+    await tooltip.waitFor();
+    assert.match(await tooltip.textContent(), /07\.07\.2024/);
+    assert.match(await tooltip.textContent(), /07\.07\.2025/);
+    assert.equal(await chartAxis("temp_diurnal", "hour").count(), 1);
+    assert.equal(await chartAxis("wind_rose", "direction").count(), 1);
+    assert.equal(observationsRequests.length, requestsBefore);
+    assert.deepEqual(await readDates(), datesBefore);
+    assert.equal(new URL(page.url()).searchParams.get("calendar"), "1");
+    assert.equal(new URL(page.url()).searchParams.get("intervals"), periods.join(","));
+
+    const fresh = await browser.newPage({ viewport: { width: 320, height: 844 }, locale: "ru-RU" });
+    try {
+      await fresh.goto(page.url());
+      await chart(fresh, "air").locator('svg.obs-chart__svg[data-axis="calendar"]').waitFor();
+      assert.equal(await fresh.getByRole("checkbox", { name: label, exact: true }).isChecked(), true);
+      assert.equal(await fresh.evaluate(() => document.documentElement.scrollWidth), 320);
+    } finally {
+      await fresh.close();
+    }
+
+    await page.goto(selectionUrl);
+    await projected.waitFor();
+    assert.equal(await toggle.isChecked(), true);
+    const grain = page.getByLabel("Группировка");
+    await grain.selectOption("year");
+    assert.equal(await toggle.isDisabled(), true);
+    await page.getByText("При группировке по годам используется ось лет.", { exact: true }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get("calendar"), "1");
+    await grain.selectOption("day");
+    await projected.waitFor();
+    assert.equal(await toggle.isChecked(), true);
+    await toggle.press("Space");
+    await original.waitFor();
+    assert.equal(new URL(page.url()).searchParams.get("calendar"), "0");
+    await page.getByRole("button", { name: "Сбросить даты", exact: true }).click();
+    await toggle.waitFor({ state: "hidden" });
+    assert.equal(new URL(page.url()).searchParams.has("calendar"), false);
+  } finally {
+    await page.close();
+  }
+}
+
 async function run() {
   const browser = await chromium.launch({ executablePath: process.env.METEO_CHROMIUM || undefined });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, locale: "ru-RU" });
@@ -338,8 +422,9 @@ async function run() {
     await assertDates(freshPage, "2025-01-01", "2025-12-31");
     await freshPage.close();
     await checkDisjointIntervals(browser);
+    await checkCalendarAlignment(browser);
     assert.deepEqual(pageErrors, []);
-    console.log("Наблюдения: карта, архив 2005–2015, ползунки мышью и клавиатурой, сравнение, экспорт, навигация, общий URL, сохранение соседних интервалов и проверка пересечений, 390 и 320 px.");
+    console.log("Наблюдения: карта, архив 2005–2015, ползунки, сравнение, экспорт, навигация, общий URL, соседние интервалы, общая календарная ось, 390 и 320 px.");
   } finally {
     await browser.close();
   }

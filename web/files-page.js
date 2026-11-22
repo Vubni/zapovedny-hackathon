@@ -1,3 +1,6 @@
+import { accountContext, canRegisterStations } from "/account-client.js";
+import { accountUrl } from "/account-actions.js";
+
 const main = document.querySelector(".files-main");
 const picker = document.getElementById("fileInput");
 const correctedPicker = document.getElementById("correctedCsvInput");
@@ -39,6 +42,7 @@ const filterText = {
 };
 const entry = new URLSearchParams(location.search);
 const state = {
+  account: undefined,
   files: new Map(),
   editors: new Map(),
   stations: [],
@@ -57,6 +61,17 @@ const state = {
   message: "",
   error: false,
 };
+
+function canUseFiles() {
+  const { user, center } = state.account ?? {};
+  if (!user || !center) return false;
+  return user.role === "global_admin" || (["researcher", "center_admin"].includes(user.role) &&
+    String(user.center_id) === String(center.id));
+}
+
+function canManageFiles() {
+  return canUseFiles() && canRegisterStations(state.account);
+}
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) =>
@@ -117,8 +132,12 @@ function card(body, classes = "") {
 }
 
 function heading(title, subtitle = "", action = "") {
+  const center = state.account?.center;
+  const location = center?.id === "central-forest"
+    ? `<strong>Урочище Красное</strong><span>/</span><span>${escapeHtml(center.name)}</span>`
+    : `<strong>${escapeHtml(center?.name ?? "Метеоархив")}</strong>`;
   return `<header>
-    <div class="breadcrumb">${icon("pin", 15)}<strong>Урочище Красное</strong><span>/</span><span>Центрально-Лесной заповедник</span></div>
+    <div class="breadcrumb">${icon("pin", 15)}${location}</div>
     <div class="heading-line"><h1>${title}</h1>${action}</div>
     ${subtitle ? `<p class="sub">${subtitle}</p>` : ""}
   </header>`;
@@ -155,6 +174,9 @@ function saveStations(catalog) {
   state.stations = catalog.stations.filter(({ label }) => !/^поляна и поле$/i.test(label.trim()));
   state.paramOptions = catalog.param_options ?? [...new Map(state.stations.flatMap(({ params }) =>
     params.map((parameter) => [parameter.id, parameter]))).values()];
+  if (state.uploadStation !== "new" && !state.stations.some(({ id }) => id === state.uploadStation)) {
+    state.uploadStation = state.stations[0]?.id ?? "new";
+  }
 }
 
 async function refreshStationCatalog() {
@@ -243,27 +265,29 @@ function historyRow(file) {
       ${file.confirmed?.manual ? `<p class="muted small file-message">С ручными правками</p>` : ""}</td>
     <td><div class="history-actions">
       ${sourceButton(file, true)}
-      ${button(file.confirmed ? "Изменить фильтрацию" : "Обработать снова", "edit", { id: file.id })}
-      ${file.confirmed ? iconButton(`Удалить обработанные данные · ${file.filename}`, "remove", file.id, "trash") : ""}
+      ${button(canManageFiles() ? (file.confirmed ? "Изменить фильтрацию" : "Обработать снова") : "Открыть для анализа", "edit", { id: file.id })}
+      ${canManageFiles() && file.confirmed ? iconButton(`Удалить обработанные данные · ${file.filename}`, "remove", file.id, "trash") : ""}
     </div></td>
   </tr>`;
 }
 
 function filesPage() {
+  const managing = canManageFiles();
   const all = Array.from(state.files.values());
   const queue = all.filter((file) => !file.version);
   const history = all.filter((file) => file.version).sort((first, last) =>
     (last.start ?? "").localeCompare(first.start ?? "") || (last.created_at ?? "").localeCompare(first.created_at ?? ""));
   const queueLength = queue.length + state.transfers.length;
-  return `${heading("Файлы и импорт", "Проверка наблюдений, заполнение пропусков и учёт в общих графиках")}
+  return `${heading("Файлы и импорт", managing ? "Проверка наблюдений, заполнение пропусков и учёт в общих графиках" :
+    "Проверка и выгрузка наблюдений центра")}
     <div class="split">
-      ${card(`${cardTitle("Наблюдения для обработки")}
-        <div class="source-mode" role="group" aria-label="Источник наблюдений">
+      ${card(`${cardTitle("Наблюдения для обработки", managing ? "" : "Загрузка файлов и публикация доступны администратору центра.")}
+        ${managing ? `<div class="source-mode" role="group" aria-label="Источник наблюдений">
           ${[["observations", "Архив и сохранённые данные"], ["upload", "Загрузить файлы"]].map(([mode, label]) =>
             `<button class="pill lime" type="button" data-file-action="source-mode" data-file-id="${mode}"
               aria-pressed="${state.sourceMode === mode}">${label}</button>`).join("")}
-        </div>
-        ${state.sourceMode === "observations" ? observationSelection() : `
+        </div>` : ""}
+        ${!managing || state.sourceMode === "observations" ? observationSelection() : `
           ${uploadStationFields()}
           <div class="upload" id="dropzone">
             <span class="upload-icon">${icon("upload", 24)}</span><h3>Перетащите CSV, XLSX или JSON сюда</h3>
@@ -273,13 +297,33 @@ function filesPage() {
         ${state.error && state.loading ? button("Повторить загрузку списка", "reload") : ""}`)}
       ${card(`${cardTitle("Очередь обработки", "", tag(fmt(queueLength), "neutral"))}
         ${queueLength ? queue.map(queueItem).join("") + state.transfers.map(transferItem).join("") :
-        `<div class="queue-empty">${icon("file", 25)}<p>${state.loading ? "Загрузка списка файлов…" : "Здесь появятся подготовленные наборы и загруженные файлы."}</p></div>`}`, "file-queue")}
+        `<div class="queue-empty">${icon("file", 25)}<p>${state.loading ? "Загрузка списка файлов…" : managing ?
+          "Здесь появятся подготовленные наборы и загруженные файлы." : "Здесь появятся подготовленные наборы."}</p></div>`}`, "file-queue")}
     </div>
-    ${card(`${cardTitle("История загрузок", "Исходники остаются в архиве при повторной обработке и исключении из графиков.")}
-      <div class="table-scroll" tabindex="0" role="region" aria-label="История загрузок">
+    ${card(`${cardTitle(managing ? "История загрузок" : "Сохранённые наборы",
+      managing ? "Исходники остаются в архиве при повторной обработке и исключении из графиков." : "")}
+      <div class="table-scroll" tabindex="0" role="region" aria-label="${managing ? "История загрузок" : "Сохранённые наборы"}">
         <table class="history-table"><thead><tr><th scope="col">Файл</th><th scope="col">Станция</th><th scope="col">Период</th><th scope="col">Статус</th><th scope="col">Действия</th></tr></thead>
         <tbody>${history.map(historyRow).join("") || '<tr><td class="history-empty muted" colspan="5">История пока пуста.</td></tr>'}</tbody></table>
       </div>`)}`;
+}
+
+function accessPage() {
+  const page = heading("Файлы и импорт");
+  if (state.error) {
+    return page + card(`<div class="file-access" role="alert">
+      ${note(state.message, true)}
+      <div>${button("Повторить", "reload", { type: "primary" })}</div>
+    </div>`);
+  }
+  if (state.account === undefined) return page + card('<p role="status">Проверяем доступ…</p>');
+  const signedIn = Boolean(state.account?.user);
+  const account = accountUrl({ returnTo: location.pathname + location.search });
+  return page + card(`<div class="file-access">
+    ${cardTitle(signedIn ? "Выберите центр" : "Войдите для работы с файлами",
+      signedIn ? "Рабочие наборы открываются в кабинете выбранного центра." : "Публичные наблюдения доступны без входа.")}
+    <div class="row">${link(signedIn ? "Мой аккаунт" : "Войти", account, { type: "primary" })}${link("К наблюдениям", "/")}</div>
+  </div>`);
 }
 
 function observationSelection() {
@@ -299,7 +343,7 @@ function observationSelection() {
       ${inputField("Дата с", "observation-start", start, `type="date" required ${dateLimits} ${busy || !available ? "disabled" : ""}`)}
       ${inputField("Дата по", "observation-end", end, `type="date" required ${dateLimits} ${busy || !available ? "disabled" : ""}`)}
     </div>
-    ${!busy && !available ? '<p class="caption">У выбранной станции ещё нет наблюдений.</p>' : ""}
+    ${!busy && !available ? `<p class="caption">${passport ? "У выбранной станции ещё нет наблюдений." : "В центре пока нет метеостанций."}</p>` : ""}
     <div><button class="btn primary" type="submit" ${busy || !available || !param ? "disabled" : ""}>
       ${state.selectionBusy ? "Подготавливаем данные…" : "Подготовить данные"}</button></div>
   </form>`;
@@ -491,7 +535,8 @@ function editorPage(editor) {
   const pressurePreset = ["1050", "1550"].includes(pressureUpper) ? pressureUpper : "manual";
   const checked = checkedPreview(editor);
   const active = editor.done ? "В общих графиках" : editor.preview ? "Проверка результата" : "Настройка фильтрации";
-  return `${heading("Обработка наблюдений", "", button("К файлам", "list", { glyph: "back" }))}
+  return `${heading("Обработка наблюдений", canManageFiles() ? "" : "Публикация и правка исходных данных доступны администратору центра.",
+    button("К файлам", "list", { glyph: "back" }))}
     ${card(`<div class="between file-context"><div class="row"><span class="file-symbol">${icon("file", 19)}</span>
         <div><h2>${escapeHtml(file.filename)}</h2><p class="muted">${spanLabel(file.start, file.end)} · ${countLabel(file.rows, "строка", "строки", "строк")}</p>
           ${fromObservations ? '<p class="muted">Наблюдения из архива и подтверждённых наборов.</p>' : ""}</div>
@@ -521,7 +566,8 @@ function editorPage(editor) {
       ${card(`${cardTitle("Заполнение пропусков", "Выберите источник данных или ИИ-модель.")}
         ${fillSettings(settings, busy, file)}
         <hr class="rule section-rule">
-        ${selectField("Метеостанция", "file-station", stationOptions(), settings.station, busy || fromObservations)}
+        ${canManageFiles() ? selectField("Метеостанция", "file-station", stationOptions(), settings.station, busy || fromObservations) :
+          `<div class="field"><span>Метеостанция</span><strong>${escapeHtml(stationName(settings.station))}</strong></div>`}
         <p class="caption">${escapeHtml(stationLocation(settings.station))}</p>
         ${!checked && unsupported?.length ? `<p class="caption">У выбранной станции нет следующих показателей файла: ${escapeHtml(unsupported.map(({ label }) => label.toLocaleLowerCase("ru-RU")).join(", "))}.</p>` : ""}`)}
     </div>
@@ -684,7 +730,8 @@ function previewCard(editor, checked, file) {
     : focusEvent;
   const download = filesUrl("excel", { id: file.id, revision: preview.revision });
   return card(`${cardTitle("Выбросы и заполнения", "Общая шкала изменений после выбранных методов.",
-      tag(file.confirmed ? "Текущая версия остаётся в графиках" : "В общую базу не добавлено", "neutral"))}
+      tag(!canManageFiles() ? "Предпросмотр и выгрузка" :
+        file.confirmed ? "Текущая версия остаётся в графиках" : "В общую базу не добавлено", "neutral"))}
     <div class="outlier-top"><div><span class="eyebrow">${parameters.size ? "Выбранные параметры" : "Всего"}</span>
       <div class="outlier-number">${countLabel(totals.marked)}</div></div>
       <div class="metric selected-count"><span class="small">Восстановлено</span><strong>${fmt(totals.filled)}</strong></div>
@@ -717,13 +764,17 @@ function previewCard(editor, checked, file) {
       ${focus || eventDate ? button("Все отмеченные сроки", "timeline-reset") : ""}
     </details>` : `<p class="caption">${enabled.length ? "Для выбранных слоёв нет изменений." : "Выберите слой на шкале."}</p>`}
     ${preview.warnings?.length ? `<div class="preview-warnings">${preview.warnings.map((message) => note(message, true)).join("")}</div>` : ""}
-    ${manualCsvControls(file, preview, editor, checked && !editor.busy)}
+    ${canManageFiles() ? manualCsvControls(file, preview, editor, checked && !editor.busy) : ""}
     <div class="between publish-bar">
-      <div>${checked && !editor.busy ? link("Скачать отфильтрованный файл", download, { glyph: "download" }) :
-        button("Скачать отфильтрованный файл", "excel", { glyph: "download", disabled: true })}
-        <p class="muted small">XLSX с подсветкой очищенных ячеек</p></div>
-      ${button(editor.busy === "confirm" ? "Сохранение…" : file.confirmed ? "Заменить в базе" : "Добавить в базу",
-        "publish", { type: "accent", glyph: "arrow", disabled: !checked || Boolean(editor.busy) })}
+      <div><div class="preview-downloads">
+        ${checked && !editor.busy ? link("Скачать отфильтрованный файл", download, { glyph: "download" }) :
+          button("Скачать отфильтрованный файл", "excel", { glyph: "download", disabled: true })}
+        ${!canManageFiles() ? (checked && !editor.busy
+          ? link("Скачать CSV", filesUrl("csv", { id: file.id, revision: preview.revision }), { glyph: "download" })
+          : button("Скачать CSV", "download-csv", { glyph: "download", disabled: true })) : ""}
+        </div><p class="muted small">XLSX с подсветкой очищенных ячеек</p></div>
+      ${canManageFiles() ? button(editor.busy === "confirm" ? "Сохранение…" : file.confirmed ? "Заменить в базе" : "Добавить в базу",
+        "publish", { type: "accent", glyph: "arrow", disabled: !checked || Boolean(editor.busy) }) : ""}
     </div>`, "anchor preview-card-shell");
 }
 
@@ -980,7 +1031,8 @@ function outlierTrace(points, parameter, enabled) {
 }
 
 function render({ top = false } = {}) {
-  main.innerHTML = `<section>${state.editor ? editorPage(state.editor) : filesPage()}</section>`;
+  const contents = canUseFiles() ? (state.editor ? editorPage(state.editor) : filesPage()) : accessPage();
+  main.innerHTML = `<section>${contents}</section>`;
   if (top) {
     const heading = main.querySelector("h1");
     heading.tabIndex = -1;
@@ -1000,10 +1052,22 @@ function saveRecord(result) {
 }
 
 async function loadList() {
+  state.loading = true;
   state.message = "";
   state.error = false;
   render();
   try {
+    state.account = await accountContext({ refresh: true });
+    if (!canUseFiles()) {
+      state.files.clear();
+      state.editors.clear();
+      state.editor = null;
+      state.stations = [];
+      state.loading = false;
+      render();
+      return;
+    }
+    if (!canManageFiles()) state.sourceMode = "observations";
     const [listing, catalog] = await Promise.all([
       jsonRequest(filesUrl()),
       jsonRequest("/api/stations"),
@@ -1051,7 +1115,7 @@ function normalizeSelection() {
 }
 
 async function prepareObservations() {
-  if (state.selectionBusy) return;
+  if (!canUseFiles() || state.selectionBusy) return;
   if (state.selection.start > state.selection.end) {
     state.message = "Дата окончания должна быть не раньше даты начала.";
     state.error = true;
@@ -1090,6 +1154,7 @@ function newPassport() {
 }
 
 function validUploadStation() {
+  if (!canManageFiles()) return false;
   if (state.uploadStation !== "new") return true;
   const passport = newPassport();
   const fields = [
@@ -1139,6 +1204,7 @@ async function stationForBatch(batch) {
 }
 
 function appendUploads(files, selected = state.uploadStation) {
+  if (!canManageFiles()) return;
   const batch = selected === "new" ? { passport: { ...newPassport(), id: `station-${crypto.randomUUID()}` } } : { station: selected };
   for (const file of files) state.transfers.push({ file, batch, filename: file.name, status: "queued" });
   if (!state.editor) render();
@@ -1180,7 +1246,7 @@ async function uploadNext() {
 
 async function openEditor(id) {
   const file = state.files.get(id);
-  if (!file || file.status === "error") return;
+  if (!canUseFiles() || !file || file.status === "error") return;
   const editor = state.editors.get(id) ?? {
     id, settings: settingsFor(file), preview: null, parameters: new Set(), hiddenLayers: new Set(), message: "",
   };
@@ -1204,7 +1270,7 @@ async function openEditor(id) {
 }
 
 async function runPreview(editor) {
-  if (editor.busy) return;
+  if (!canUseFiles() || editor.busy) return;
   if (!validateRanges(editor)) return;
   if (!validateFillPeriod(editor)) return;
   if (editor.settings.fill_external && !editor.settings.timezone) {
@@ -1265,7 +1331,7 @@ function applyPreview(editor, result) {
 }
 
 async function uploadCorrectedCsv(editor, selected) {
-  if (editor.busy || !checkedPreview(editor)) return;
+  if (!canManageFiles() || editor.busy || !checkedPreview(editor)) return;
   if (!selected.name.toLowerCase().endsWith(".csv")) {
     editor.message = "Для ручной правки выберите файл CSV.";
     render();
@@ -1292,7 +1358,7 @@ async function uploadCorrectedCsv(editor, selected) {
 }
 
 async function confirmFile(editor) {
-  if (editor.busy || !checkedPreview(editor)) return;
+  if (!canManageFiles() || editor.busy || !checkedPreview(editor)) return;
   editor.busy = "confirm";
   editor.message = "";
   render();
@@ -1453,7 +1519,7 @@ function showDiscard(file) {
 
 async function discardFile(id) {
   const file = state.files.get(id);
-  if (!file?.confirmed || dialog.getAttribute("aria-busy") === "true") return;
+  if (!canManageFiles() || !file?.confirmed || dialog.getAttribute("aria-busy") === "true") return;
   dialog.setAttribute("aria-busy", "true");
   for (const control of dialog.querySelectorAll("button")) control.disabled = true;
   const errorBox = dialog.querySelector(".discard-error");
@@ -1653,8 +1719,9 @@ document.addEventListener("click", (event) => {
   const editor = state.editor;
   switch (action) {
     case "browse": if (validUploadStation()) picker.click(); break;
-    case "corrected-browse": correctedPicker.click(); break;
+    case "corrected-browse": if (canManageFiles()) correctedPicker.click(); break;
     case "source-mode":
+      if (!canManageFiles()) break;
       state.sourceMode = id;
       state.message = "";
       state.error = false;
@@ -1675,7 +1742,7 @@ document.addEventListener("click", (event) => {
     case "publish": if (editor) void confirmFile(editor); break;
     case "source": if (file) void showOriginal(file); break;
     case "full-excel": if (file && editor) showFullExcel(file, editor); break;
-    case "remove": if (file) showDiscard(file); break;
+    case "remove": if (canManageFiles() && file) showDiscard(file); break;
     case "discard": void discardFile(id); break;
     case "close": dialog.close(); break;
     case "reset-bounds":
@@ -1747,6 +1814,11 @@ window.addEventListener("drop", (event) => {
   if (!dropzone) return;
   dropzone.classList.remove("drag");
   if (!state.loading && event.dataTransfer.files.length && validUploadStation()) appendUploads(event.dataTransfer.files);
+});
+
+window.addEventListener("meteoarchive:account-change", () => location.reload());
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) location.reload();
 });
 
 void loadList();

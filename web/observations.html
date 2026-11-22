@@ -107,11 +107,21 @@
           </label>
           <a id="mode-source" class="small" href="https://www.belchertownweather.com/graphs/" target="_blank" rel="noreferrer">Belchertown ↗</a>
         </div>
+        <div class="calendar-alignment" id="calendar-alignment" hidden>
+          <label>
+            <input type="checkbox" id="align-observation-calendar" aria-describedby="calendar-alignment-help">
+            Считать от одной точки отсчёта
+          </label>
+          <p class="muted" id="calendar-alignment-help">Суточные, декадные и месячные графики совмещаются по дню и месяцу. Исходные даты видны в подсказках и выгрузках.</p>
+        </div>
       </section>
 
       <div class="between board-title">
         <h2>Графики</h2>
         <div class="board-actions">
+        <button type="button" class="btn line" id="save-observation-workspace" data-save-observation-workspace aria-haspopup="dialog">
+          Сохранить сессию
+        </button>
         <button type="button" class="btn line" id="download-all-charts" aria-haspopup="dialog" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11m-4-4 4 4 4-4M4 15v5h16v-5"/></svg>
           Скачать все графики

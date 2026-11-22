@@ -1,11 +1,12 @@
-import {loadRaster, rasterOffsets, reserveRaster, russiaRaster} from './station-map-raster.js';
+import {loadRaster, loadReserveObjects, rasterOffsets, reserveDetailRaster, reserveRaster, russiaRaster} from './station-map-raster.js';
 
 const reserve = {latitude: 56.464310, longitude: 32.970290};
 const russiaExtent = [{latitude: 41, longitude: 19}, {latitude: 82.3, longitude: -169}];
 const initialScale = 410;
-const maxScale = 9600;
-const overviewScale = 40;
-const markerSpacing = 44;
+const maxScale = 110000;
+const markerWidth = 50;
+const markerHeight = 40;
+const markerOffsets = [[-56, -48], [56, -48], [0, 58], [-56, 48], [56, 48], [0, -58], [-68, 0], [68, 0]];
 const degrees = Math.PI / 180;
 const wrapLongitude = longitude => ((longitude + 180) % 360 + 360) % 360 - 180;
 
@@ -27,7 +28,6 @@ function longitudeFrame(points) {
 let mapId = 0;
 let passportId = 0;
 const coordinateFormat = new Intl.NumberFormat('ru', {maximumFractionDigits: 5});
-const stationPlural = new Intl.PluralRules('ru');
 const terrains = {
   clearing: ['Поляна', '#5e6b2d'],
   field: ['Поле', '#8a5628'],
@@ -66,34 +66,8 @@ function coordinates({latitude, longitude}) {
   return `${lat}, ${lon}`;
 }
 
-function stationGroups(stations) {
-  const groups = new Map();
-  for (const station of stations) {
-    const point = location(station);
-    if (!point) continue;
-    const area = station.location_precision === 'area';
-    const key = `${area}:${point.latitude},${point.longitude}`;
-    if (!groups.has(key)) groups.set(key, {point, area, stations: []});
-    groups.get(key).stations.push(station);
-  }
-  return [...groups.values()];
-}
-
-function toggleState(stations, ids) {
-  const count = stations.filter(station => ids.has(station.id)).length;
-  return count === stations.length ? 'true' : count ? 'mixed' : 'false';
-}
-
 function terrainType(station) {
   return Object.hasOwn(terrains, station.terrain) ? station.terrain : 'unknown';
-}
-
-function terrainFill(types) {
-  const colors = types.map(type => terrains[type][1]);
-  if (colors.length === 1) return colors[0];
-  const stops = colors.map((color, index) =>
-    `${color} ${index * 100 / colors.length}% ${(index + 1) * 100 / colors.length}%`);
-  return `conic-gradient(${stops.join(', ')})`;
 }
 
 function stationLocation(station, point) {
@@ -133,20 +107,25 @@ function stationPassport(station, locationLabel, id) {
   return panel;
 }
 
-function createMap(viewport, onPick, onSelect, onToggle) {
+function createMap(viewport, onPick, onSelect) {
   const canvas = viewport.querySelector('canvas');
   const overlay = viewport.querySelector('.station-map-markers');
-  const overviewNote = viewport.parentElement.querySelector('[data-overview-marker-note]');
+  const displacedNote = viewport.parentElement.querySelector('[data-displaced-note]');
+  const denseNote = viewport.parentElement.querySelector('[data-dense-note]');
   const areaNote = viewport.parentElement.querySelector('[data-area-note]');
   const imageryNote = viewport.parentElement.querySelector('[data-reserve-credit]');
-  const overviewMarkers = new Map();
+  const objectsNote = viewport.parentElement.querySelector('[data-reserve-objects-credit]');
   const scaleLine = viewport.querySelector('.station-map-scale');
   const frame = viewport.querySelector('.station-map-frame');
   const modes = [...viewport.querySelectorAll('[data-map-mode]')];
   const controls = viewport.querySelectorAll('.station-map-modes, .station-map-tools, .station-map-jumps');
   const context = canvas.getContext('2d');
+  viewport.style.setProperty('--station-marker-width', `${markerWidth}px`);
+  viewport.style.setProperty('--station-marker-height', `${markerHeight}px`);
   let geography;
   let russiaGeography;
+  let reserveObjects;
+  let requestedObjects = false;
   let requestedGeography = false;
   let requestedRussia = false;
   const rasterImages = new Map();
@@ -156,17 +135,19 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   let center = reserve;
   let scale = initialScale;
   let atReserve = true;
+  let hasFrame = false;
   let width = 0;
   let height = 0;
   let pendingFrame;
   let markers = [];
-  let selection = new Set();
+  let displayedMarkers = [];
   let draft = null;
   let fittedPoints = null;
   let mode = 'select';
   let picking = false;
   let pointer = null;
-  const isReserve = ({latitude, longitude}) => latitude === reserve.latitude && longitude === reserve.longitude;
+  const isReserve = ({latitude, longitude}) => Math.abs(latitude - reserve.latitude) < 0.003 &&
+    Math.abs(longitude - reserve.longitude) < 0.003;
 
   function reserveScale() {
     const [left, bottom, right, top] = reserveRaster.bounds;
@@ -234,74 +215,134 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     const [left, bottom, right, top] = layer.bounds;
     context.save();
     context.globalAlpha = opacity;
+    let rendered = false;
     for (const offset of offsets) {
       const [x, y] = projectUnwrapped(left + offset, top);
       const [rightX, bottomY] = projectUnwrapped(right + offset, bottom);
-      context.drawImage(image, x, y, rightX - x, bottomY - y);
+      const visibleX = Math.max(0, x);
+      const visibleY = Math.max(0, y);
+      const visibleWidth = Math.min(width, rightX) - visibleX;
+      const visibleHeight = Math.min(height, bottomY) - visibleY;
+      if (visibleWidth <= 0 || visibleHeight <= 0) continue;
+      const sourceX = image.width / (rightX - x);
+      const sourceY = image.height / (bottomY - y);
+      context.drawImage(image, (visibleX - x) * sourceX, (visibleY - y) * sourceY,
+        visibleWidth * sourceX, visibleHeight * sourceY, visibleX, visibleY, visibleWidth, visibleHeight);
+      rendered = true;
     }
     context.restore();
-    return true;
+    return rendered;
   }
 
-  function resolveOverviewMarker(groups, active) {
-    const stations = groups.flatMap(group => group.stations);
-    const key = JSON.stringify(stations.map(station => station.id));
-    active.add(key);
-    if (!overviewMarkers.has(key)) {
-      const element = document.createElement('button');
-      element.type = 'button';
-      element.className = 'station-map-marker station-map-overview-marker';
-      const endings = {one: 'станция', few: 'станции', many: 'станций'};
-      const count = `${stations.length} ${endings[stationPlural.select(stations.length)]} рядом`;
-      element.textContent = stations.length;
-      element.title = `${count}. ${stations.map(station => station.label).join(', ')}`;
-      element.setAttribute('aria-label', element.title);
-      element.setAttribute('aria-pressed', toggleState(stations, selection));
-      element.style.setProperty('--terrain-fill', terrainFill([...new Set(stations.map(terrainType))]));
-      element.disabled = picking;
-      element.addEventListener('click', () => onToggle(stations));
-      overviewMarkers.set(key, {element, stations});
-      overlay.append(element);
+  function markerBounds(x, y) {
+    return [x - markerWidth / 2 - 5, y - markerHeight / 2 - 5, x + markerWidth / 2 + 5, y + markerHeight / 2 + 5];
+  }
+
+  function overlaps(a, b) {
+    return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+  }
+
+  function freeMarkerPosition(x, y, occupied) {
+    const bounds = markerBounds(x, y);
+    return bounds[0] >= 4 && bounds[1] >= 4 && bounds[2] <= width - 4 && bounds[3] <= height - 4 &&
+      !occupied.some(other => overlaps(bounds, other));
+  }
+
+  function displacedPosition(anchorX, anchorY, occupied) {
+    const rings = Math.ceil(Math.max(width, height) / 48);
+    for (let ring = 1; ring <= rings; ring++) {
+      for (const [dx, dy] of markerOffsets) {
+        const x = anchorX + dx * ring;
+        const y = anchorY + dy * ring;
+        if (freeMarkerPosition(x, y, occupied)) return {x, y};
+      }
     }
-    return overviewMarkers.get(key).element;
+    for (let y = 30; y < height; y += markerHeight + 12) {
+      for (let x = 34; x < width; x += markerWidth + 12) {
+        if (freeMarkerPosition(x, y, occupied)) return {x, y};
+      }
+    }
+    return null;
   }
 
-  function positionMarkers() {
+  function positionMarkers(occupied) {
     const visible = [];
     for (const marker of markers) {
-      const [x, y] = project(marker.point.longitude, marker.point.latitude);
-      marker.element.hidden = x < 0 || x > width || y < 0 || y > height;
+      const [anchorX, anchorY] = project(marker.point.longitude, marker.point.latitude);
+      if (anchorX < 0 || anchorX > width || anchorY < 0 || anchorY > height) {
+        marker.element.hidden = true;
+        continue;
+      }
+      visible.push({marker, anchorX, anchorY, bounds: markerBounds(anchorX, anchorY)});
+    }
+    displayedMarkers = [];
+    const displaced = [];
+    function place(item, x, y) {
+      const {marker, anchorX, anchorY} = item;
+      const moved = x !== anchorX || y !== anchorY;
       marker.element.style.left = `${x}px`;
       marker.element.style.top = `${y}px`;
-      if (!marker.element.hidden) visible.push({x, y, area: marker.area, groups: [marker]});
+      marker.element.dataset.anchorX = anchorX;
+      marker.element.dataset.anchorY = anchorY;
+      marker.element.toggleAttribute('data-displaced', moved);
+      marker.element.hidden = false;
+      occupied.push(markerBounds(x, y));
+      displayedMarkers.push({marker, anchorX, anchorY, x, y, moved});
     }
-    const active = new Set();
-    const positions = [];
-    if (scale < overviewScale) {
-      for (const position of visible) {
-        const neighbor = positions.find(other => Math.hypot(other.x - position.x, other.y - position.y) < markerSpacing);
-        if (neighbor) neighbor.groups.push(...position.groups);
-        else positions.push(position);
-      }
-      for (const {x, y, groups} of positions) {
-        if (groups.length < 2) continue;
-        for (const marker of groups) marker.element.hidden = true;
-        const overview = resolveOverviewMarker(groups, active);
-        overview.style.left = `${x}px`;
-        overview.style.top = `${y}px`;
-      }
-    } else {
-      positions.push(...visible);
-    }
-    for (const [key, {element}] of overviewMarkers) {
-      if (!active.has(key)) {
-        element.remove();
-        overviewMarkers.delete(key);
+    for (const item of visible) {
+      const {anchorX, anchorY, bounds} = item;
+      if (freeMarkerPosition(anchorX, anchorY, occupied) &&
+          !visible.some(other => other !== item && overlaps(bounds, other.bounds))) {
+        place(item, anchorX, anchorY);
+      } else {
+        displaced.push(item);
       }
     }
-    overviewNote.hidden = !active.size;
-    areaNote.hidden = !positions.some(({area, groups}) => area && groups.length === 1);
-    return positions;
+    // Keep the registration coordinates at the origin of each leader. Only button positions move.
+    const anchors = displaced.map(({anchorX, anchorY}) => [anchorX - 4, anchorY - 4, anchorX + 4, anchorY + 4]);
+    const reserved = [...occupied, ...anchors];
+    for (const item of displaced) {
+      const next = displacedPosition(item.anchorX, item.anchorY, reserved);
+      if (!next) {
+        item.marker.element.hidden = true;
+        continue;
+      }
+      place(item, next.x, next.y);
+      reserved.push(markerBounds(next.x, next.y));
+    }
+    occupied.push(...anchors);
+    areaNote.hidden = !displayedMarkers.some(({marker}) => marker.area);
+    displacedNote.hidden = !displayedMarkers.some(position => position.moved);
+    denseNote.hidden = displayedMarkers.length === visible.length;
+  }
+
+  function drawMarkerAnchors() {
+    const displaced = displayedMarkers.filter(position => position.moved);
+    if (!displaced.length) return;
+    context.save();
+    context.lineCap = 'round';
+    for (const {marker, anchorX, anchorY, x, y} of displaced) {
+      context.beginPath();
+      context.moveTo(anchorX, anchorY);
+      context.lineTo(x, y);
+      context.lineWidth = 3.5;
+      context.strokeStyle = '#fffdf1';
+      context.stroke();
+      context.lineWidth = 1.65;
+      context.strokeStyle = marker.color;
+      context.stroke();
+    }
+    // Draw the geographic origins over the leaders so a shared origin remains visible.
+    for (const {anchorX, anchorY} of displaced) {
+      context.beginPath();
+      context.arc(anchorX, anchorY, 3.7, 0, Math.PI * 2);
+      context.fillStyle = '#172c23';
+      context.fill();
+      context.lineWidth = 1.6;
+      context.strokeStyle = '#fffdf1';
+      context.stroke();
+    }
+    context.restore();
   }
 
   let west, east, south, north;
@@ -315,6 +356,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     ({longitude: east, latitude: south} = unproject(width, height, false));
     const bounds = {west, south, east, north};
     const reserveVisible = scale >= 135 && rasterOffsets(reserveRaster.bounds, bounds).length > 0;
+    const detailOffsets = scale >= reserveDetailRaster.minScale ? rasterOffsets(reserveDetailRaster.bounds, bounds) : [];
     const russiaVisible = rasterOffsets(russiaRaster.bounds, bounds).length > 0;
     if (!requestedGeography && reserveVisible) {
       requestedGeography = true;
@@ -336,8 +378,16 @@ function createMap(viewport, onPick, onSelect, onToggle) {
         if (viewport.isConnected) redraw();
       }).catch(() => {});
     }
+    if (detailOffsets.length && !requestedObjects) {
+      requestedObjects = true;
+      loadReserveObjects().then(data => {
+        reserveObjects = data;
+        if (viewport.isConnected) redraw();
+      });
+    }
     const {land = [], lakes = [], places = [], rivers = [], roads = []} = (reserveVisible ? geography : null) || {};
     const detail = russiaVisible && !closeToReserve ? russiaGeography : null;
+    const objects = detailOffsets.length ? reserveObjects : null;
     const water = '#d7e8ea';
     const background = '#e3ebe7';
     const landColor = '#edf0de';
@@ -354,9 +404,14 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     context.fill('evenodd');
     if (detail?.russiaLand.length) drawRussiaLand(detail, landColor);
     const national = russiaVisible && !closeToReserve && drawRaster(russiaRaster);
-    const local = reserveVisible && drawRaster(reserveRaster, .88);
+    const localOverview = reserveVisible && drawRaster(reserveRaster, .88);
+    const localDetail = detailOffsets.length > 0 && drawRaster(reserveDetailRaster, .88);
+    const local = localOverview || localDetail;
     viewport.dataset.mapRaster = local ? 'reserve' : national ? 'russia' : 'vector';
+    viewport.dataset.mapDetail = localDetail ? 'sentinel-2' : '';
+    viewport.dataset.mapObjects = objects ? 'osm' : '';
     imageryNote.hidden = !local;
+    objectsNote.hidden = !objects;
 
     const cell = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 45, 90]
       .find(value => value * scale * cosine(center.latitude) >= 48) || 90;
@@ -373,6 +428,18 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     context.lineWidth = 0.75;
     context.stroke();
 
+    context.save();
+    if (objects) {
+      context.beginPath();
+      context.rect(0, 0, width, height);
+      const [left, bottom, right, top] = reserveDetailRaster.bounds;
+      for (const offset of detailOffsets) {
+        const [x, y] = projectUnwrapped(left + offset, top);
+        const [x2, y2] = projectUnwrapped(right + offset, bottom);
+        context.rect(x, y, x2 - x, y2 - y);
+      }
+      context.clip('evenodd');
+    }
     if (detail || scale >= 10) {
       trace(detail ? detail.russiaRivers : rivers);
       context.strokeStyle = '#94bfc8';
@@ -394,6 +461,39 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       context.lineWidth = 1.1;
       context.stroke();
     }
+    context.restore();
+    if (objects) {
+      context.save();
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      trace(objects.waterways);
+      context.strokeStyle = '#88c3cf';
+      context.lineWidth = 1.25;
+      context.stroke();
+
+      trace(objects.buildings, true);
+      context.fillStyle = '#ead8b8';
+      context.fill('evenodd');
+      context.strokeStyle = '#6f6049';
+      context.lineWidth = 1;
+      context.stroke();
+
+      trace(objects.paths);
+      context.setLineDash([3, 3]);
+      context.strokeStyle = '#f7eabe';
+      context.lineWidth = 1.3;
+      context.stroke();
+      context.setLineDash([]);
+
+      trace(objects.roads);
+      context.strokeStyle = '#705f4a';
+      context.lineWidth = 3.8;
+      context.stroke();
+      context.strokeStyle = '#f4e6bd';
+      context.lineWidth = 2.3;
+      context.stroke();
+      context.restore();
+    }
     if (detail) {
       trace(detail.russiaBoundaries);
       context.strokeStyle = '#8a9a8880';
@@ -409,25 +509,11 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       control.offsetLeft + control.offsetWidth + 6, control.offsetTop + control.offsetHeight + 6]);
     const font = getComputedStyle(viewport).fontFamily;
     context.textBaseline = 'middle';
-    for (const {x, y, area} of positionMarkers()) {
-      occupied.push([x - 31, y - 25, x + 31, y + 25]);
-      if (area && scale >= 180) {
-        const label = '«Красное»';
-        context.font = `800 11px ${font}`;
-        const labelWidth = context.measureText(label).width;
-        const labelX = x + 31 + labelWidth < width - 8 ? x + 31 : x - 31 - labelWidth;
-        if (labelX >= 8) {
-          context.strokeStyle = '#f1f4e4';
-          context.lineWidth = 3;
-          context.strokeText(label, labelX, y);
-          context.fillStyle = '#20563b';
-          context.fillText(label, labelX, y);
-          occupied.push([labelX - 3, y - 9, labelX + labelWidth + 3, y + 9]);
-        }
-      }
-    }
+    positionMarkers(occupied);
+    drawMarkerAnchors();
 
-    const geographicLabels = detail ? [...detail.russiaPlaces, ...detail.russiaWaterLabels, ...places] : places;
+    const overviewLabels = detail ? [...detail.russiaPlaces, ...detail.russiaWaterLabels, ...places] : places;
+    const geographicLabels = objects ? [...objects.labels, ...overviewLabels] : overviewLabels;
     for (const [name, longitude, latitude, minScale, kind] of geographicLabels) {
       if (scale < minScale || latitude < south || latitude > north) continue;
       const waterLabel = kind === 'river' || kind === 'lake' || kind === 'sea';
@@ -438,7 +524,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       if (occupied.some(a => a[0] < label[2] && a[2] > label[0] && a[1] < label[3] && a[3] > label[1])) continue;
       occupied.push(label);
       context.fillStyle = waterLabel ? '#456c79' : '#56695b';
-      if (!waterLabel) {
+      if (!waterLabel && kind !== 'road') {
         context.beginPath();
         context.arc(x, y, 2.1, 0, Math.PI * 2);
         context.fill();
@@ -464,7 +550,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     }
 
     const units = 111.195 * Math.cos(center.latitude * degrees) / (scale * cosine(center.latitude));
-    const distance = [20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5]
+    const distance = [20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02]
       .find(value => value / units <= 92);
     scaleLine.hidden = !distance || units < 0.001;
     if (!scaleLine.hidden) {
@@ -474,7 +560,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   }
 
   function redraw() {
-    pendingFrame ??= requestAnimationFrame(draw);
+    if (hasFrame) pendingFrame ??= requestAnimationFrame(draw);
   }
 
   function zoom(factor, x = width / 2, y = height / 2) {
@@ -497,16 +583,27 @@ function createMap(viewport, onPick, onSelect, onToggle) {
 
   function focus(point) {
     fittedPoints = null;
-    atReserve = isReserve(point);
+    atReserve = false;
     setCenter(point.latitude, point.longitude);
-    scale = initialScale;
+    scale = isReserve(point) ? maxScale : initialScale;
     redraw();
+  }
+
+  function focusReserve() {
+    const points = markers.filter(({point, area}) => area && isReserve(point)).map(({point}) => point);
+    if (!points.length) {
+      focus(reserve);
+      return;
+    }
+    const latitudes = points.map(point => point.latitude);
+    focus({latitude: (Math.min(...latitudes) + Math.max(...latitudes)) / 2, longitude: longitudeFrame(points).longitude});
   }
 
   function fit(points) {
     fittedPoints = points;
     const box = viewport.getBoundingClientRect();
     if (!points.length || !box.width || !box.height) return;
+    hasFrame = true;
     atReserve = points.every(isReserve);
     const latitudes = points.map(p => p.latitude);
     const latRange = Math.max(...latitudes) - Math.min(...latitudes);
@@ -531,11 +628,11 @@ function createMap(viewport, onPick, onSelect, onToggle) {
 
   function cancelGesture() {
     if (!pointer) return false;
-    const {id} = pointer;
+    const {id, capture} = pointer;
     pointer = null;
     frame.hidden = true;
     viewport.classList.remove('is-panning');
-    if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    if (capture.hasPointerCapture(id)) capture.releasePointerCapture(id);
     return true;
   }
 
@@ -547,20 +644,28 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   }
 
   for (const button of modes) button.addEventListener('click', () => setMode(button.dataset.mapMode));
-  canvas.addEventListener('pointerdown', event => {
+  viewport.addEventListener('pointerdown', event => {
     if (event.button !== 0 || !event.isPrimary || pointer) return;
+    const capture = event.target === canvas ? canvas : event.target.closest('.station-map-marker');
+    if (!capture) return;
     const [startX, startY] = position(event);
-    pointer = {id: event.pointerId, startX, startY, x: startX, y: startY, moved: false,
+    pointer = {id: event.pointerId, capture, startX, startY, x: startX, y: startY, moved: false,
       kind: picking ? 'coordinates' : mode, additive: event.ctrlKey || event.metaKey};
-    viewport.focus({preventScroll: true});
-    canvas.setPointerCapture(event.pointerId);
+    if (capture === canvas) viewport.focus({preventScroll: true});
+    capture.setPointerCapture(event.pointerId);
   });
-  canvas.addEventListener('pointermove', event => {
+  viewport.addEventListener('pointermove', event => {
     if (pointer?.id !== event.pointerId) return;
     const [x, y] = position(event);
     const dx = x - pointer.x;
     const dy = y - pointer.y;
     if (!pointer.moved && Math.hypot(dx, dy) < 5) return;
+    if (pointer.capture !== canvas) {
+      // A tap remains a marker click. Capture drags on the canvas, including touch hits adjusted to a marker.
+      pointer.capture = canvas;
+      canvas.setPointerCapture(event.pointerId);
+      viewport.focus({preventScroll: true});
+    }
     pointer.moved = true;
     pointer.x = x;
     pointer.y = y;
@@ -576,22 +681,21 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       pan(dx, dy);
     }
   });
-  canvas.addEventListener('pointerup', event => {
+  viewport.addEventListener('pointerup', event => {
     if (pointer?.id !== event.pointerId) return;
     const gesture = pointer;
     cancelGesture();
     if (gesture.kind === 'coordinates' && !gesture.moved) onPick(unproject(...position(event)));
     if (gesture.kind !== 'select' || !gesture.moved) return;
     const [left, top, right, bottom] = selectionBounds(gesture, position(event));
-    const included = markers.filter(({point}) => {
-      const [x, y] = project(point.longitude, point.latitude);
-      return x >= left && x <= right && y >= top && y <= bottom;
-    });
-    onSelect(included.flatMap(group => group.stations), gesture.additive || event.ctrlKey || event.metaKey);
+    const included = new Set(displayedMarkers.filter(({x, y}) => x >= left && x <= right && y >= top && y <= bottom)
+      .map(({marker}) => marker));
+    onSelect(markers.filter(marker => included.has(marker)).map(marker => marker.station),
+      gesture.additive || event.ctrlKey || event.metaKey);
   });
   for (const type of ['pointercancel', 'lostpointercapture']) {
-    canvas.addEventListener(type, event => {
-      if (pointer?.id === event.pointerId) cancelGesture();
+    viewport.addEventListener(type, event => {
+      if (pointer?.id === event.pointerId && (type === 'pointercancel' || pointer.capture === event.target)) cancelGesture();
     });
   }
   canvas.addEventListener('wheel', event => {
@@ -614,19 +718,14 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   });
 
   viewport.querySelector('[data-fit-russia]').addEventListener('click', () => fit(russiaExtent));
+  viewport.querySelector('[data-focus-reserve]').addEventListener('click', focusReserve);
   const observer = new ResizeObserver(() => fittedPoints ? fit(fittedPoints) : redraw());
   observer.observe(viewport);
   return {
     zoom, focus, fit, cancelGesture,
-    setSelection(ids) {
-      selection = new Set(ids);
-      for (const {element, stations} of overviewMarkers.values()) {
-        element.setAttribute('aria-pressed', toggleState(stations, selection));
-      }
-    },
     setMarkers(next) {
       markers = next;
-      overviewMarkers.clear();
+      displayedMarkers = [];
       for (const marker of markers) marker.element.disabled = picking;
       overlay.replaceChildren(...markers.map(marker => marker.element));
       redraw();
@@ -640,7 +739,6 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       picking = active;
       for (const button of modes) button.disabled = active;
       for (const marker of markers) marker.element.disabled = active;
-      for (const {element} of overviewMarkers.values()) element.disabled = active;
       viewport.classList.toggle('is-picking', active);
       if (active) viewport.focus();
     },
@@ -669,7 +767,8 @@ function mapContents() {
     </div>
     <div class="station-map-jumps" role="group" aria-label="Область карты">
       <button class="btn line" type="button" data-fit-russia>Вся Россия</button>
-      <button class="btn line" type="button" data-fit>К станциям</button>
+      <button class="btn line" type="button" data-focus-reserve aria-label="Детальный вид Красного">Красное</button>
+      <button class="btn line" type="button" data-fit disabled>К станциям</button>
     </div>
     <div class="station-map-scale" aria-hidden="true"></div>
     <p class="station-map-instruction" hidden>Укажите точку на карте или нажмите Enter для точки в центре.</p>
@@ -677,10 +776,11 @@ function mapContents() {
   <div class="station-map-source">
     <span>Рельеф и география · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
     <span data-reserve-credit hidden><a href="https://esa-worldcover.org/en/data-access" target="_blank" rel="noreferrer">© ESA WorldCover project 2021</a> / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>)</span>
-    <span data-area-note hidden>Общий маркер показывает ориентир «Красное».</span>
+    <span data-reserve-objects-credit hidden>Местные объекты · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a> (<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noreferrer">ODbL 1.0</a>)</span>
+    <span data-area-note hidden>Пунктир обозначает приблизительное местоположение.</span>
   </div>
   <ul class="station-terrain-legend" data-terrain-legend aria-label="Тип местности на карте" hidden></ul>
-  <p id="${hintId}" class="station-map-shortcut"><span data-overview-marker-note hidden>Число в группе показывает количество соседних станций. </span><span class="station-map-mouse-tip">Зажмите левую кнопку и протяните рамку. Ctrl или ⌘ добавят станции к выбору.</span><span class="station-map-touch-tip">Проведите пальцем по карте в режиме выделения.</span></p>
+  <p id="${hintId}" class="station-map-shortcut"><span data-displaced-note hidden>Линии ведут от кнопок станций к их точкам на карте. </span><span data-dense-note hidden>Приблизьте карту, чтобы показать остальные метки. </span><span class="station-map-mouse-tip">Обведите кнопки станций рамкой. Ctrl или ⌘ добавят станции к выбору.</span><span class="station-map-touch-tip">В режиме выделения обведите кнопки станций пальцем.</span></p>
 </section>`;
 }
 
@@ -711,7 +811,7 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
   let items = [];
   let markers = [];
   let catalogKey;
-  let positioned = false;
+  let initialPosition = 'pending';
   const map = createMap(viewport, onPick, (included, additive) => {
     const next = new Set(additive ? selected : []);
     for (const station of included) next.add(station.id);
@@ -719,20 +819,17 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
     selected = next;
     refreshSelection();
     onChange([...selected]);
-  }, toggleStations);
+  });
 
-  function toggleStations(group) {
-    const select = group.some(station => !selected.has(station.id));
-    for (const station of group) {
-      if (select) selected.add(station.id);
-      else selected.delete(station.id);
-    }
+  function toggleStation(id) {
+    if (selected.has(id)) selected.delete(id);
+    else selected.add(id);
     refreshSelection();
     onChange([...selected]);
   }
 
   function fitMarkers() {
-    map.fit(markers.map(group => group.point));
+    map.fit(markers.map(marker => marker.point));
   }
 
   get('[data-zoom-in]').addEventListener('click', () => map.zoom(1.5));
@@ -740,7 +837,6 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
   fitButton.addEventListener('click', fitMarkers);
 
   function refreshSelection() {
-    map.setSelection([...selected]);
     const active = document.activeElement;
     const selectedRows = [];
     const otherRows = [];
@@ -766,8 +862,8 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       active.focus({preventScroll: true});
       active.scrollIntoView({block: 'nearest'});
     }
-    for (const group of markers) {
-      group.element.setAttribute('aria-pressed', toggleState(group.stations, selected));
+    for (const {element, station} of markers) {
+      element.setAttribute('aria-pressed', String(selected.has(station.id)));
     }
   }
 
@@ -825,20 +921,26 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
     });
 
     const seenTypes = new Set();
-    markers = stationGroups(stations).map(group => {
+    markers = stations.flatMap(station => {
+      const point = location(station);
+      if (!point) return [];
+      const area = station.location_precision === 'area';
+      const type = terrainType(station);
+      const color = terrains[type][1];
+      seenTypes.add(type);
       const element = document.createElement('button');
       element.type = 'button';
-      element.className = `station-map-marker${group.area ? ' station-map-marker-area' : ''}`;
-      const names = group.stations.map(station => station.label).join(', ');
-      element.title = group.area ? `Район заповедника · ${names}` : names;
-      element.setAttribute('aria-label', element.title);
-      const types = [...new Set(group.stations.map(terrainType))];
-      for (const type of types) seenTypes.add(type);
-      element.style.setProperty('--terrain-fill', terrainFill(types));
-      if (group.stations.length > 1 || group.area) element.textContent = group.stations.length;
-      else element.innerHTML = icon('pin');
-      element.addEventListener('click', () => toggleStations(group.stations));
-      return {...group, element};
+      element.hidden = true;
+      element.className = `station-map-marker${area ? ' station-map-marker-area' : ''}`;
+      element.dataset.stationId = station.id;
+      element.title = area ? `${station.label} · приблизительно` : station.label;
+      element.setAttribute('aria-label', station.label);
+      element.style.setProperty('--terrain-fill', color);
+      const caption = document.createElement('span');
+      caption.textContent = station.label.split(' · ')[0];
+      element.append(caption);
+      element.addEventListener('click', () => toggleStation(station.id));
+      return [{station, point, area, color, element}];
     });
     const legend = get('[data-terrain-legend]');
     legend.replaceChildren(...Object.entries(terrains).filter(([type]) => seenTypes.has(type)).map(([, [label, color]]) => {
@@ -852,9 +954,13 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
     legend.hidden = !seenTypes.size;
     fitButton.disabled = !markers.length;
     map.setMarkers(markers);
-    if (!positioned && markers.length) {
-      positioned = true;
-      if (!markers.some(group => group.area)) fitMarkers();
+    if (markers.length && initialPosition !== 'stations') {
+      initialPosition = 'stations';
+      if (markers.some(({station}) => station.archive)) map.fit([reserve]);
+      else fitMarkers();
+    } else if (initialPosition === 'pending') {
+      initialPosition = 'country';
+      map.fit(russiaExtent);
     }
   }
 
@@ -868,9 +974,9 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       stations = catalog;
       const stationIds = new Set(stations.map(station => station.id));
       selected = new Set(ids.filter(id => stationIds.has(id)));
-      const nextKey = JSON.stringify(stations.map(({id, label, color, terrain, latitude, longitude,
+      const nextKey = JSON.stringify(stations.map(({id, label, archive, color, terrain, latitude, longitude,
         location_precision, location_label, location_reference, params}) =>
-        [id, label, color, terrain, latitude, longitude, location_precision, location_label, location_reference, params]));
+        [id, label, archive, color, terrain, latitude, longitude, location_precision, location_label, location_reference, params]));
       if (nextKey !== catalogKey) {
         catalogKey = nextKey;
         rebuild();
@@ -892,7 +998,6 @@ export function mountStationOverview(container, {onChange = () => {}, onExpand =
   </div>`;
   const selection = createStationSelection(container, {onChange, emptyText: 'Станции не найдены.'});
   container.querySelector('[data-expand-map]').addEventListener('click', onExpand);
-  selection.update([], []);
   return {
     update: selection.update,
     destroy() {
@@ -903,7 +1008,8 @@ export function mountStationOverview(container, {onChange = () => {}, onExpand =
   };
 }
 
-function dialogContents() {
+function dialogContents(canRegister) {
+  const registerButton = canRegister ? `<button class="btn line" type="button" data-add>${icon('plus')} Добавить</button>` : '';
   return `
     <div class="station-picker-heading">
       <div>
@@ -915,7 +1021,7 @@ function dialogContents() {
     <div class="station-picker-body">
       ${mapContents()}
       <div class="station-picker-side">
-        ${stationListContents(`<button class="btn line" type="button" data-add>${icon('plus')} Добавить</button>`)}
+        ${stationListContents(registerButton)}
         <form data-station-form hidden>
           <div class="station-picker-list-head"><h3>Паспорт станции</h3><button class="btn line" type="button" data-back>К списку</button></div>
           <fieldset>
@@ -948,13 +1054,13 @@ function dialogContents() {
     </div>`;
 }
 
-export async function pickStations(stations, selectedIds = []) {
+export async function pickStations(stations, selectedIds = [], {canRegister = false} = {}) {
   const before = document.activeElement;
   const dialog = document.createElement('dialog');
   dialog.className = 'station-picker';
   dialog.setAttribute('aria-labelledby', 'station-picker-title');
   dialog.setAttribute('aria-describedby', 'station-picker-description');
-  dialog.innerHTML = dialogContents();
+  dialog.innerHTML = dialogContents(canRegister);
   document.body.append(dialog);
   const get = selector => dialog.querySelector(selector);
   const form = get('[data-station-form]');
@@ -1054,20 +1160,20 @@ export async function pickStations(stations, selectedIds = []) {
       error.hidden = true;
       fields.label.focus();
     } else {
-      add.focus();
+      add?.focus();
     }
     map.setDraft(null);
     refreshFooter();
   }
 
-  add.addEventListener('click', () => showForm(true));
+  add?.addEventListener('click', () => showForm(true));
   get('[data-back]').addEventListener('click', () => showForm(false));
   pick.addEventListener('click', () => setPicking(!picking));
   fields.latitude.addEventListener('input', previewCoordinates);
   fields.longitude.addEventListener('input', previewCoordinates);
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (saving) return;
+    if (!canRegister || saving) return;
     error.hidden = true;
     const point = formPoint();
     if (!point) return;

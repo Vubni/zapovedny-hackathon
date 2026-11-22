@@ -19,7 +19,7 @@
   font: 600 14px/1.45 Manrope, "Avenir Next", Arial, sans-serif;
 }
 
-[data-archive-nav] [hidden] { display: none; }
+[data-archive-nav] [hidden] { display: none !important; }
 
 .archive-sidebar-head {
   position: relative;
@@ -54,9 +54,21 @@
   line-height: 1.25;
   font-weight: 800;
   text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
 .archive-sidebar-name > span { white-space: nowrap; }
+
+.archive-sidebar-center-icon {
+  display: grid;
+  flex: none;
+  width: 43px;
+  height: 43px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--sidebar-accent);
+  background: var(--sidebar-active);
+}
 
 .archive-sidebar-toggle {
   position: absolute;
@@ -97,7 +109,6 @@
 }
 
 .archive-sidebar-links a svg { flex: none; color: var(--sidebar-accent); }
-
 .archive-sidebar-toggle:hover,
 [data-archive-nav] .archive-sidebar-links a:is(:hover, [aria-current="page"]) {
   background: var(--sidebar-active);
@@ -114,6 +125,7 @@
 [data-archive-nav][data-layout="rail"] .reserve-logo { width: 39px; height: 39px; }
 [data-layout="rail"] :is(.archive-sidebar-name, .archive-sidebar-links a span) { display: none; }
 [data-archive-nav][data-layout="rail"] .archive-sidebar-links a { justify-content: center; padding-inline: 0; }
+[data-archive-nav][data-layout="rail"] .archive-sidebar-center-icon { width: 39px; height: 39px; }
 
 .archive-sidebar-resize {
   position: absolute;
@@ -171,6 +183,57 @@
   .archive-sidebar-toggle { position: static; grid-column: 3; width: 44px; height: 44px; }
   .archive-sidebar-links { margin-top: 5px; padding: 6px 0 3px; }
   [data-archive-nav] .archive-sidebar-links a { min-height: 44px; padding-inline: 10px; }
+}
+
+.archive-session-dialog {
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  padding: 21px 24px;
+  border: 1px solid #dce5db;
+  border-radius: 14px;
+  color: #162820;
+  background: white;
+  font: 500 14px/1.5 Manrope, "Avenir Next", Arial, sans-serif;
+}
+.archive-session-dialog::backdrop { background: #172c2379; }
+.archive-session-dialog h2 { margin: 0; font-size: 21px; }
+.archive-session-dialog p { margin: 5px 0 14px; color: #53645a; }
+.archive-session-dialog label { display: block; margin: 6px 0 4px; font-weight: 750; }
+.archive-session-dialog input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 7px 9px;
+  border: 1px solid #aebdb1;
+  border-radius: 7px;
+  font: inherit;
+}
+.archive-session-dialog .archive-session-error { margin: 6px 0 0; color: #80392e; }
+.archive-session-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin-top: 15px; }
+.archive-session-actions button {
+  min-height: 41px;
+  padding: 0 11px;
+  border: 1px solid #dce5db;
+  border-radius: 7px;
+  color: #20563b;
+  background: white;
+  font: 750 13px/1.4 Manrope, "Avenir Next", Arial, sans-serif;
+}
+.archive-session-actions .archive-session-submit { color: white; background: #20563b; border-color: #20563b; }
+.archive-session-cancel:hover { background: #e5f0e5; }
+.archive-session-actions .archive-session-submit:hover { background: #183f2d; }
+.archive-session-feedback {
+  position: fixed;
+  z-index: 9;
+  inset: auto 12px 12px auto;
+  max-width: min(350px, calc(100% - 24px));
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid #dce5db;
+  border-radius: 9px;
+  color: #20563b;
+  background: white;
+  font: 750 13px/1.45 Manrope, "Avenir Next", Arial, sans-serif;
 }
 
 @media print {

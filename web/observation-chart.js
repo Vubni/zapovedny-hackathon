@@ -3,6 +3,10 @@ import { mountCoverageOverview } from './coverage-overview.js';
 const cards = new WeakMap();
 const svgNamespace = 'http://www.w3.org/2000/svg';
 const DAY = 86_400_000;
+const calendarYear = 2000;
+const calendarStart = Date.UTC(calendarYear, 0, 1);
+const calendarEnd = Date.UTC(calendarYear, 11, 31);
+const calendarSeriesSuffix = '|calendar-year:';
 const palette = ['#2b7650', '#426583', '#735579', '#945320', '#507f76', '#ae4b55', '#646f2e', '#59618a'];
 const speedPalette = ['#b4d5bc', '#5d9a75', '#2b7650', '#426583', '#735579', '#945320'];
 const imageFormats = new Map([['svg', 'SVG'], ['png', 'PNG'], ['jpeg', 'JPEG / JPG']]);
@@ -14,6 +18,8 @@ const number = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 });
 const date = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' });
 const monthDate = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', month: 'short', year: '2-digit' });
 const shortDate = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
+const calendarDay = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: 'numeric', month: 'long' });
+const calendarMonth = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', month: 'short' });
 let nextCard = 0;
 let rasterQueue = Promise.resolve();
 
@@ -95,11 +101,56 @@ function lighter(color) {
   return `#${values.map(value => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function calendarKey(source) {
+  const day = new Date(source);
+  return Date.UTC(calendarYear, day.getUTCMonth(), day.getUTCDate());
+}
+
+function calendarWindow(intervals) {
+  let start = calendarEnd;
+  let end = calendarStart;
+  for (const interval of intervals) {
+    const from = timestamp(interval.start);
+    const to = timestamp(interval.end);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    if (new Date(from).getUTCFullYear() !== new Date(to).getUTCFullYear()) return [calendarStart, calendarEnd];
+    start = Math.min(start, calendarKey(from));
+    end = Math.max(end, calendarKey(to));
+  }
+  return start <= end ? [start, end] : [calendarStart, calendarEnd];
+}
+
+function calendarSeries(series) {
+  const styleByIntervalYear = new Map();
+  return series.flatMap(item => {
+    const years = new Map();
+    for (const point of item.points) addTo(years, new Date(point.key).getUTCFullYear(),
+      { ...point, sourceKey: point.key, key: calendarKey(point.key) });
+    const suffix = ` · ${item.interval_label}`;
+    const baseLabel = item.interval_label && item.label.endsWith(suffix) ? item.label.slice(0, -suffix.length) : item.label;
+    if (!years.size) return [item];
+    return Array.from(years, ([year, points]) => {
+      const group = `${item.interval ?? ''}|${year}`;
+      if (!styleByIntervalYear.has(group)) styleByIntervalYear.set(group, styleByIntervalYear.size);
+      const split = years.size > 1;
+      return { ...item, id: split ? `${item.id}${calendarSeriesSuffix}${year}` : item.id,
+        calendarParent: split ? item.id : null, sourceYear: year, calendarStyle: styleByIntervalYear.get(group),
+        calendarBaseLabel: baseLabel, label: [baseLabel, String(year), item.interval_label].filter(Boolean).join(' · '),
+        points, byKey: new Map(points.map(point => [point.key, point])), hasValues: points.some(point => point.y !== null) };
+    });
+  });
+}
+
 function modelOf(data, options) {
   const axis = data.axis || 'time';
   const mode = options.mode || data.mode || 'modern';
   const grain = data.grain || options.grain || 'month';
-  const series = (data.series || []).map((item, index) => {
+  const id = data.id ?? data.chart;
+  const intervals = options.intervals ?? data.intervals ?? [];
+  const requested = options.calendarAligned && axis === 'time' && intervals.length > 1;
+  const trend = id === 'air_trend';
+  const calendarAligned = Boolean(requested && grain !== 'year' && !trend);
+  const originalSeries = (data.series || []).map((item, index) => {
     const id = String(item.id ?? index);
     const unit = item.unit ?? data.unit ?? '';
     const color = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(item.color) ? item.color : palette[index % palette.length];
@@ -113,7 +164,7 @@ function modelOf(data, options) {
   });
   const speedColors = new Map();
   const stationColors = new Set();
-  for (const item of series) {
+  for (const item of originalSeries) {
     if (item.speedClass) {
       if (!speedColors.has(item.speedClass)) speedColors.set(item.speedClass, speedPalette[speedColors.size % speedPalette.length]);
       item.color = speedColors.get(item.speedClass);
@@ -127,6 +178,7 @@ function modelOf(data, options) {
     }
     stationColors.add(key);
   }
+  const series = calendarAligned ? calendarSeries(originalSeries) : originalSeries;
   const points = new Map();
   for (const item of series) {
     for (const point of item.points) if (!points.has(point.key)) points.set(point.key, point);
@@ -139,15 +191,17 @@ function modelOf(data, options) {
   let domain = ends.length ? [ends[0], ends.at(-1)] : [0, 0];
   if (axis === 'hour') domain = [keys[0] === 1 && keys.at(-1) === 24 ? 1 : 0, keys.at(-1) === 24 ? 24 : 23];
   if (axis === 'direction') domain = [-0.5, compass.length - 0.5];
-  if (axis === 'time' && archiveWindow) {
+  if (calendarAligned) domain = calendarWindow(intervals);
+  else if (axis === 'time' && archiveWindow) {
     domain = [Math.min(from, ends[0] ?? from), Math.max(to, ends.at(-1) ?? to)];
   }
   const stations = [...new Set((data.coverage || []).map(row => row.label || row.station).filter(Boolean))];
   const period = axis === 'hour' ? 'Средний суточный ход' : axis === 'time' ? (grainLabels[grain] || '') : '';
-  const intervals = options.intervals ?? data.intervals ?? [];
   const intervalCount = intervals.length > 1 ? `${intervals.length} ${intervals.length < 5 ? 'интервала' : 'интервалов'}` : '';
-  const subtitle = [options.subtitle ?? data.subtitle ?? [stations.join(', '), period].filter(Boolean).join(' · '), intervalCount].filter(Boolean).join(' · ');
-  return { ...data, id: data.id ?? data.chart, axis, grain, mode, series, points, domain, archiveWindow, stations, subtitle, intervals,
+  const axisNote = !requested ? '' : calendarAligned ? 'Общая календарная ось' :
+    grain === 'year' ? 'Годовые значения на оси лет' : 'Тренд по исходной хронологии';
+  const subtitle = [options.subtitle ?? data.subtitle ?? [stations.join(', '), period].filter(Boolean).join(' · '), intervalCount, axisNote].filter(Boolean).join(' · ');
+  return { ...data, id, axis, grain, mode, series, points, domain, archiveWindow, stations, subtitle, intervals, calendarAligned,
     hasValues: series.some(item => item.hasValues) };
 }
 
@@ -230,6 +284,23 @@ function dateTicks([start, end], target) {
   return ticks.length ? ticks : [[start, date.format(start)]];
 }
 
+function calendarTicks([start, end], target) {
+  const span = end - start;
+  if (!span) return [[start, shortDate.format(start)]];
+  const ticks = [];
+  if (span >= 60 * DAY) {
+    const step = Math.max(1, Math.ceil(span / (30.44 * DAY * target)));
+    for (let month = 0; month < 12; month += step) {
+      const key = Date.UTC(calendarYear, month, 1);
+      if (key >= start && key <= end) ticks.push([key, calendarMonth.format(key)]);
+    }
+  } else {
+    const step = Math.max(1, Math.ceil(span / (target * DAY))) * DAY;
+    for (let key = Math.ceil(start / DAY) * DAY; key <= end; key += step) ticks.push([key, shortDate.format(key)]);
+  }
+  return ticks.length ? ticks : [[start, shortDate.format(start)]];
+}
+
 function axisTicks(model, domain, width) {
   if (model.axis === 'direction') {
     const directions = compass.map((name, index) => [index, name]);
@@ -242,7 +313,8 @@ function axisTicks(model, domain, width) {
       return [key, String(key).padStart(2, '0')];
     });
   }
-  return dateTicks(domain, Math.max(2, Math.floor(width / 76)));
+  const target = Math.max(2, Math.floor(width / 76));
+  return model.calendarAligned ? calendarTicks(domain, target) : dateTicks(domain, target);
 }
 
 function calendarPeriod(key, grain) {
@@ -314,7 +386,7 @@ function plotText(x, y, text, attrs = {}) {
 }
 
 function lineRanges(root, entries, model, x, y) {
-  const keyOfRange = item => `${item.station}|${item.parameter}|${item.interval ?? ''}`;
+  const keyOfRange = item => `${item.station}|${item.parameter}|${item.interval ?? ''}|${item.sourceYear ?? ''}`;
   const highest = new Map(entries.filter(([item]) => item.role === 'max').map(([item]) => [keyOfRange(item), item]));
   for (const [item, points] of entries) {
     if (item.role !== 'min') continue;
@@ -358,7 +430,8 @@ function lineMarks(root, entries, model, dimensions) {
     }
     if (area.length) root.append(svg('path', { d: area.join(''), fill: item.color, 'fill-opacity': 0.085 }));
     const attrs = { stroke: item.color, 'stroke-width': model.mode === 'modern' ? 2.25 : 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
-    if (dashed(item, model.mode)) attrs['stroke-dasharray'] = '5 4';
+    const pattern = strokePattern(item, model.mode);
+    if (pattern) attrs['stroke-dasharray'] = pattern;
     if (line.length) root.append(svg('path', { ...attrs, d: line.join(''), fill: 'none' }));
     if (dots.length) root.append(svg('path', { d: dots.join(''), fill: '#ffffff', stroke: item.color, 'stroke-width': 1.4 }));
   }
@@ -382,7 +455,7 @@ function rectangularPlot(root, model, series, domain, width, height, origin = 0)
   const left = 46;
   const right = width - 23;
   const top = origin + 24;
-  const bottom = origin + height - 28;
+  const bottom = origin + height - (model.calendarAligned ? 42 : 28);
   const unit = model.unit || series[0]?.unit;
   const entries = series.map(item => [item, visiblePoints(item, domain)]);
   const renderBars = model.axis === 'direction';
@@ -402,6 +475,8 @@ function rectangularPlot(root, model, series, domain, width, height, origin = 0)
     const size = model.axis === 'direction' && width < 510 ? 8.5 : 11;
     root.append(plotText(x(key), bottom + 19, label, { 'text-anchor': 'middle', 'font-size': size }));
   }
+  if (model.calendarAligned) root.append(plotText((left + right) / 2, origin + height - 6,
+    'День и месяц', { 'text-anchor': 'middle' }));
   const dimensions = { x, y, width: right - left, left, right, top, bottom };
   if (renderBars) barMarks(root, entries, model, dimensions);
   else {
@@ -577,6 +652,10 @@ function graphic(width, height, title) {
     'font-family': 'Manrope, Avenir Next, Arial, sans-serif' });
 }
 
+function axisType(model) {
+  return model.calendarAligned ? 'calendar' : model.axis;
+}
+
 function emptyContent(message, axis, detail = '') {
   const empty = html('div', 'empty-chart obs-chart__empty');
   empty.append(icon(axis === 'direction' ? 'compass' : 'chart', 29), html('h3', '', message));
@@ -626,37 +705,86 @@ function dashed(item, mode) {
   return item.alternate || ['trend', 'estimate'].includes(item.role) || (mode !== 'modern' && item.index % 2 === 1 && !item.speedClass);
 }
 
-function renderLegend(model, hidden, onToggle) {
+const calendarPatterns = ['', '5 4', '9 4', '3 3', '12 4 2 4', '5 2 2 2', '11 3', '2 5'];
+
+function strokePattern(item, mode) {
+  if (item.calendarStyle == null) return dashed(item, mode) ? '5 4' : '';
+  const alternate = item.alternate || item.role === 'estimate';
+  const index = item.calendarStyle * 2 + Number(alternate);
+  if (index < calendarPatterns.length) return calendarPatterns[index];
+  return `${4 + index % 8} ${2 + Math.floor(index / 8) % 5} ${alternate ? 2 : 4} 3`;
+}
+
+function seriesHidden(hidden, item) {
+  return hidden.has(item.id) || (item.calendarParent && hidden.has(item.calendarParent));
+}
+
+function renderLegend(state) {
+  const { model, hidden } = state;
   const legend = html('div', 'legend obs-chart__legend');
   legend.setAttribute('aria-label', 'Ряды графика');
-  for (const item of chartLegendEntries(model, model.series)) {
+  const entries = chartLegendEntries(model, model.series);
+  const useDisclosure = entries.length > 8 || (entries.length > 4 && entries.reduce((length, item) => length + item.label.length, 0) > 230);
+  const count = useDisclosure ? html('span', 'obs-chart__legend-count') : null;
+  const updateCount = () => {
+    if (count) count.textContent = `${entries.filter(item => !seriesHidden(hidden, item)).length} из ${entries.length}`;
+  };
+  for (const item of entries) {
     const key = html('button', 'legend-key');
     key.type = 'button';
-    key.setAttribute('aria-pressed', String(!hidden.has(item.id)));
-    const mark = html('i', `swatch${item.speedClass ? ' block' : dashed(item, model.mode) ? ' dash' : ''}`);
+    key.setAttribute('aria-pressed', String(!seriesHidden(hidden, item)));
+    const mark = item.calendarStyle != null ? svg('svg', { width: 19, height: 9, viewBox: '0 0 19 9' }) :
+      html('i', `swatch${item.speedClass ? ' block' : dashed(item, model.mode) ? ' dash' : ''}`);
     mark.setAttribute('aria-hidden', 'true');
-    mark.style.setProperty('--dot', item.color);
+    if (item.calendarStyle == null) mark.style.setProperty('--dot', item.color);
+    else mark.append(legendMark(model, item, 1, 8));
     key.append(mark, html('span', '', item.label));
     if (!item.hasValues) key.title = `Нет данных: ${item.label}`;
     key.addEventListener('click', () => {
       const pressed = key.getAttribute('aria-pressed') === 'true';
       key.setAttribute('aria-pressed', String(!pressed));
-      onToggle(item.id, pressed);
+      setSeriesVisibility(state, item, !pressed);
+      updateCount();
+      draw(state);
+      publishPresentation(state);
     });
     legend.append(key);
   }
-  return legend;
+  const wasOpen = state.legendDisclosure?.open;
+  state.legendDisclosure = null;
+  if (!useDisclosure) return legend;
+
+  const disclosure = html('details', 'obs-chart__legend-disclosure');
+  const trigger = html('summary', 'obs-chart__legend-trigger');
+  trigger.append(html('span', '', 'Легенда'), count, icon('chevron', 13));
+  disclosure.append(trigger, legend);
+  disclosure.open = Boolean(wasOpen);
+  state.legendDisclosure = disclosure;
+  updateCount();
+  return disclosure;
 }
 
 function legendMark(model, item, x, y) {
-  if (dashed(item, model.mode)) {
-    return svg('path', { d: `M${x} ${y - 4}h16`, stroke: item.color, 'stroke-width': 2, 'stroke-dasharray': '5 3' });
+  const pattern = strokePattern(item, model.mode);
+  if (item.calendarStyle != null || pattern) {
+    const attrs = { d: `M${x} ${y - 4}h16`, stroke: item.color, 'stroke-width': 2 };
+    if (pattern) attrs['stroke-dasharray'] = item.calendarStyle == null ? '5 3' : pattern;
+    return svg('path', attrs);
   }
   if (item.speedClass) return svg('rect', { x, y: y - 9, width: 10, height: 10, rx: 2, fill: item.color });
   return svg('circle', { cx: x + 5, cy: y - 4, r: 4, fill: item.color });
 }
 
-function exportLegend(model, series, width, start) {
+function exportLegend(model, series, width, start, layout) {
+  if (layout) {
+    const nodes = [];
+    let y = start;
+    for (const row of layoutLegendRows(model, series, width - 52, layout)) {
+      nodes.push(...legendRowNodes(model, row, 26, y));
+      y += legendRowHeight(row);
+    }
+    return { nodes, bottom: y + 12 };
+  }
   const nodes = [];
   let x = 26;
   let y = start;
@@ -669,7 +797,8 @@ function exportLegend(model, series, width, start) {
     const textWidth = item.label.length * 7 + 38;
     ensureRoom(textWidth);
     nodes.push(legendMark(model, item, x, y));
-    nodes.push(plotText(x + (dashed(item, model.mode) ? 21 : 16), y, item.label, { 'font-size': 12 }));
+    const lineMarker = item.calendarStyle != null || dashed(item, model.mode);
+    nodes.push(plotText(x + (lineMarker ? 21 : 16), y, item.label, { 'font-size': 12 }));
     x += textWidth;
   }
   return { nodes, bottom: y + 24 };
@@ -685,10 +814,14 @@ function exportImage(model, series, domain, measuredWidth, periods, empty) {
   const rose = isRose(model);
   const groups = rose ? roseGroups(model, series) : [];
   const layout = empty ? { height: 150 } : rose ? roseLayout(groups, width, true) : { height: 365 };
-  const captions = [model.subtitle, ...periods].filter(Boolean);
+  const textLayout = model.calendarAligned ? exportTextLayout() : null;
+  const captions = [model.subtitle, ...periods].filter(Boolean)
+    .flatMap(caption => textLayout ? textLayout.wrap(caption, width - 48, 12) : [caption]);
   const top = 66 + captions.length * 18;
-  const { nodes, bottom } = exportLegend(model, series, width, top + layout.height + 21);
+  const { nodes, bottom } = exportLegend(model, series, width, top + layout.height + 21, textLayout);
   const root = graphic(width, bottom, model.title);
+  if (textLayout) root.setAttribute('font-family', 'Arial, sans-serif');
+  root.setAttribute('data-axis', axisType(model));
   root.append(svg('title', {}, model.title), svg('rect', { x: 0, y: 0, width, height: bottom, fill: '#fff' }));
   root.append(plotText(24, 35, model.title, { fill: neutral.ink, 'font-size': 24, 'font-weight': 800 }));
   for (const [index, caption] of captions.entries()) root.append(plotText(24, 57 + index * 17, caption, { 'font-size': 12 }));
@@ -702,7 +835,7 @@ function exportImage(model, series, domain, measuredWidth, periods, empty) {
   return svgFile(root, width, bottom);
 }
 
-function reportTextLayout() {
+function exportTextLayout() {
   const context = html('canvas').getContext('2d');
   const measure = (text, size, weight = 700) => {
     context.font = `${weight} ${size}px Arial, sans-serif`;
@@ -733,7 +866,7 @@ function reportTextLayout() {
   return { measure, wrap };
 }
 
-function reportLegendRows(model, series, width, layout) {
+function layoutLegendRows(model, series, width, layout) {
   const rows = [];
   let row = [];
   let offset = 0;
@@ -752,18 +885,31 @@ function reportLegendRows(model, series, width, layout) {
   return rows;
 }
 
+function legendRowHeight(row) {
+  return Math.max(...row.map(entry => entry.lines.length), 1) * 16 + 7;
+}
+
+function legendRowNodes(model, row, margin, y) {
+  return row.flatMap(({ item, lines, offset }) => {
+    const x = margin + offset;
+    return [legendMark(model, item, x, y),
+      ...lines.map((line, index) => plotText(x + 22, y + index * 16, line, { 'font-size': 12 }))];
+  });
+}
+
 function reportGraphics(model, series, domain, periods, empty) {
   const width = 1000;
   const height = 680;
   const margin = 24;
   const contentWidth = width - 2 * margin;
-  const text = reportTextLayout();
+  const text = exportTextLayout();
   const pages = [];
   const titleLines = text.wrap(model.title, contentWidth, 25, 800);
   let root;
   let cursor;
   const nextPage = () => {
     root = graphic(width, height, model.title);
+    root.setAttribute('data-axis', axisType(model));
     root.setAttribute('font-family', 'Arial, sans-serif');
     root.append(svg('rect', { width, height, fill: '#fff' }));
     titleLines.forEach((line, index) => root.append(plotText(margin, 32 + 27 * index, line,
@@ -805,22 +951,15 @@ function reportGraphics(model, series, domain, periods, empty) {
   }
 
   let legendPage;
-  for (const row of reportLegendRows(model, series, contentWidth, text)) {
-    const lineCount = Math.max(...row.map(entry => entry.lines.length), 1);
-    const rowHeight = lineCount * 16 + 7;
+  for (const row of layoutLegendRows(model, series, contentWidth, text)) {
+    const rowHeight = legendRowHeight(row);
     const headingHeight = 18;
     if (cursor + rowHeight + (legendPage === root ? 0 : headingHeight) > height - 12) nextPage();
     if (legendPage !== root) {
       add(headingHeight, (page, y) => page.append(plotText(margin, y + 12, 'Легенда', { fill: neutral.ink })));
       legendPage = root;
     }
-    add(rowHeight, (page, y) => {
-      for (const { item, lines, offset } of row) {
-        const x = margin + offset;
-        page.append(legendMark(model, item, x, y + 13));
-        lines.forEach((line, index) => page.append(plotText(x + 22, y + 13 + index * 16, line, { 'font-size': 12 })));
-      }
-    });
+    add(rowHeight, (page, y) => page.append(...legendRowNodes(model, row, margin, y + 13)));
   }
   return pages.map((page, index) => svgFile(page, width, height, index === 0 ? model.title : undefined));
 }
@@ -890,6 +1029,7 @@ function chartCsv(model, series, domain) {
   if (model.axis === 'hour') fields[0] = 'Час';
   if (model.axis === 'direction') fields[0] = 'Направление';
   if (multiple) fields.push('Начало выбранного интервала', 'Конец выбранного интервала');
+  if (model.calendarAligned) fields.push('День и месяц на общей оси');
   const hasBaseline = series.some(item => item.role === 'anomaly');
   if (hasBaseline) fields.push('Среднее за выбранный период', 'Лет в среднем');
   const stationLabels = new Map((model.coverage || []).map(row => [row.station, row.label]));
@@ -899,6 +1039,7 @@ function chartCsv(model, series, domain) {
       const values = [point.x, point.x_end, stationLabels.get(item.station) || item.station_label || item.station || item.label,
         item.parameter_label || item.parameter || model.title, item.label, item.unit, point.y];
       if (multiple) values.push(item.interval_start, item.interval_end);
+      if (model.calendarAligned) values.push(shortDate.format(point.key));
       if (hasBaseline) values.push(point.baseline, point.years);
       rows.push(values);
     }
@@ -914,7 +1055,11 @@ function tooltipRow(item, key, label = item.label) {
   const name = html('span');
   const swatch = html('i', 'swatch');
   swatch.style.setProperty('--dot', item.color);
-  name.append(swatch, html('span', '', label));
+  const labelText = html('span', '', label);
+  if (Number.isFinite(point?.sourceKey)) {
+    labelText.append(html('small', 'obs-chart__tooltip-source-date', prettySpan({ ...point, label: '' }, 'time', point.sourceKey)));
+  }
+  name.append(swatch, labelText);
   const text = value == null ? 'Нет данных' : `${number.format(value)}${item.unit ? ` ${item.unit}` : ''}`;
   row.append(name, html('b', '', text));
   if (item.role === 'anomaly' && Number.isFinite(point?.baseline)) {
@@ -985,12 +1130,13 @@ function bindLineHover(state, root, model, series, domain, dimensions, zoom) {
     const comparable = model.axis === 'time' && model.intervals.length > 1 ? series.filter(item => item.byKey.has(key)) : series;
     for (const [index, item] of comparable.entries()) {
       const value = item.byKey.get(key)?.y;
-      content.append(tooltipRow(item, key));
+      content.append(tooltipRow(item, key, item.calendarBaseLabel || item.label));
       if (value != null) dots.append(svg('circle', { cx: current, cy: y(value), r: 4, stroke: item.color, 'stroke-width': 1.5, fill: index === 0 ? neutral.lime : '#fff' }));
     }
     cross.setAttribute('visibility', 'visible');
     const htmlX = current * root.clientWidth / Number(root.getAttribute('width'));
-    showTooltip(tooltip, stage, prettySpan(model.points.get(key), model.axis, key), content, htmlX, topOffset);
+    const heading = model.calendarAligned ? calendarDay.format(key) : prettySpan(model.points.get(key), model.axis, key);
+    showTooltip(tooltip, stage, heading, content, htmlX, topOffset);
   };
   target.addEventListener('pointermove', event => {
     if (frame) cancelAnimationFrame(frame);
@@ -1078,8 +1224,34 @@ function currentWindow(state) {
   return state.zoom || state.model.domain;
 }
 
+function chartPresentation(state) {
+  const ids = new Set(state.model.series.flatMap(item => item.calendarParent ? [item.id, item.calendarParent] : [item.id]));
+  return { hidden: [...state.hidden].filter(id => ids.has(id)), zoom: state.zoom?.slice() ?? null };
+}
+
+function publishPresentation(state) {
+  state.options.onPresentationChange?.(chartPresentation(state));
+}
+
 function activeSeries(state) {
-  return state.model.series.filter(item => !state.hidden.has(item.id));
+  return state.model.series.filter(item => !seriesHidden(state.hidden, item));
+}
+
+function setSeriesVisibility(state, item, show) {
+  const { hidden } = state;
+  const siblings = item.calendarParent ? state.model.series.filter(series => series.calendarParent === item.calendarParent) : [];
+  if (!show) {
+    hidden.add(item.id);
+    if (siblings.length && siblings.every(sibling => hidden.has(sibling.id))) hidden.add(item.calendarParent);
+    return;
+  }
+  hidden.delete(item.id);
+  if (item.calendarParent && hidden.delete(item.calendarParent)) {
+    for (const sibling of siblings) if (sibling.id !== item.id) hidden.add(sibling.id);
+  }
+  if (!item.calendarParent) {
+    for (const id of hidden) if (id.startsWith(`${item.id}${calendarSeriesSuffix}`)) hidden.delete(id);
+  }
 }
 
 function hasVisibleValues(series, domain) {
@@ -1107,7 +1279,10 @@ function exportPeriods(state, domain) {
   const span = ([start, end]) => start === end ? date.format(start) : `${date.format(start)} – ${date.format(end)}`;
   if (model.intervals.length > 1) {
     const periods = model.intervals.map(({ start, end }) => span([timestamp(start), timestamp(end)]));
-    if (state.zoom) periods.push(`Масштаб: ${span(state.zoom)}`);
+    if (state.zoom) {
+      const zoom = model.calendarAligned ? state.zoom.map(day => shortDate.format(day)).join(' – ') : span(state.zoom);
+      periods.push(`Масштаб · ${zoom}`);
+    }
     return periods;
   }
   return dates ? [span(dates)] : [];
@@ -1168,6 +1343,7 @@ function draw(state) {
   const height = enlarged ? Math.max(320, Math.min(660, window.innerHeight - 190)) : options.primary === false ? 182 : 250;
   const layout = rose ? roseLayout(groups, width, enlarged) : { height };
   const root = graphic(width, layout.height, model.title);
+  root.setAttribute('data-axis', axisType(model));
   root.classList.add('obs-chart__svg');
   plot.replaceChildren(root);
   if (rose) {
@@ -1186,6 +1362,7 @@ function setZoom(state, from, to) {
   const right = left + duration;
   state.zoom = left <= start && right >= end ? null : [left, right];
   draw(state);
+  publishPresentation(state);
 }
 
 function scaleZoom(state, factor) {
@@ -1294,6 +1471,7 @@ function cardControls(state) {
   reset.addEventListener('click', () => {
     state.zoom = null;
     draw(state);
+    publishPresentation(state);
   });
   zoom.append(reset, zoomOut, zoomIn);
   return { actions, fullscreen, image, csv, zoom, zoomOut, zoomIn, reset };
@@ -1318,12 +1496,7 @@ function paintCard(state) {
   state.plot = plot;
   state.tooltip = tooltip;
   const footer = html('div', 'obs-chart__footer');
-  const legend = renderLegend(model, state.hidden, (id, visible) => {
-    if (visible) state.hidden.add(id);
-    else state.hidden.delete(id);
-    draw(state);
-  });
-  footer.append(legend, state.controls.zoom);
+  footer.append(renderLegend(state), state.controls.zoom);
   const coverage = coverageContent(state);
   state.coverage = coverage;
   const status = html('div', 'inline-status obs-chart__status');
@@ -1339,6 +1512,7 @@ function paintCard(state) {
 /** Renders one server-provided observation chart and retains its local controls across updates. */
 export function renderChartCard(container, data, options = {}) {
   let state = cards.get(container);
+  const firstRender = !state;
   if (!state) {
     const panel = html('div', 'card dashboard-chart obs-chart__panel');
     const dialog = html('dialog', 'obs-chart__fullscreen');
@@ -1362,15 +1536,28 @@ export function renderChartCard(container, data, options = {}) {
     cards.set(container, state);
   }
   const model = modelOf(data, options);
-  const windowKey = [model.id || model.title, model.axis, model.grain, ...model.domain,
+  const windowKey = [model.id || model.title, axisType(model), model.grain, ...model.domain,
     ...model.intervals.map(interval => `${interval.start}:${interval.end}`)].join('|');
+  const previousZoom = state.zoom;
   if (state.windowKey !== windowKey) state.zoom = null;
   if (state.model && state.model.id !== model.id) state.hidden.clear();
+  if (firstRender) {
+    const { hidden, zoom } = options.presentation || {};
+    if (Array.isArray(hidden)) state.hidden = new Set(hidden.filter(id => typeof id === 'string'));
+    if (model.axis === 'time' && Array.isArray(zoom) && zoom.length === 2 && zoom.every(Number.isFinite)
+      && zoom[0] >= model.domain[0] && zoom[0] < zoom[1] && zoom[1] <= model.domain[1]) {
+      state.zoom = zoom.slice();
+    }
+  }
   state.model = model;
   state.windowKey = windowKey;
   state.options = options;
   paintCard(state);
+  if (previousZoom && !state.zoom) publishPresentation(state);
   return {
+    getPresentation() {
+      return chartPresentation(state);
+    },
     canExport() {
       return cards.get(container) === state && hasVisibleValues(activeSeries(state), currentWindow(state));
     },

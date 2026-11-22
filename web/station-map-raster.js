@@ -5,8 +5,17 @@ export const russiaRaster = {
 export const reserveRaster = {
   id: 'reserve', src: '/reserve-imagery.webp', bounds: [32.10, 56.10, 33.75, 56.95],
 };
+export const reserveDetailRaster = {
+  id: 'reserve-detail', src: '/reserve-detail.webp', bounds: [32.900, 56.415, 33.045, 56.512], minScale: 2600,
+};
 
 const images = new Map();
+let localObjects;
+
+export function loadReserveObjects() {
+  localObjects ??= import('./reserve-detail-osm.js').then(module => module.reserveObjects).catch(() => null);
+  return localObjects;
+}
 
 export function loadRaster({src}) {
   if (!images.has(src)) {

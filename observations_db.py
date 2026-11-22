@@ -2,17 +2,23 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from contextlib import closing, contextmanager
+from contextvars import ContextVar
+from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 
 
 ROOT = Path(__file__).resolve().parent
+CENTRAL_CENTER = "central-forest"
+_CENTER = ContextVar("observation_center", default=CENTRAL_CENTER)
+_PUBLIC_ONLY = ContextVar("observation_public_archive_only", default=False)
 # One transaction-scoped lock for initialization and mutable archive writes.
 _WRITE_LOCK = 0x4D4554454F4442
 _SCHEMA_LOCK = Lock()
-_INITIALIZED_DSN = None
+_INITIALIZED_STORES = set()
 
 _SCHEMA = (
     """
@@ -81,9 +87,35 @@ def using_postgres():
     return bool(_dsn())
 
 
-def local_db_path():
-    path = os.environ.get("METEO_OBSERVATION_DB")
-    return Path(path) if path else ROOT / ".local" / "observations.sqlite3"
+def current_center():
+    return _CENTER.get()
+
+
+def uses_archive():
+    return current_center() == CENTRAL_CENTER
+
+
+@contextmanager
+def center_scope(center_id, *, public_only=False):
+    """Select one center for every mutable observation operation in this context."""
+    if not isinstance(center_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", center_id):
+        raise ValueError("Некорректный код центра.")
+    token = _CENTER.set(center_id)
+    public_token = _PUBLIC_ONLY.set(public_only)
+    try:
+        yield
+    finally:
+        _PUBLIC_ONLY.reset(public_token)
+        _CENTER.reset(token)
+
+
+def local_db_path(*, global_store=False):
+    setting = os.environ.get("METEO_OBSERVATION_DB")
+    path = Path(setting) if setting else ROOT / ".local" / "observations.sqlite3"
+    if global_store or uses_archive():
+        return path
+    digest = sha256(current_center().encode()).hexdigest()
+    return path.with_name(path.name + ".centers") / f"{digest}.sqlite3"
 
 
 class _PostgresRow:
@@ -145,43 +177,80 @@ def _lock_postgres(conn):
     conn.execute("SELECT pg_advisory_xact_lock(%s)", (_WRITE_LOCK,))
 
 
-def initialize_postgres(conn):
+def _postgres_namespace(conn, center_id):
+    base, = conn.execute("SELECT current_schema()").fetchone()
+    if not base:
+        raise RuntimeError("В PostgreSQL не задана основная схема Метеоархива.")
+    digest = sha256(f"{base}\0{center_id}".encode()).hexdigest()
+    return f"meteo_center_{digest[:48]}"
+
+
+def _namespace_exists(conn, schema):
+    return conn.execute("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname=%s)", (schema,)).fetchone()[0]
+
+
+def _select_namespace(conn, schema):
+    from psycopg import sql
+
+    conn.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(schema)))
+
+
+def initialize_postgres(conn, *, schema=None):
     """Create mutable archive tables under a transaction managed by the caller."""
     _lock_postgres(conn)
+    if schema is not None:
+        from psycopg import errors, sql
+
+        if not _namespace_exists(conn, schema):
+            try:
+                conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+            except errors.InsufficientPrivilege:
+                raise RuntimeError("У роли PostgreSQL нет права создать схему центра. "
+                                   "Для Compose выполните python3 setup_compose.py --up.") from None
+        _select_namespace(conn, schema)
     _create_schema(conn, postgres=True)
 
 
-def _ensure_postgres_schema(conn, dsn):
-    global _INITIALIZED_DSN
-    if _INITIALIZED_DSN == dsn:
-        return
+def _ensure_postgres_schema(conn, dsn, schema, write):
+    key = (dsn, schema)
+    if key in _INITIALIZED_STORES:
+        return True
+    if schema is not None and not write and not _namespace_exists(conn, schema):
+        return False
     with _SCHEMA_LOCK:
-        if _INITIALIZED_DSN != dsn:
+        if key not in _INITIALIZED_STORES:
             with conn.transaction():
-                initialize_postgres(conn)
-            _INITIALIZED_DSN = dsn
+                initialize_postgres(conn, schema=schema)
+            _INITIALIZED_STORES.add(key)
+    return True
 
 
 @contextmanager
-def _postgres_connection(dsn, write):
+def _postgres_connection(dsn, write, global_store):
     try:
         import psycopg
     except ImportError:
         raise RuntimeError("Для METEO_DATABASE_URL установите psycopg 3: pip install 'psycopg[binary]'.") from None
     with psycopg.connect(dsn, autocommit=True, row_factory=_row_factory, connect_timeout=5) as conn:
-        _ensure_postgres_schema(conn, dsn)
+        schema = None if global_store or uses_archive() else _postgres_namespace(conn, current_center())
+        if not _ensure_postgres_schema(conn, dsn, schema, write):
+            yield None
+            return
         with conn.transaction():
             if write:
                 conn.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                _lock_postgres(conn)
             else:
                 conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            if schema is not None:
+                _select_namespace(conn, schema)
+            if write:
+                _lock_postgres(conn)
             yield _Database(conn, postgres=True)
 
 
 @contextmanager
-def _sqlite_connection(write, require):
-    path = local_db_path().resolve()
+def _sqlite_connection(write, require, global_store):
+    path = local_db_path(global_store=global_store).resolve()
     if not write and not path.is_file():
         yield None
         return
@@ -202,14 +271,19 @@ def _sqlite_connection(write, require):
 
 
 @contextmanager
-def connection(*, write=False, require=None):
+def connection(*, write=False, require=None, global_store=False):
     """Yield a transaction on the configured backend, or None for an absent local store."""
+    if not global_store and _PUBLIC_ONLY.get():
+        if write:
+            raise PermissionError("Гостевой доступ позволяет только просмотр исходного архива.")
+        yield None
+        return
     dsn = _dsn()
     if dsn:
-        with _postgres_connection(dsn, write) as db:
+        with _postgres_connection(dsn, write, global_store) as db:
             yield db
     else:
-        with _sqlite_connection(write, require) as db:
+        with _sqlite_connection(write, require, global_store) as db:
             yield db
 
 
@@ -221,7 +295,7 @@ def initialize():
 
 def check_ready():
     """Check the configured mutable store without creating a cold local database."""
-    with connection() as db:
+    with connection(global_store=True) as db:
         if db is None:
             return True
         if not db.is_postgres:

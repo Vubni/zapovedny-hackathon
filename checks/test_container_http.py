@@ -1,12 +1,20 @@
 """Exercise the common routes through a standard WSGI request."""
+from email.message import Message
+from http.cookiejar import CookieJar
 import json
 from io import BytesIO
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 from urllib.parse import urlsplit
+from urllib.request import Request
+from urllib.response import addinfourl
 from wsgiref.util import setup_testing_defaults
 from wsgiref.validate import validator
 
+from checks.http_accounts import bootstrap_admin, isolated_database
 from request_origin import parse_origin
 from review_upload import MAX_BYTES
 from serve_container import make_application
@@ -17,9 +25,22 @@ class ContainerHTTPTest(TestCase):
     host = "localhost:8766"
 
     def setUp(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        config = isolated_database(Path(directory.name) / "observations.sqlite3")
+        environment = patch.dict(os.environ, config)
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.credentials = bootstrap_admin(config)
         self.app = validator(make_application(self.port))
 
-    def request(self, method, target, body=None, **headers):
+    def request(self, method, target, body=None, *, cookies=None, cookie_origin=None, **headers):
+        cookie_request = None
+        if cookies is not None:
+            cookie_request = Request(cookie_origin + target, method=method)
+            cookies.add_cookie_header(cookie_request)
+            if cookie_request.has_header("Cookie"):
+                headers["HTTP_COOKIE"] = cookie_request.get_header("Cookie")
         target = urlsplit(target)
         environ = dict(REQUEST_METHOD=method, SCRIPT_NAME="", PATH_INFO=target.path, QUERY_STRING=target.query,
                        HTTP_HOST=self.host, **{"wsgi.input": BytesIO(body or b"")})
@@ -39,10 +60,34 @@ class ContainerHTTPTest(TestCase):
             response.close()
         self.assertEqual(result["headers"]["Content-Length"], str(len(data)))
         self.assertEqual(result["headers"]["X-Content-Type-Options"], "nosniff")
+        if cookies is not None and "Set-Cookie" in result["headers"]:
+            response_info = Message()
+            response_info["Set-Cookie"] = result["headers"]["Set-Cookie"]
+            cookies.extract_cookies(addinfourl(BytesIO(), response_info, cookie_request.full_url), cookie_request)
         return result["status"], result["headers"], data
+
+    def login(self, origin=None):
+        self.cookies = CookieJar()
+        self.cookie_origin = origin or "http://" + self.host
+        address = urlsplit(self.cookie_origin)
+        status, _, _ = self.request(
+            "POST", "/api/account/login", json.dumps(self.credentials.login_payload()).encode(),
+            cookies=self.cookies, cookie_origin=self.cookie_origin,
+            HTTP_HOST=address.netloc, HTTP_ORIGIN=self.cookie_origin, **{"wsgi.url_scheme": address.scheme},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(list(self.cookies))
+
+    def admin_request(self, method, target, body=None, **headers):
+        return self.request(method, target, body, cookies=self.cookies, cookie_origin=self.cookie_origin, **headers)
 
     def test_public_files_and_legacy_redirects(self):
         self.assertEqual(self.request("GET", "/files")[0], 200)
+        self.assertEqual(self.request("GET", "/api/files")[0], 401)
+        self.assertEqual(self.request("GET", "/api/files/original")[0], 401)
+        self.assertEqual(self.request("GET", "/api/stations")[0], 200)
+        public_query = "/api/observations?stations=kr1&chart=air&start=2024-04-01&end=2024-04-01"
+        self.assertEqual(self.request("GET", public_query)[0], 200)
         for legacy in ("/review", "/operator"):
             status, headers, _ = self.request("GET", legacy + "?file=abc&label=%D0%AF")
             self.assertEqual((status, headers.get("Location")), (303, "/files?file=abc&label=%D0%AF"))
@@ -58,16 +103,19 @@ class ContainerHTTPTest(TestCase):
             self.assertEqual(self.request("GET", route)[0], 404)
 
         contents = b"\x00\x93\xff\r\n"
+        self.login()
         with patch("observation_store.original_file", return_value=("полевые.csv", "application/octet-stream", contents)):
-            status, headers, body = self.request("GET", "/api/files/original")
+            status, headers, body = self.admin_request("GET", "/api/files/original")
         self.assertEqual((status, body), (200, contents))
         self.assertEqual(headers["Content-Type"], "application/octet-stream")
         self.assertIn("filename*=UTF-8''%D0%BF", headers["Content-Disposition"])
         self.assertEqual(headers["Cache-Control"], "no-store")
 
     def test_host_origin_and_ambiguous_headers(self):
+        self.login()
+
         def write(**headers):
-            return self.request("POST", "/api/stations", b"{}", **headers)[0]
+            return self.admin_request("POST", "/api/stations", b"{}", **headers)[0]
 
         with patch("server.register_station", return_value={"station": "fixture"}):
             origin = "http://" + self.host
@@ -82,6 +130,7 @@ class ContainerHTTPTest(TestCase):
 
             origin = "https://meteo.example:8443"
             self.app = validator(make_application(self.port, parse_origin(origin)))
+            self.login(origin)
             host = "meteo.example:8443"
             self.assertEqual(write(HTTP_HOST="meteo.example", HTTP_ORIGIN=origin), 403)
             self.assertEqual(write(HTTP_HOST="foreign.example", HTTP_ORIGIN=origin,
@@ -94,12 +143,15 @@ class ContainerHTTPTest(TestCase):
 
     def test_methods_and_application_body_limits(self):
         self.assertEqual(self.request("GET", "/missing")[0], 404)
-        self.assertEqual(self.request("POST", "/api/operator/login", b"{}")[0], 404)
-        self.assertEqual(self.request("POST", "/api/import", b"test")[0], 400)
-        self.assertEqual(self.request("POST", "/api/import", b"test", CONTENT_TYPE="application/octet-stream")[0], 415)
-        self.assertEqual(self.request("POST", "/api/review")[0], 411)
-        self.assertEqual(self.request("POST", "/api/review", b"", CONTENT_LENGTH=str(MAX_BYTES + 1))[0], 413)
-        self.assertEqual(self.request("POST", "/api/review", b"", CONTENT_LENGTH="10")[0], 400)
+        self.assertEqual(self.request("POST", "/api/operator/login", b"{}")[0], 401)
+        self.assertEqual(self.request("POST", "/api/import", b"test")[0], 401)
+        self.login()
+        self.assertEqual(self.admin_request("POST", "/api/operator/login", b"{}")[0], 404)
+        self.assertEqual(self.admin_request("POST", "/api/import", b"test")[0], 400)
+        self.assertEqual(self.admin_request("POST", "/api/import", b"test", CONTENT_TYPE="application/octet-stream")[0], 415)
+        self.assertEqual(self.admin_request("POST", "/api/review")[0], 411)
+        self.assertEqual(self.admin_request("POST", "/api/review", b"", CONTENT_LENGTH=str(MAX_BYTES + 1))[0], 413)
+        self.assertEqual(self.admin_request("POST", "/api/review", b"", CONTENT_LENGTH="10")[0], 400)
 
     def test_new_static_assets_have_browser_mime_types(self):
         for route in ("/chart-report.js", "/station-map-raster.js"):
