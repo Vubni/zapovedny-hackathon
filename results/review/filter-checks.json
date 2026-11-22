@@ -1,5 +1,5 @@
 {
-  "tests": 15,
+  "tests": 18,
   "failures": 0,
   "archive_conflict": {
     "date": "1993-04-02",
@@ -64,6 +64,26 @@
     "start": "2023-01-01",
     "end": "2024-06-01",
     "days": 518
+  },
+  "custom_working_limits": {
+    "parameter": "t_air",
+    "working_bounds": [
+      -52.5,
+      10.25
+    ],
+    "official_bounds": [
+      -50,
+      45
+    ],
+    "counts": {
+      "raw_n": 5,
+      "kept": 4,
+      "official_kept": 4,
+      "restored": 1,
+      "excluded": 1,
+      "rejected": 1,
+      "official_rejected": 1
+    }
   },
   "full_ame60_archive": {
     "rows": 805561,

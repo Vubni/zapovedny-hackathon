@@ -284,6 +284,13 @@ def _sample(source, param, stamp):
             "value": value}
 
 
+def synthetic_row(stamp, reason="Созданный часовой срок без исходной записи."):
+    return {"time": stamp, "line": None, "source": None, "original": {}, "value": None,
+            "keep": False, "official_keep": False, "synthetic": True, "conflict": False,
+            "reasons": [reason], "reason_codes": ["created_hour"],
+            "official_status": "missing", "official_reasons": []}
+
+
 def _synthetic_rows(rows, start, end, zone):
     occupied = {row["time"][:13] for row in rows}
     first = datetime.combine(start, time.min)
@@ -291,10 +298,7 @@ def _synthetic_rows(rows, start, end, zone):
         dt = first + offset * HOUR
         stamp = dt.isoformat(sep=" ", timespec="minutes")
         if stamp[:13] not in occupied and _to_utc(dt, zone) is not None:
-            yield {"time": stamp, "line": None, "source": None, "original": {}, "value": None,
-                   "keep": False, "official_keep": False, "synthetic": True, "conflict": False,
-                   "reasons": ["Созданный часовой срок без исходной записи."], "reason_codes": ["created_hour"],
-                   "official_status": "missing", "official_reasons": []}
+            yield synthetic_row(stamp)
 
 
 def _eligible_terms(rows, zone, now, subhour):

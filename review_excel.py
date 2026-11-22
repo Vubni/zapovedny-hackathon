@@ -8,6 +8,8 @@ import re
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from review_filter import FILTER_LABELS
+
 
 REVIEW_XLSX_MAX_ROWS = 60_000 + 31 * 24
 
@@ -21,6 +23,8 @@ EXCLUDE = "Исключить"
 USE_ESTIMATE = "Использовать оценку"
 ORIGINAL = "Исходное"
 ESTIMATE = "Внешняя оценка"
+MODEL_ESTIMATE = "Оценка модели"
+MODEL_METHOD = "По модели станции"
 REJECTED = "Исключено"
 MISSING = "Нет значения"
 NO_ORIGINAL = "Нет исходного"
@@ -51,6 +55,7 @@ ESTIMATE_REASONS = {
     "unsupported_parameter": "Для показателя нет сопоставимых внешних данных.",
     "unknown_pressure_reference": "Тип исходного давления не подтверждён как давление у поверхности.",
     "fewer_than_two_sources": "Для часа есть данные менее чем из двух внешних источников.",
+    "outside_parameter_range": "Внешняя оценка вне допустимого диапазона показателя.",
 }
 
 
@@ -141,7 +146,7 @@ def _conditional_format(last_row):
         (f"C2:D{last_row}", (
             (0, f'$D2="{ORIGINAL}"'),
             (1, f'$D2="{REJECTED}"'),
-            (2, f'$D2="{ESTIMATE}"'),
+            (2, f'OR($D2="{ESTIMATE}",$D2="{MODEL_ESTIMATE}")'),
             (3, f'OR($D2="{MISSING}",$D2="{NO_ORIGINAL}",$D2="{NO_ESTIMATE}")'),
         )),
         (f"E2:E{last_row}", (
@@ -170,19 +175,20 @@ def _decision(value, keep):
     return ("Оставить", GOOD) if keep else (EXCLUDE, BAD)
 
 
-def _result_formula(number):
+def _result_formula(number, include_model):
     source = f'E{number}'
     estimate = f'I{number}'
     manual = f'B{number}'
     decision = f'F{number}'
     global_mode = f"'{GUIDE}'!$B$5"
+    estimate_kind = f'IF(N{number}="{MODEL_METHOD}","{MODEL_ESTIMATE}","{ESTIMATE}")' if include_model else f'"{ESTIMATE}"'
     return (
         f'IF({global_mode}="{EXCLUDE_ALL}","{REJECTED}",'
         f'IF({global_mode}="{RESTORE_ALL}",IF(LEN({source})>0,"{ORIGINAL}","{MISSING}"),'
         f'IF({manual}="{EXCLUDE}","{REJECTED}",'
         f'IF({manual}="{RESTORE}",IF(LEN({source})>0,"{ORIGINAL}","{NO_ORIGINAL}"),'
-        f'IF({manual}="{USE_ESTIMATE}",IF(ISNUMBER({estimate}),"{ESTIMATE}","{NO_ESTIMATE}"),'
-        f'IF({decision}="Оставить","{ORIGINAL}",IF(ISNUMBER({estimate}),"{ESTIMATE}",'
+        f'IF({manual}="{USE_ESTIMATE}",IF(ISNUMBER({estimate}),{estimate_kind},"{NO_ESTIMATE}"),'
+        f'IF({decision}="Оставить","{ORIGINAL}",IF(ISNUMBER({estimate}),{estimate_kind},'
         f'IF(LEN({source})>0,"{REJECTED}","{MISSING}")))))))'
     )
 
@@ -207,15 +213,30 @@ def _estimate_detail(item):
         if name and value is not None:
             unit = source.get("unit") or provenance.get("unit") or ""
             lines.append(f"{name}: {value} {unit}".rstrip())
+    if provenance.get("kind") == "station_model":
+        unit = provenance["unit"]
+        for anchor in provenance["anchors"]:
+            lines.append(f"Наблюдение {anchor['time']}: {anchor['value']} {unit}")
+        if provenance.get("training_end"):
+            lines.append(f"Поправка {provenance['bias']} {unit} по данным до {provenance['training_end']}")
+            validation = provenance["validation"]
+            lines.append(f"Средняя абсолютная ошибка {validation['mae']} {unit} на {validation['test_n']} сроках")
+        else:
+            lines.append("Линейная интерполяция без обученной поправки.")
     return "\n".join(lines)
 
 
-def _write_review_rows(output, fields, observations, param):
-    columns = ROW_COLUMNS + [(field, max(12, min(29, len(field) + 5))) for field in fields]
-    addresses = [_column(i) for i in range(len(ROW_COLUMNS) + 1, len(columns) + 1)]
+def _write_review_rows(output, fields, observations, param, include_model):
+    columns = list(ROW_COLUMNS)
+    if include_model:
+        columns[8] = ("Расчётная оценка", 18)
+        columns.append(("Способ оценки", 25))
+    original_start = len(columns) + 1
+    columns.extend((field, max(12, min(29, len(field) + 5))) for field in fields)
+    addresses = [_column(i) for i in range(original_start, len(columns) + 1)]
     last_row = len(observations) + 1
     output.write(_sheet_open(columns, last_row, frozen_rows=1, frozen_columns=2, height=24).encode())
-    output.write(_header(1, columns, len(ROW_COLUMNS) + 1).encode())
+    output.write(_header(1, columns, original_start).encode())
     counts = Counter()
     for index, item in enumerate(observations, start=2):
         raw = item.get("original") or {}
@@ -226,10 +247,11 @@ def _write_review_rows(output, fields, observations, param):
             original = raw_value
         keep = bool(item["keep"]) and value is not None
         estimate_source = _estimate_detail(item)
+        from_model = item.get("estimate_method") == "model"
         if keep:
             kind, result = ORIGINAL, value
         elif estimate is not None:
-            kind, result = ESTIMATE, estimate
+            kind, result = (MODEL_ESTIMATE if from_model else ESTIMATE), estimate
         else:
             kind, result = (REJECTED if original is not None else MISSING), None
         counts[kind] += 1
@@ -246,11 +268,14 @@ def _write_review_rows(output, fields, observations, param):
         official_reasons = "\n".join(item.get("official_reasons") or [])
         if raw.get("qc_flag"):
             reasons.append(f"Флаги архива: {raw['qc_flag']}")
+        result_kind = f'D{index}="{ESTIMATE}"'
+        if include_model:
+            result_kind = f'OR({result_kind},D{index}="{MODEL_ESTIMATE}")'
         cells = [
             _cell(f"A{index}", item["time"]),
             _cell(f"B{index}", ALGORITHM, INPUT),
-            _formula(f"C{index}", f'IF(D{index}="{ORIGINAL}",E{index},IF(D{index}="{ESTIMATE}",I{index},""))', result, NUMBER),
-            _formula(f"D{index}", _result_formula(index), kind),
+            _formula(f"C{index}", f'IF(D{index}="{ORIGINAL}",E{index},IF({result_kind},I{index},""))', result, NUMBER),
+            _formula(f"D{index}", _result_formula(index, include_model), kind),
             _cell(f"E{index}", original, NUMBER),
             _cell(f"F{index}", algorithm, decision_style),
             _cell(f"G{index}", official, official_style),
@@ -261,6 +286,9 @@ def _write_review_rows(output, fields, observations, param):
             _cell(f"L{index}", item["line"]),
             _cell(f"M{index}", official_reasons, WRAPPED),
         ]
+        if include_model:
+            method = MODEL_METHOD if from_model else "По данным метеосервисов"
+            cells.append(_cell(f"N{index}", method if estimate is not None else None, WRAPPED))
         cells.extend(
             _cell(f"{col}{index}", str(raw[field]) if raw.get(field) is not None else None)
             for col, field in zip(addresses, fields)
@@ -287,25 +315,46 @@ def _write_review_rows(output, fields, observations, param):
 def _write_guide(output, report, counts):
     count_labels = [
         (10, "Исходных в рабочем ряду", [ORIGINAL], GOOD),
-        (11, "Внешних оценок в рабочем ряду", [ESTIMATE], ESTIMATED),
+        (11, "Оценок в рабочем ряду", [ESTIMATE, MODEL_ESTIMATE], ESTIMATED),
         (12, "Исключено", [REJECTED], BAD),
         (13, "Строк без рабочего значения", [REJECTED, MISSING, NO_ORIGINAL, NO_ESTIMATE], EMPTY),
     ]
     notes = [
         ("Как изменить результат", HEADER),
         ("В B5 действует общий режим. «Вернуть все исходные» включает отсечённые числа и непустой исходный текст. Пропуски остаются пустыми.", NOTE),
-        ("«Исключить все» очищает рабочие значения, включая внешние оценки. Общий режим имеет приоритет над решениями по строкам.", NOTE),
+        ("«Исключить все» очищает рабочие значения, включая расчётные оценки. Общий режим имеет приоритет над решениями по строкам.", NOTE),
         ("Верните «По алгоритму» в B5, чтобы снова применить решения в колонке B листа «Сроки». По умолчанию там действует алгоритм.", NOTE),
         ("Пример. Для исключённого наблюдения выберите «Вернуть исходное» в его строке. Чтобы отменить эту правку, снова выберите там «По алгоритму».", NOTE),
         ("«Использовать оценку» подставляет её из колонки I, если она есть. По алгоритму оценка используется, когда исходник отсутствует или исключён.", NOTE),
         ("Как прочитать таблицу", HEADER),
-        ("Зелёный — используется исходное наблюдение. Красный — исключено. Лиловый — внешняя оценка. Серый — отсутствующее значение.", NOTE),
+        ("Зелёный — используется исходное наблюдение. Красный — исключено. Лиловый — расчётная оценка. Серый — отсутствующее значение.", NOTE),
         ("Файл и номер строки указывают на источник. Исходные столбцы файла сохранены как текст. Для добавленных сроков исходные поля пусты.", NOTE),
         ("Решение алгоритма и контроль архива показывают состояние при выгрузке. Причины объясняют решение алгоритма и приводят исходные флаги.", NOTE),
     ]
+    settings = report.get("settings") or {}
+    parameter = report["param"]
+    ranges = settings.get("ranges", {})
+    if parameter in ranges:
+        minimum, maximum = ranges[parameter]
+        unit = report.get("unit", "")
+        notes.extend([
+            ("Настройки контроля", HEADER),
+            (f"Рабочие числовые границы {minimum}–{maximum} {unit}.", NOTE),
+        ])
+        filters = report.get("filters", ())
+        for method in filters:
+            label = FILTER_LABELS.get(method, method)
+            if method == "conflicts":
+                mode = "выбирается одна запись" if settings.get("conflict_policy") == "best" else "исключаются все записи срока"
+                notes.append((f"{label} · {mode}.", NOTE))
+                continue
+            threshold = settings.get("thresholds", {}).get(method, {}).get(parameter)
+            if threshold is not None:
+                suffix = "ч" if method == "stuck" else unit
+                notes.append((f"{label} · порог {threshold} {suffix}.", NOTE))
     snapshots = report.get("summaries") or {}
     if snapshots.get("daily") or snapshots.get("monthly"):
-        notes.append(("Снимки рассчитаны при выгрузке по отобранным наблюдениям. Внешние оценки и ручные правки отражаются на листе «Сроки» и в счётчиках «Управление».", NOTE))
+        notes.append(("Снимки рассчитаны при выгрузке по отобранным наблюдениям. Расчётные оценки и ручные правки отражаются на листе «Сроки» и в счётчиках «Управление».", NOTE))
     external = report.get("external") or {}
     if external:
         notes.append(("Внешние данные", HEADER))
@@ -490,9 +539,11 @@ def export_xlsx(report):
     """Return an editable XLSX, with archive cells written as non-executable text."""
     observations = report["rows"]
     fields = report["fields"]
-    if len(observations) > REVIEW_XLSX_MAX_ROWS:
-        raise ValueError(f"Книга вмещает до {REVIEW_XLSX_MAX_ROWS:,} строк. Выберите более короткий период.".replace(",", " "))
-    if len(fields) + len(ROW_COLUMNS) > 16384:
+    include_model = bool(report.get("fill_model"))
+    limit = REVIEW_XLSX_MAX_ROWS + 60_000 * include_model
+    if len(observations) > limit:
+        raise ValueError(f"Книга вмещает до {limit:,} строк. Выберите более короткий период.".replace(",", " "))
+    if len(fields) + len(ROW_COLUMNS) + include_model > 16384:
         raise ValueError("Исходный файл содержит слишком много столбцов для одной книги Excel")
     snapshots = report.get("summaries") or {}
     additional = [
@@ -504,7 +555,7 @@ def export_xlsx(report):
     with ZipFile(output, "w", compression=ZIP_DEFLATED, compresslevel=4) as workbook:
         _write_package(workbook, [GUIDE, ROWS, *[name for name, _, _ in additional]])
         with workbook.open("xl/worksheets/sheet2.xml", "w") as part:
-            counts = _write_review_rows(part, fields, observations, report["param"])
+            counts = _write_review_rows(part, fields, observations, report["param"], include_model)
         with workbook.open("xl/worksheets/sheet1.xml", "w") as part:
             _write_guide(part, report, counts)
         for index, (_, rows, monthly) in enumerate(additional, start=3):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 import csv
+import json
 import math
 import re
 from bisect import bisect_left, bisect_right
@@ -19,11 +20,14 @@ from build_data import DIRECTION, LIMITS, STATIONS, archive_text, coverage, sour
 
 
 FILTERS = {
-    "conflicts": "Повторяющиеся сроки исключаются целиком либо разбираются по пригодности и близким соседям.",
-    "hampel": "Хэмпел: локальная медиана и 3 масштабированных MAD, с нижним порогом отклонения для показателя.",
-    "spike": "Одиночный скачок: близкие по времени соседи согласуются между собой, а центральный срок отклоняется от обоих.",
-    "stuck": "Залипание: длительный непрерывный ряд одинаковых значений с учётом шага прибора и штиля.",
-    "buddy": "Температура Кр1 и Кр2: интерполяция по близким срокам другой станции и поправка на местную разницу.",
+    "conflicts": "Если на одно время приходятся разные показания, можно убрать всю группу или оставить запись, которая лучше согласуется с соседними.",
+    "hampel": "Сравнивает показание с соседними. Отмечает его, когда разница превышает заданный порог и обычный разброс значений.",
+    "spike": "Значение резко меняется на один замер, а в следующем возвращается к прежнему уровню.",
+    "stuck": "Отмечает одинаковые показания, которые держатся заданное число часов или дольше.",
+}
+FILTER_LABELS = {
+    "conflicts": "Записи с одинаковым временем", "hampel": "Значение выбивается из ряда",
+    "spike": "Скачок с возвратом", "stuck": "Датчик повторяет одно значение",
 }
 # Fields: Hampel minimum distance, spike minimum distance, exact plateau minimum hours.
 PARAM_SETTINGS = {
@@ -37,11 +41,76 @@ PARAM_SETTINGS = {
     "soil_20": (2, 2, 24),
     "pressure_hpa": (3, 3, 6),
 }
+THRESHOLDS = {
+    method: {param: values[index] for param, values in PARAM_SETTINGS.items()}
+    for index, method in enumerate(("hampel", "spike", "stuck"))
+}
+MAX_BOUND = 1_000_000
+MAX_STUCK_HOURS = 168
 CONTEXT_MINUTES = 1440
 LOCAL_TIMESPAN = {"ame60": 180, "kr1": 240, "kr2": 240}
 NEARBY_GAP = {"ame60": 35, "kr1": 80, "kr2": 80}
 STAMP_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}(?::00)?")
 DECIMAL_COMMA = re.compile(r"[+-]?[0-9]*,[0-9]+(?:[eE][+-]?[0-9]+)?")
+
+
+def quality_metadata():
+    return {
+        "ranges": {param: list(bounds) for param, bounds in LIMITS.items()},
+        "thresholds": {key: values.copy() for key, values in THRESHOLDS.items()},
+        "filters": [{"id": key, "label": FILTER_LABELS[key], "description": value} for key, value in FILTERS.items()],
+        "max_absolute_bound": MAX_BOUND, "max_stuck_hours": MAX_STUCK_HOURS,
+    }
+
+
+def _quality_map(raw, field):
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (RecursionError, ValueError):
+            raise ValueError(f"Настройка {field} должна быть объектом JSON.") from None
+    if not isinstance(raw, dict):
+        raise ValueError(f"Настройка {field} должна быть объектом JSON.")
+    return raw
+
+
+def _quality_number(value, field, maximum=MAX_BOUND, *, positive=False):
+    minimum = 0 if positive else -maximum
+    if type(value) not in (int, float) or not minimum <= value <= maximum or (positive and value == 0):
+        modifier = "больше нуля и " if positive else "по модулю "
+        raise ValueError(f"Настройка {field} должна быть числом {modifier}не больше {maximum}.")
+    return value
+
+
+def quality_options(query):
+    """Normalize numeric working limits and method thresholds from form JSON or query text."""
+    ranges = {param: list(bounds) for param, bounds in LIMITS.items()}
+    thresholds = {key: values.copy() for key, values in THRESHOLDS.items()}
+    legacy_pressure = str(query.get("pressure_max", "1050"))
+    if legacy_pressure not in {"1050", "1550"}:
+        raise ValueError("Верхний порог давления должен быть 1050 или 1550 гПа либо задан в рабочих границах.")
+    ranges["pressure_hpa"][1] = int(legacy_pressure)
+    for param, pair in _quality_map(query.get("ranges", {}), "ranges").items():
+        if param not in LIMITS:
+            raise ValueError(f"Неизвестный параметр числовых границ: {param}.")
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise ValueError(f"Для {param} укажите пару числовых границ [минимум, максимум].")
+        lower, upper = [default if value is None else _quality_number(value, param)
+                        for value, default in zip(pair, ranges[param])]
+        if lower > upper:
+            raise ValueError(f"Нижняя граница {param} не должна превышать верхнюю.")
+        ranges[param] = [lower, upper]
+    for method, items in _quality_map(query.get("thresholds", {}), "thresholds").items():
+        if method not in thresholds:
+            raise ValueError(f"Неизвестный фильтр числовых порогов: {method}.")
+        maximum = MAX_STUCK_HOURS if method == "stuck" else MAX_BOUND
+        for param, value in _quality_map(items, method).items():
+            if param not in LIMITS:
+                raise ValueError(f"Неизвестный параметр порога: {param}.")
+            if value is not None:
+                thresholds[method][param] = _quality_number(value, f"{method}.{param}", maximum, positive=True)
+    return {"ranges": ranges, "thresholds": thresholds,
+            "pressure_max": "1550" if ranges["pressure_hpa"][1] == 1550 else "1050"}
 
 
 @dataclass
@@ -171,8 +240,9 @@ def archive_observations(station, param, first, last, fields, selected_years=Non
                         yield observation(row, reader.line_num, member, param, f"{member}:{reader.line_num}")
 
 
-def base_quality(row, param, upper):
-    lower, official_upper = LIMITS[param]
+def base_quality(row, param, bounds):
+    lower, upper = bounds
+    official_lower, official_upper = LIMITS[param]
     range_flag = f"{param}:range" in row.flags
     fault = f"{param}:fault" in row.flags
     unknown = [flag for flag in row.flags if flag.startswith(f"{param}:")
@@ -185,8 +255,8 @@ def base_quality(row, param, upper):
         row.note("range", f"Значение {row.value:g} вне рабочего диапазона {lower}–{upper}.", reject=True)
     elif range_flag:
         row.note("source_range_rechecked", f"Сохранён исходный флаг {param}:range. Значение {row.value:g} входит в рабочий диапазон {lower}–{upper}.")
-    elif row.value > official_upper:
-        row.note("expanded_range", f"Значение {row.value:g} выше порога кейса {official_upper} и входит в рабочий диапазон {lower}–{upper}.")
+    elif not official_lower <= row.value <= official_upper:
+        row.note("expanded_range", f"Значение {row.value:g} вне диапазона кейса {official_lower}–{official_upper} и входит в рабочий диапазон {lower}–{upper}.")
     if fault:
         row.note("fault", f"Исходный флаг {param}:fault отмечает сбой прибора.", reject=True)
     if unknown:
@@ -204,8 +274,8 @@ def base_quality(row, param, upper):
         official.append("Нет исходного значения выбранного показателя.")
     elif row.quality == "invalid_number":
         official.append("Исходное значение нельзя прочитать как конечное число.")
-    elif not lower <= row.value <= official_upper:
-        official.append(f"Значение за пределами диапазона кейса {lower}–{official_upper}.")
+    elif not official_lower <= row.value <= official_upper:
+        official.append(f"Значение за пределами диапазона кейса {official_lower}–{official_upper}.")
     row.official_keep = not official
     if row.conflict:
         row.official_status = "conflict"
@@ -217,7 +287,7 @@ def base_quality(row, param, upper):
         row.official_status = "flagged"
 
 
-def prepare(rows, param, upper, *, use_references=True):
+def prepare(rows, param, bounds, *, use_references=True):
     references, conflicts = [], []
     for _, group in groupby(rows, lambda row: row.stamp):
         group = list(group)
@@ -225,7 +295,7 @@ def prepare(rows, param, upper, *, use_references=True):
         for row in group:
             row.keep = True
             row.conflict = conflict
-            base_quality(row, param, upper)
+            base_quality(row, param, bounds)
         if conflict:
             conflicts.append(group)
         elif use_references and group[0].base_keep and not group[0].calm:
@@ -280,8 +350,7 @@ def resolve_conflicts(groups, references, stamps, param, station, policy):
                 row.note("conflict", f"Все записи конфликтного срока исключены: {why}.", reject=True)
 
 
-def mark_hampel(rows, references, stamps, param, station):
-    floor = PARAM_SETTINGS[param][0]
+def mark_hampel(rows, references, stamps, param, station, floor):
     span, max_gap = LOCAL_TIMESPAN[station], NEARBY_GAP[station]
     for row in rows:
         if not row.base_keep or row.calm:
@@ -312,11 +381,11 @@ def mark_hampel(rows, references, stamps, param, station):
         threshold = max(floor, 3 * 1.4826 * mad)
         distance = abs(difference(row.value, center, param))
         if distance > threshold:
-            row.note("hampel", f"Хэмпел: отклонение {distance:.2f} от локальной медианы {center:.2f} превышает порог {threshold:.2f}.", reject=True)
+            row.note("hampel", f"Хэмпел: отклонение {distance:g} от локальной медианы {center:g} превышает порог {threshold:g}.", reject=True)
 
 
-def mark_spikes(rows, references, stamps, param, station):
-    floor, max_gap = PARAM_SETTINGS[param][1], NEARBY_GAP[station]
+def mark_spikes(rows, references, stamps, param, station, floor):
+    max_gap = NEARBY_GAP[station]
     for row in rows:
         if not row.base_keep or row.calm:
             continue
@@ -339,17 +408,19 @@ def mark_spikes(rows, references, stamps, param, station):
             jump = min(abs(left_jump), abs(right_jump))
             isolated = left_jump * right_jump > 0 and jump >= floor
         if isolated:
-            row.note("spike", f"Одиночный скачок: отклонение {jump:.2f}; соседние значения {before.value:g} и {after.value:g}.", reject=True)
+            row.note("spike", f"Одиночный скачок: отклонение {jump:g} при пороге {floor}. "
+                     f"Соседние значения {before.value:g} и {after.value:g}.", reject=True)
 
 
-def mark_stuck(rows, param, station):
-    minimum = PARAM_SETTINGS[param][2] * 60
+def mark_stuck(rows, param, station, hours_threshold):
+    minimum = hours_threshold * 60
     gap = 20 if station == "ame60" else 75
 
     def mark(run):
         if run and run[-1].stamp - run[0].stamp >= minimum:
             hours = (run[-1].stamp - run[0].stamp) / 60
-            reason = f"Залипание: {len(run)} одинаковых значений {run[0].value:g} за {hours:g} ч подряд."
+            reason = (f"Залипание: {len(run)} одинаковых значений {run[0].value:g} за {hours:g} ч подряд. "
+                      f"Порог длительности {hours_threshold} ч.")
             for member in run:
                 member.note("stuck", reason, reject=True)
 
@@ -367,52 +438,6 @@ def mark_stuck(rows, param, station):
             run = []
         run.append(row)
     mark(run)
-
-
-def buddy_temperature(stamp, peers, stamps):
-    index = bisect_left(stamps, stamp)
-    if index < len(stamps) and stamps[index] == stamp:
-        return peers[index].value
-    if 0 < index < len(stamps):
-        before, after = peers[index - 1], peers[index]
-        if max(stamp - before.stamp, after.stamp - stamp) <= 65 and after.stamp - before.stamp <= 80:
-            offset = (stamp - before.stamp) / (after.stamp - before.stamp)
-            return before.value + offset * (after.value - before.value)
-    return None
-
-
-def mark_buddy(rows, references, peers, buddy_station, first, last):
-    peer_stamps = [row.stamp for row in peers]
-    pairs = []
-    matched = {}
-    for row in rows:
-        if row.base_keep and row.stamp not in matched:
-            matched[row.stamp] = buddy_temperature(row.stamp, peers, peer_stamps)
-    for row in references:
-        peer_value = matched[row.stamp]
-        if peer_value is not None:
-            pairs.append((row.stamp, row.value - peer_value))
-    stamps = [stamp for stamp, _ in pairs]
-    evaluated = 0
-    for row in rows:
-        peer = matched.get(row.stamp)
-        if not row.base_keep or peer is None:
-            continue
-        half_window = 360
-        start, stop = bisect_left(stamps, row.stamp - half_window), bisect_right(stamps, row.stamp + half_window)
-        before, after = bisect_left(stamps, row.stamp), bisect_right(stamps, row.stamp)
-        if before - start < 2 or stop - after < 2 or before - start + stop - after < 6:
-            continue
-        residuals = [pairs[index][1] for index in range(start, before)]
-        residuals.extend(pairs[index][1] for index in range(after, stop))
-        offset = median(residuals)
-        mad = median(abs(item - offset) for item in residuals)
-        threshold = max(4, 4 * 1.4826 * mad)
-        error = abs(row.value - peer - offset)
-        evaluated += first <= row.stamp <= last
-        if error > threshold:
-            row.note("buddy", f"Сверка с {buddy_station}: отклонение {error:.2f} °C после местной поправки {offset:+.2f} °C при пороге {threshold:.2f} °C.", reject=True)
-    return evaluated
 
 
 def day_metrics(rows, param, station, official):
@@ -514,24 +539,25 @@ def options(query):
     if unknown := requested - FILTERS.keys():
         raise ValueError(f"Неизвестные фильтры: {', '.join(sorted(unknown))}")
     filters = [name for name in FILTERS if name in requested]
-    pressure = str(query.get("pressure_max", "1050"))
-    if pressure not in {"1050", "1550"}:
-        raise ValueError("Верхний порог давления должен быть 1050 или 1550 гПа")
     policy = query.get("conflict_policy", "all")
     if policy not in ("all", "best"):
         raise ValueError("Выберите исключение конфликтных сроков или разбор повторов")
-    return station, param, filters, int(pressure), policy
+    return station, param, filters, dict(quality_options(query), conflict_policy=policy)
 
 
 def review(query, records=None, *, passport=None):
     """Roll up a reversible selection without reusing or mutating official aggregates."""
-    station, param, filters, pressure, policy = options(query)
+    station, param, filters, settings = options(query)
     config = STATIONS[station]
     if passport:
         from dataclasses import replace
         config = replace(config, minimum_slots=passport["minimum_slots"], slot_minutes=passport["slot_minutes"])
-    range_upper = pressure if param == "pressure_hpa" else LIMITS[param][1]
+    bounds = settings["ranges"][param]
+    policy = settings["conflict_policy"]
+    thresholds = settings["thresholds"]
     context = CONTEXT_MINUTES if set(filters) - {"conflicts"} or ("conflicts" in filters and policy == "best") else 0
+    if "stuck" in filters:
+        context = max(context, math.ceil(thresholds["stuck"][param] * 60))
     fields = {}
     source_kind = "archive" if records is None else "upload"
     source_start = source_end = None
@@ -559,32 +585,23 @@ def review(query, records=None, *, passport=None):
     else:
         rows = [row for row in uploaded if first - context <= row.stamp <= last + context]
     rows.sort(key=lambda row: row.stamp)
-    references, conflicts = prepare(rows, param, range_upper, use_references=bool(context))
+    references, conflicts = prepare(rows, param, bounds, use_references=bool(context))
     stamps = [row.stamp for row in references]
     resolve_conflicts(conflicts, references, stamps, param, station, policy if "conflicts" in filters else "off")
     if "hampel" in filters:
-        mark_hampel(rows, references, stamps, param, station)
+        mark_hampel(rows, references, stamps, param, station, thresholds["hampel"][param])
     if "spike" in filters:
-        mark_spikes(rows, references, stamps, param, station)
+        mark_spikes(rows, references, stamps, param, station, thresholds["spike"][param])
     if "stuck" in filters:
-        mark_stuck(rows, param, station)
+        mark_stuck(rows, param, station, thresholds["stuck"][param])
 
     warnings = []
-    if "buddy" in filters:
-        if param != "t_air" or station not in {"kr1", "kr2"}:
-            warnings.append("Сверка с соседней станцией доступна для температуры воздуха Кр1 и Кр2.")
-        elif records is not None:
-            warnings.append("Для загруженного файла нет подтверждённой парной станции. Сверка с соседней станцией пропущена.")
-        else:
-            peer_id = "kr2" if station == "kr1" else "kr1"
-            peer_rows = list(archive_observations(peer_id, param, first - context, last + context, {}))
-            peer_rows.sort(key=lambda row: row.stamp)
-            peer_refs, _ = prepare(peer_rows, param, range_upper)
-            peer_label = {"kr1": "Кр1", "kr2": "Кр2"}[peer_id]
-            if not mark_buddy(rows, references, peer_refs, peer_label, first, last):
-                warnings.append("В выбранном периоде недостаточно сопоставимых соседних сроков для сверки двух станций.")
-    if param == "pressure_hpa" and pressure != LIMITS[param][1]:
-        warnings.append("В рабочем отборе действует экспериментальный порог 1550 гПа. Такие значения могут быть приборной ошибкой. В сводке кейса остаётся 1050 гПа.")
+    if tuple(bounds) != LIMITS[param]:
+        lower, upper = bounds
+        case_lower, case_upper = LIMITS[param]
+        unit = PARAMS[param][1]
+        warnings.append(f"Рабочий диапазон {lower}–{upper} {unit}. В сводке кейса действует диапазон "
+                        f"{case_lower}–{case_upper} {unit}.")
     if param not in fields and fields:
         warnings.append("В исходных полях выбранного периода нет этого показателя.")
 
@@ -601,6 +618,7 @@ def review(query, records=None, *, passport=None):
         warnings.append("За выбранные даты в источнике нет записей наблюдений.")
     summary_rows = summaries(selected, start, end, config, param)
     label, unit = PARAMS[param]
+    defaults = quality_metadata()
     return {
         "station": station, "param": param, "label": label, "unit": unit,
         "start": start.isoformat(), "end": end.isoformat(), "minimum_slots": config.minimum_slots,
@@ -608,6 +626,7 @@ def review(query, records=None, *, passport=None):
         "source_end": source_end.isoformat() if source_end else None,
         "fields": list(fields), "rows": [row.result() for row in selected],
         "summaries": summary_rows, "counts": counts, "warnings": warnings,
-        "filters": filters, "settings": {"pressure_max": pressure, "conflict_policy": policy},
+        "filters": filters, "settings": dict(settings, pressure_max=int(settings["pressure_max"])),
+        "default_ranges": defaults["ranges"], "default_thresholds": defaults["thresholds"],
         "filters_method": dict(FILTERS),
     }

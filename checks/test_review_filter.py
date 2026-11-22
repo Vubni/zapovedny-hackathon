@@ -9,7 +9,6 @@ from contextlib import closing
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -18,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 from analytics import ARCHIVE, DATABASE, database
 from review_excel import export_xlsx
-from review_filter import observation, review
+from review_filter import quality_metadata, quality_options, review
 from review_upload import read_upload
 
 
@@ -204,25 +203,61 @@ class ReviewFilterChecks(unittest.TestCase):
             calm = series(first, 60, [value] * 20, param, **fields)
             self.assertEqual(uploaded(calm, param=param, filters="stuck")["counts"]["kept"], 20)
 
-    def test_buddy_offsets_and_scope(self):
+    def test_cross_station_filter_is_retired(self):
+        self.assertNotIn("buddy", [item["id"] for item in quality_metadata()["filters"]])
+        with self.assertRaisesRegex(ValueError, "buddy"):
+            archived("kr1", "t_air", "2025-05-10", filters="buddy")
+
+    def test_numeric_ranges_work_without_changing_official_limits(self):
         first = datetime(2025, 5, 10, 6)
-        peer = series(first - timedelta(minutes=10), 30, [10 + i * 0.1 for i in range(22)])
-        main = series(first, 30, [13 + i * 0.1 for i in range(20)])
-        main[10]["t_air"] -= 15
+        rows = series(first, 30, [-52.3, -49, 0, 10.25, 10.26])
+        limits = '{"t_air":[-52.5,10.25],"rh":[20,null],"wind_speed":[null,14.5]}'
+        report = uploaded(rows, ranges=limits)
+        self.assertEqual(report["settings"]["ranges"]["t_air"], [-52.5, 10.25])
+        self.assertEqual(report["settings"]["ranges"]["rh"], [20, 100])
+        self.assertEqual(report["settings"]["ranges"]["wind_speed"], [0, 14.5])
+        self.assertEqual([row["keep"] for row in report["rows"]], [True, True, True, True, False])
+        self.assertEqual([row["official_keep"] for row in report["rows"]], [False, True, True, True, True])
+        self.assertEqual(report["rows"][0]["reason_codes"], ["expanded_range"])
+        self.assertEqual(report["rows"][-1]["reason_codes"], ["range"])
+        self.assertEqual(report["default_ranges"]["t_air"], [-50, 45])
+        self.evidence["custom_working_limits"] = {
+            "parameter": "t_air", "working_bounds": report["settings"]["ranges"]["t_air"],
+            "official_bounds": report["default_ranges"]["t_air"], "counts": report["counts"],
+        }
+        pressure = quality_options({"pressure_max": "1550", "ranges": {"pressure_hpa": [935.5, 1100.5]}})
+        self.assertEqual(pressure["ranges"]["pressure_hpa"], [935.5, 1100.5])
+        self.assertEqual(quality_options({"pressure_max": "1550"})["ranges"]["pressure_hpa"], [940, 1550])
+        with ZipFile(BytesIO(export_xlsx(report))) as workbook:
+            guide = workbook.read("xl/worksheets/sheet1.xml").decode()
+        self.assertIn("Рабочие числовые границы -52.5–10.25 °C", guide)
 
-        def mock_archive(station, param, begin, end, fields, selected_years=None):
-            records = main if station == "kr1" else peer
-            fields.update(dict.fromkeys(records[0]))
-            return (observation(row, i, station, param, station) for i, row in enumerate(records, 2))
+    def test_tunable_temporal_thresholds(self):
+        first = datetime(2025, 5, 10, 6)
+        rows = series(first, 30, [-10] * 5 + [-15] + [-10] * 5)
+        default = uploaded(rows, filters="spike,hampel")
+        custom = uploaded(rows, filters="spike,hampel", thresholds={"spike": {"t_air": 4.5}, "hampel": {"t_air": 5.5}})
+        self.assertEqual(default["rows"][5]["reason_codes"], ["hampel", "spike"])
+        self.assertEqual(custom["rows"][5]["reason_codes"], ["spike"])
+        self.assertIn("4.5", custom["rows"][5]["reasons"][0])
+        self.assertEqual(custom["default_thresholds"]["hampel"]["t_air"], 3)
+        pressure = series(first, 60, [1000] * 5, "pressure_hpa")
+        result = uploaded(pressure, param="pressure_hpa", filters="stuck")
+        adjusted = uploaded(pressure, param="pressure_hpa", filters="stuck", thresholds={"stuck": {"pressure_hpa": 4}})
+        self.assertEqual((result["counts"]["kept"], adjusted["counts"]["kept"]), (5, 0))
 
-        with patch("review_filter.archive_observations", mock_archive):
-            filtered = archived("kr1", "t_air", "2025-05-10", filters="buddy")
-        self.assertEqual(filtered["counts"]["excluded"], 1)
-        self.assertIn("buddy", filtered["rows"][10]["reason_codes"])
-        self.assertIn("+2.97", filtered["rows"][10]["reasons"][0])
-        self.assertFalse(archived("kr1", "t_air", "2025-04-01", filters="buddy")["warnings"])
-        self.assertIn("доступна для температуры", archived("kr1", "rh", "2025-04-01", filters="buddy")["warnings"][0])
-        self.assertIn("загруженного файла", uploaded(main, filters="buddy")["warnings"][0])
+    def test_invalid_numeric_configuration(self):
+        queries = (
+            {"ranges": '[]'}, {"ranges": {"xxx": [1, 2]}}, {"ranges": {"t_air": [1]}},
+            {"ranges": {"t_air": [1, -1]}}, {"ranges": {"t_air": [True, 10]}},
+            {"ranges": {"t_air": [0, 10 ** 100]}}, {"ranges": '{"t_air":[-10,NaN]}'},
+            {"thresholds": {"buddy": {"t_air": 2}}}, {"thresholds": {"stuck": {"xxx": 2}}},
+            {"thresholds": {"stuck": {"t_air": 0}}}, {"thresholds": {"stuck": {"t_air": 169}}},
+            {"thresholds": {"spike": {"t_air": "5"}}}, {"thresholds": {"hampel": {"t_air": float("inf")}}},
+        )
+        for query in queries:
+            with self.subTest(query=query), self.assertRaises(ValueError):
+                quality_options(query)
 
     def test_slot_counts_and_equal_daily_weights(self):
         first = datetime(2032, 2, 1, 0)

@@ -1,6 +1,6 @@
 """Coordinate a reversible station review and keep its paginated export in memory."""
 import secrets
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from contextlib import closing
 from datetime import date
 from pathlib import PurePosixPath
@@ -9,7 +9,8 @@ from time import monotonic
 
 from admin_auth import OPERATOR_REPORT_PREFIX
 from analytics import STATIONS, database
-from external_fill import apply_estimates
+from external_fill import MAX_DAYS, ZONES, apply_estimates, synthetic_row
+from gap_fill import estimate_bounds, fill_settings, station_estimates
 from review_excel import export_xlsx
 from review_filter import review
 from review_upload import MAX_ROWS, read_upload
@@ -49,13 +50,11 @@ def _check_period(query, records):
         raise ValueError("Дата окончания раньше даты начала.")
     if records is not None and (end - start).days >= MAX_ROWS:
         raise ValueError("В книге может быть до 60 000 строк суточной сводки. Уточните даты наблюдений.")
-    if query.get("fill", "0") not in ("0", "1"):
-        raise ValueError("Недопустимый режим восстановления.")
-    if query.get("fill") == "1":
-        if query.get("timezone") not in ("UTC", "Europe/Moscow"):
+    if query["fill_external"]:
+        if query.get("timezone") not in ZONES:
             raise ValueError("Выберите часовой пояс исходных сроков для сопоставления с внешними данными.")
-        if (end - start).days >= 31:
-            raise ValueError("Восстановление из внешних источников доступно за период до 31 суток.")
+        if (end - start).days >= MAX_DAYS:
+            raise ValueError(f"Восстановление из внешних источников доступно за период до {MAX_DAYS} суток.")
     if records is None:
         # raw_n counts source rows before exclusions and is the same for every parameter.
         with closing(database()) as db:
@@ -116,8 +115,54 @@ def _page(report, token, offset):
                 rows=rows[offset:offset + PAGE_SIZE])
 
 
+def _external_rows(report, query, ranges):
+    lower, upper = estimate_bounds(report["param"], ranges)
+    apply_estimates(report, dict(query, fill="1"))
+    filled = set()
+    for row in report["rows"]:
+        value = row["estimate"]
+        if value is None:
+            continue
+        if not lower <= value <= upper:
+            row.update(estimate=None, estimate_sources="", estimate_status="unavailable",
+                       estimate_reason="outside_parameter_range")
+            continue
+        row["estimate_method"] = "external"
+        filled.add(row["time"])
+    counts = Counter(row["estimate_status"] for row in report["rows"])
+    report["external"].update(estimated_count=len(filled), unavailable_count=counts["unavailable"],
+                              status="estimated" if filled else "unavailable")
+    return filled
+
+
+def _fill_report(report, query):
+    originals = report["rows"]
+    ranges = report["settings"].get("ranges")
+    filled = _external_rows(report, query, ranges) if query["fill_external"] else set()
+    if not query["fill_model"]:
+        return
+    estimates, report["model"] = station_estimates(originals, report["param"], excluded=filled, ranges=ranges)
+    rows = report["rows"]
+    by_time = {row["time"]: row for row in rows}
+    if not query["fill_external"]:
+        for row in rows:
+            row.update(estimate=None, estimate_sources="", provenance=None, estimate_reason=None,
+                       estimate_status="not_needed" if row["keep"] else "unavailable")
+    for stamp, estimate in estimates.items():
+        row = by_time.get(stamp)
+        if row is None:
+            row = synthetic_row(stamp, "Созданный срок на шаге исходных наблюдений.")
+            rows.append(row)
+        row.update(estimate=estimate["value"], estimate_sources=estimate["source"], estimate_method="model",
+                   estimate_status="estimated", estimate_reason=None, provenance=estimate["provenance"])
+    if estimates:
+        rows.sort(key=lambda row: row["time"])
+
+
 def create_report(query, body, content_type):
     query = dict(query)
+    filling = fill_settings(query)
+    query.update(filling)
     passport = None
     if "file_id" in query:
         from observation_store import review_source
@@ -132,7 +177,7 @@ def create_report(query, body, content_type):
         if query.get("param", "t_air") not in available:
             raise ValueError("В файле или паспорте станции нет выбранного показателя.")
         query.update(station=passport["profile"], filename=item["filename"])
-        if query.get("fill") == "1":
+        if query["fill_external"]:
             if passport["location_precision"] == "unknown":
                 raise ValueError("Для внешней оценки нужны координаты станции.")
             query.update(latitude=passport["latitude"], longitude=passport["longitude"])
@@ -145,8 +190,9 @@ def create_report(query, body, content_type):
     report = review(query, records, passport=passport)
     if passport:
         report.update(station=passport["id"], station_label=passport["label"])
-    if query.get("fill") == "1":
-        apply_estimates(report, query)
+    report.update(filling)
+    if query["fill_external"] or query["fill_model"]:
+        _fill_report(report, query)
     sheet = getattr(records[0], "sheet_member", None) if records else None
     original = (body, sheet, records[0].column_offset) if sheet else None
     report["original_workbook"] = original is not None

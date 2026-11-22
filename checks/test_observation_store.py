@@ -212,6 +212,74 @@ class ObservationStoreTests(unittest.TestCase):
         self.assertEqual(store.confirm_file(request)["version"], 1)
         self.assertEqual(store.list_files()["files"][0]["settings"]["pressure_max"], "1050")
 
+    def test_numeric_limits_saved_confirmed_and_exported(self):
+        original = csv(
+            "2024-04-01 00:00,-7,50,0,1099.5,", "2024-04-01 01:00,-8.1,92,12,1099.6,",
+            "2024-04-01 02:00,10.25,68,10,1099.5,pressure_hpa:range",
+            fields="datetime,t_air,rh,wind_speed,pressure_hpa,qc_flag",
+        )
+        file = self.upload(original)
+        limits = {"t_air": [-8, 10.25], "rh": [0, 90], "wind_speed": [0, 10], "pressure_hpa": [940, 1099.5]}
+        options = {"ranges": limits, "thresholds": {"spike": {"t_air": 4.75}}, "filters": "spike"}
+        preview, request = self.review(file, **options)
+        settings = preview["settings"]
+        for param, expected in limits.items():
+            self.assertEqual(settings["ranges"][param], expected)
+        self.assertEqual(settings["thresholds"]["spike"]["t_air"], 4.75)
+        self.assertEqual(preview["stats"]["marked"], 5)
+        self.assertEqual(store.get_file(request)["settings"], settings)
+        with self.assertRaisesRegex(ValueError, "Настройки или версия"):
+            store.confirm_file(dict(request, ranges={**limits, "rh": [0, 100]}))
+        with self.assertRaisesRegex(ValueError, "Настройки или версия"):
+            store.confirm_file(dict(request, thresholds={"spike": {"t_air": 5}}))
+        store.confirm_file(request)
+        rows = self.rows()
+        self.assertEqual([row.get("pressure_hpa") for row in rows], [1099.5, None, None])
+        self.assertEqual([row.get("t_air") for row in rows], [-7, None, 10.25])
+        self.assertEqual(store.original_file(file)[2], original)
+        _, xlsx = store.preview_excel(request)
+        with ZipFile(BytesIO(xlsx)) as workbook:
+            self.assertIn("Настройки контроля".encode(), workbook.read("xl/workbook.xml"))
+            table = ET.fromstring(workbook.read("xl/worksheets/sheet4.xml"))
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        for address, value in {"C2": -8, "D2": 10.25, "F2": 4.75, "D5": 1099.5}.items():
+            self.assertEqual(float(table.findtext(f".//s:c[@r='{address}']/s:v", namespaces=ns)), value)
+
+    def test_numeric_ranges_apply_to_csv_corrections(self):
+        file = self.upload(csv("2024-04-01 00:00,-7", fields="datetime,t_air"))
+        _, request = self.review(file, ranges={"t_air": [-8.25, 10.25]})
+        upload = dict(request, filename="correction.csv")
+        outside = csv("2024-04-01 00:00,10.26", fields="datetime,t_air")
+        with self.assertRaisesRegex(ValueError, "-8.25–10.25"):
+            store.corrected_file(upload, outside, "text/csv")
+        inside = csv("2024-04-01 00:00,10.25", fields="datetime,t_air")
+        corrected = store.corrected_file(upload, inside, "text/csv")
+        self.assertEqual(corrected["settings"]["ranges"]["t_air"], [-8.25, 10.25])
+        store.confirm_file(dict(request, revision=corrected["revision"]))
+        self.assertEqual(self.rows()[0]["t_air"], 10.25)
+
+    def test_retired_filter_draft_remains_readable_and_confirmable(self):
+        file = self.upload(csv("2024-04-01 00:00,-7,60"))
+        initial, request = self.review(file)
+        with store._database(write=True) as db:
+            entry = db.execute("SELECT draft_meta FROM files WHERE id=?", (file["id"],)).fetchone()
+            summary = json.loads(entry[0])
+            summary["settings"]["filters"] = ["buddy"]
+            for key in ("ranges", "thresholds", "pressure_max"):
+                del summary["settings"][key]
+            db.execute("UPDATE files SET draft_meta=? WHERE id=?", (json.dumps(summary), file["id"]))
+        saved = store.get_file(request)
+        self.assertEqual(saved["settings"]["filters"], ["buddy"])
+        self.assertEqual(saved["settings"]["ranges"]["t_air"], [-50, 45])
+        self.assertEqual(saved["points"], initial["points"])
+        self.assertNotIn("buddy", [item["id"] for item in store.list_files()["filters"]])
+        with self.assertRaisesRegex(ValueError, "фильтры"):
+            self.review(file, filters="buddy")
+        confirm = dict(request, filters="buddy")
+        self.assertEqual(store.confirm_file(confirm)["version"], 1)
+        self.assertEqual(store.confirm_file(confirm)["version"], 1)
+        self.assertEqual(self.rows()[0]["t_air"], -7)
+
     def test_unflagged_duplicates_are_audited_and_resolved_only_if_requested(self):
         file = self.upload(csv("2024-04-01 00:00,-100,50", "2024-04-01 00:00,5,65", "2024-04-01 00:00,7,80"))
         report, initial = self.review(file)

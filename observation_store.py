@@ -6,26 +6,25 @@ import json
 import re
 import sqlite3
 import zlib
-from bisect import bisect_left
 from collections import Counter
 from contextlib import closing, contextmanager
 from datetime import date, datetime, timezone
 from io import BytesIO, StringIO
 from itertools import groupby
 from pathlib import Path
-from statistics import fmean, median
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from analytics import PARAMS
-from build_data import DIRECTION, LIMITS
+from build_data import LIMITS
 from external_fill import MAX_DAYS, MODELS, ZONES, apply_estimates
+from gap_fill import estimate_bounds, fill_settings, station_estimates
 from review_excel import (
     BAD, ESTIMATED, GOOD, _cell, _column, _header, _row, _sheet_open, _write_package,
 )
 from review_filter import (
-    FILTERS, STAMP_PATTERN, archive_observations, checked_date, mark_buddy, mark_hampel,
-    mark_spikes, mark_stuck, minute_bounds, number, prepare, resolve_conflicts, uploaded_observations,
+    FILTERS, FILTER_LABELS, STAMP_PATTERN, checked_date, mark_hampel, mark_spikes, mark_stuck,
+    number, prepare, quality_metadata, quality_options, resolve_conflicts, uploaded_observations,
 )
 from review_upload import MAX_BYTES, SourceRow, csv_rows, read_upload
 from station_catalog import catalog, local_db_path
@@ -34,25 +33,18 @@ MIME_TYPES = {
     ".csv": "text/csv; charset=utf-8",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
-DEFAULT_PRESSURE_MAX = str(LIMITS["pressure_hpa"][1])
-EXPANDED_PRESSURE_MAX = "1550"
 PRIMARY = {
-    "description": "Сначала проверяем физические диапазоны и исходные флаги, включая флаг конфликтного срока. "
-                   "Например, температура воздуха вне диапазона −50…45 °C исключается.",
-    "ranges": LIMITS,
-}
-FILTER_LABELS = {
-    "conflicts": "Разбор повторов срока", "hampel": "Локальная медиана",
-    "spike": "Одиночные скачки", "stuck": "Залипание прибора", "buddy": "Соседняя станция",
+    "description": "Сначала проверяем рабочие числовые границы и исходные флаги, включая флаг конфликтного срока.",
+    **{key: value for key, value in quality_metadata().items() if key != "filters"},
 }
 FILL_OPTIONS = [
     {"id": "none", "label": "Оставить пропуски", "description": "Сохраняем пропуски после проверки."},
-    {"id": "external", "label": "Внешние погодные источники",
+    {"id": "external", "label": "По данным метеосервисов",
      "description": "ERA5 и MERRA-2 по району архива или координатам станции, до 31 суток. "
                     "Нужно указать часовой пояс исходных сроков. Оценки помечаются отдельно."},
-    {"id": "model", "label": "Локальная модель заполнения",
-     "description": "Модель обучается на пригодных сроках файла, оценивает ошибку на отложенной части "
-                    "и заполняет короткие пропуски между измерениями."},
+    {"id": "model", "label": "По модели станции",
+     "description": "Короткие пропуски между измерениями восстанавливаются по соседним наблюдениям. "
+                    "Поправка модели оценивается по данным до пропуска."},
 ]
 POINT_BUDGET = 1200
 TIMELINE_BUDGET = 1500
@@ -173,7 +165,8 @@ def _summary(raw):
     if raw is None:
         return None
     summary = json.loads(raw)
-    summary["settings"].setdefault("pressure_max", DEFAULT_PRESSURE_MAX)
+    summary["settings"].update(quality_options(summary["settings"]))
+    summary["settings"].update(fill_settings(summary["settings"]))
     return summary
 
 
@@ -263,21 +256,20 @@ def upload_file(query, body, content_type):
         return _record(_lookup(db, {"id": identifier}))
 
 
-def _settings(query, default_station):
+def _settings(query, default_station, *, allow_legacy_buddy=False):
     fields = ("station", "filters", "fill", "timezone", "subhour", "pressure_reference", "sources", "conflict_policy")
     if any(key in query and not isinstance(query[key], str) for key in fields):
         raise ValueError("Настройки обработки должны быть текстовыми значениями.")
     station = _station(query.get("station") or default_station)
     requested = {item.strip() for item in query.get("filters", "").split(",") if item.strip()}
-    if requested - FILTERS.keys():
+    allowed = (*FILTERS, "buddy") if allow_legacy_buddy else tuple(FILTERS)
+    if requested - set(allowed):
         raise ValueError("Выберите фильтры из списка.")
-    filters = [item for item in FILTERS if item in requested]
-    fill = query.get("fill", "none") or "none"
-    if fill not in {item["id"] for item in FILL_OPTIONS}:
-        raise ValueError("Выберите способ заполнения из списка.")
+    filters = [item for item in allowed if item in requested]
+    filling = fill_settings(query)
     zone = subhour = pressure_reference = None
     sources = []
-    if fill == "external":
+    if filling["fill_external"]:
         if not station["archive"] and station.get("location_precision") != "exact":
             raise ValueError("Для внешней оценки укажите координаты в паспорте станции.")
         zone = query.get("timezone")
@@ -298,25 +290,23 @@ def _settings(query, default_station):
         raise ValueError("Выберите способ разбора конфликтов.")
     if "conflicts" not in filters:
         policy = "all"
-    pressure_max = str(query.get("pressure_max", DEFAULT_PRESSURE_MAX))
-    if pressure_max not in {DEFAULT_PRESSURE_MAX, EXPANDED_PRESSURE_MAX}:
-        raise ValueError("Верхний порог давления должен быть 1050 или 1550 гПа.")
     return {
-        "station": station["id"], "filters": filters, "fill": fill, "timezone": zone,
+        "station": station["id"], "filters": filters, **filling, "timezone": zone,
         "subhour": subhour, "pressure_reference": pressure_reference, "sources": sources,
-        "conflict_policy": policy, "pressure_max": pressure_max,
+        "conflict_policy": policy, **quality_options(query),
     }, station
 
 
-def _quality(records, name, parameter, settings, station, start, end):
+def _quality(records, name, parameter, settings, station):
     profile = station.get("profile") or station["id"]
     if profile not in {"kr1", "kr2", "ame60"}:
         raise ValueError("Для станции не настроен профиль контроля качества.")
     rows = sorted(uploaded_observations(records, name, parameter), key=lambda row: row.stamp)
-    upper = int(settings["pressure_max"]) if parameter == "pressure_hpa" else LIMITS[parameter][1]
+    bounds = settings["ranges"][parameter]
+    thresholds = settings["thresholds"]
     requested = settings["filters"]
     use_references = bool(set(requested) - {"conflicts"} or settings["conflict_policy"] == "best")
-    references, conflicts = prepare(rows, parameter, upper, use_references=use_references)
+    references, conflicts = prepare(rows, parameter, bounds, use_references=use_references)
     # Imports keep the original QC decision even when the number lies within our ranges.
     for row in rows:
         if row.base_keep and f"{parameter}:range" in row.flags:
@@ -332,97 +322,16 @@ def _quality(records, name, parameter, settings, station, start, end):
             for row in group:
                 row.note("source_duplicate", "Исходный флаг dup_conflict исключает весь срок.", reject=True)
     if "hampel" in requested:
-        mark_hampel(rows, references, stamps, parameter, profile)
+        mark_hampel(rows, references, stamps, parameter, profile, thresholds["hampel"][parameter])
     if "spike" in requested:
-        mark_spikes(rows, references, stamps, parameter, profile)
+        mark_spikes(rows, references, stamps, parameter, profile, thresholds["spike"][parameter])
     if "stuck" in requested:
-        mark_stuck(rows, parameter, profile)
-    warning = None
-    if "buddy" in requested and parameter == "t_air":
-        station_id = station["id"]
-        if station_id in {"kr1", "kr2"}:
-            first, last = minute_bounds(start, end)
-            peer_id = "kr2" if station_id == "kr1" else "kr1"
-            peer_rows = sorted(
-                archive_observations(peer_id, parameter, first - 360, last + 360, {}),
-                key=lambda row: row.stamp,
-            )
-            peer_refs, _ = prepare(peer_rows, parameter, upper)
-            if not mark_buddy(rows, references, peer_refs, peer_id, first, last):
-                warning = "Для сверки с соседней станцией недостаточно сопоставимых сроков в архиве."
-        else:
-            warning = "Для выбранной станции нет парного пункта наблюдений для сверки температуры."
-    return rows, warning
-
-
-def _cadence(stamps):
-    gaps = Counter(right - left for left, right in zip(stamps, stamps[1:]) if right - left <= 120)
-    return min(gaps, key=lambda gap: (-gaps[gap], gap)) if gaps else None
-
-
-def _interpolate(stamp, left, right):
-    return left.value + (right.value - left.value) * (stamp - left.stamp) / (right.stamp - left.stamp)
-
-
-def _training_residuals(observed, step):
-    return [
-        target.value - _interpolate(target.stamp, left, right)
-        for left, target, right in zip(observed, observed[1:], observed[2:])
-        if right.stamp - left.stamp == 2 * step and target.stamp - left.stamp == step
-    ]
-
-
-def _stamp_text(stamp):
-    day, minute = divmod(stamp, 1440)
-    return f"{date.fromordinal(day).isoformat()} {minute // 60:02}:{minute % 60:02}"
-
-
-def _model_estimates(rows, parameter, originals, step):
-    status = {"status": "unavailable", "training_n": 0, "test_n": 0, "mae": None, "step_minutes": step}
-    if parameter == DIRECTION or step is None:
-        status["reason"] = "unsupported_direction" if parameter == DIRECTION else "unknown_cadence"
-        return {}, status
-    observed = [row for row in rows if row.keep and not row.conflict]
-    split = len(observed) * 4 // 5
-    training = _training_residuals(observed[:split], step)
-    holdout = _training_residuals(observed[split:], step)
-    status.update(training_n=len(training), test_n=len(holdout))
-    if len(training) < 10 or len(holdout) < 3:
-        status["reason"] = "insufficient_training"
-        return {}, status
-
-    bias = median(training)
-    mae = fmean(abs(error - bias) for error in holdout)
-    status.update(mae=round(mae, 4), baseline_mae=round(fmean(map(abs, holdout)), 4), bias=round(bias, 4))
-    confidence = {"kind": "validation_mae", "mae": status["mae"], "test_n": len(holdout),
-                  "unit": PARAMS[parameter][1]}
-    candidates = {row.stamp for row in rows if not row.keep and not row.conflict}
-    candidates.update(left + step for left, right in zip(originals, originals[1:]) if right - left == 2 * step)
-    stamps = [row.stamp for row in observed]
-    lower, upper = LIMITS[parameter]
-    estimates = {}
-    for stamp in sorted(candidates):
-        index = bisect_left(stamps, stamp)
-        if not 0 < index < len(stamps) or stamps[index] == stamp or stamps[index] - stamps[index - 1] > 2 * step:
-            continue
-        value = _interpolate(stamp, observed[index - 1], observed[index]) + bias
-        if lower <= value <= upper:
-            estimates[_stamp_text(stamp)] = {
-                "value": round(value, 4), "method": "model", "source": "Регрессия по соседним срокам файла",
-                "confidence": confidence, "enters_working_graphs": True,
-            }
-    if estimates:
-        status["status"] = "estimated"
-    else:
-        status["reason"] = "no_supported_gaps"
-    return estimates, status
+        mark_stuck(rows, parameter, profile, thresholds["stuck"][parameter])
+    return rows
 
 
 def _external_estimates(rows, parameter, settings, station, start, end):
-    report = {"param": parameter, "start": start.isoformat(), "end": end.isoformat(), "rows": [
-        {"time": row.time, "keep": row.keep, "value": row.value, "conflict": row.conflict}
-        for row in rows
-    ]}
+    report = {"param": parameter, "start": start.isoformat(), "end": end.isoformat(), "rows": rows}
     request = {
         "fill": "1", "timezone": settings["timezone"], "subhour": settings["subhour"],
         "pressure_reference": settings["pressure_reference"], "sources": ",".join(settings["sources"]),
@@ -431,8 +340,8 @@ def _external_estimates(rows, parameter, settings, station, start, end):
         request.update(latitude=station["latitude"], longitude=station["longitude"])
     apply_estimates(report, request)
     estimates = {}
-    first, last = rows[0].time, rows[-1].time
-    lower, upper = LIMITS[parameter]
+    first, last = rows[0]["time"], rows[-1]["time"]
+    lower, upper = estimate_bounds(parameter, settings.get("ranges"))
     for row in report["rows"]:
         value = row.get("estimate")
         if value is None or not first <= row["time"] <= last or not lower <= value <= upper:
@@ -445,7 +354,7 @@ def _external_estimates(rows, parameter, settings, station, start, end):
             "confidence": confidence, "provenance": row["provenance"], "enters_working_graphs": True,
         }
     status = report["external"]
-    observed_times = {row.time for row in rows}
+    observed_times = {row["time"] for row in rows}
     status.update(status="estimated" if estimates else "unavailable", estimated_count=len(estimates),
                   synthetic_count=sum(stamp not in observed_times for stamp in estimates))
     return estimates, status
@@ -487,13 +396,13 @@ def _review(source, fields, filename, settings, station, start, end):
     if not parameters:
         raise ValueError("В файле нет параметров выбранной станции.")
     declared = [item["id"] for item in parameters]
-    if "pressure_hpa" in declared and settings["pressure_max"] == EXPANDED_PRESSURE_MAX:
-        warnings.append("Для этого файла выбран расширенный порог давления 1550 гПа. "
-                        "Значения выше 1050 гПа могут быть ошибкой прибора.")
-    if settings["fill"] == "external" and (end - start).days >= MAX_DAYS:
+    for param in declared:
+        lower, upper = settings["ranges"][param]
+        if (lower, upper) != LIMITS[param]:
+            label, unit = PARAMS[param]
+            warnings.append(f"Рабочий диапазон · {label.lower()} · {lower}–{upper} {unit}.")
+    if settings["fill_external"] and (end - start).days >= MAX_DAYS:
         raise ValueError(f"Для внешних источников выберите файл с периодом до {MAX_DAYS} суток.")
-    if "buddy" in settings["filters"] and not any(item["id"] == "t_air" for item in parameters):
-        warnings.append("Сверка с соседней станцией применяется к температуре воздуха.")
     records = [SourceRow(values, line) for line, values in source]
     cooked = {}
     changes = []
@@ -520,25 +429,26 @@ def _review(source, fields, filename, settings, station, start, end):
             "time": label, "marked": 0, "filled": 0, "parameters": {}, "filled_parameters": {},
         })
 
-    originals, original_minutes, step = None, None, None
+    originals = None
     for item in parameters:
         parameter = item["id"]
-        rows, warning = _quality(records, filename, parameter, settings, station, start, end)
-        if warning:
-            warnings.append(warning)
+        rows = _quality(records, filename, parameter, settings, station)
         if originals is None:
-            original_minutes = sorted({row.stamp for row in rows})
             originals = {row.time for row in rows}
-            step = _cadence(original_minutes)
             for stamp in sorted(originals):
                 term(stamp)
                 bin_for(stamp)
 
         estimates = {}
-        if settings["fill"] == "external":
-            estimates, external[parameter] = _external_estimates(rows, parameter, settings, station, start, end)
-        if settings["fill"] == "model":
-            estimates, models[parameter] = _model_estimates(rows, parameter, original_minutes, step)
+        if settings["fill_external"] or settings["fill_model"]:
+            terms = [{"time": row.time, "keep": row.keep, "value": row.value, "conflict": row.conflict} for row in rows]
+            if settings["fill_external"]:
+                estimates, external[parameter] = _external_estimates(terms, parameter, settings, station, start, end)
+            if settings["fill_model"]:
+                fallback, models[parameter] = station_estimates(
+                    terms, parameter, excluded=estimates, ranges=settings.get("ranges"),
+                )
+                estimates.update(fallback)
 
         stat = {"marked": 0, "kept": 0, "missing": 0, "filled": len(estimates)}
         for row in rows:
@@ -581,10 +491,11 @@ def _review(source, fields, filename, settings, station, start, end):
         totals["marked"] += stat["marked"]
         totals["filled"] += stat["filled"]
 
-    if settings["fill"] == "external" and not totals["filled"]:
+    if external and not any(status["estimated_count"] for status in external.values()):
         warnings.append("Для выбранных пропусков не получены сопоставимые значения из двух внешних источников.")
-    if settings["fill"] == "model" and not totals["filled"]:
-        warnings.append("Модель не нашла коротких пропусков с пригодными соседними сроками и достаточной выборкой.")
+    if models and not any(status["estimated_count"] or status.get("reason") == "no_remaining_gaps"
+                          for status in models.values()):
+        warnings.append("Модель станции не нашла коротких пропусков с пригодными соседними наблюдениями.")
     if repeats:
         warnings.append("При повторе срока рабочий ряд использует первую пригодную исходную ячейку "
                         "по каждому параметру. Остальные значения сохранились в оригинале и листе повторов XLSX.")
@@ -691,9 +602,7 @@ def _apply_corrections(payload, settings, body):
         for parameter in parameters:
             raw = source[parameter]
             value, quality = number(raw)
-            lower, upper = LIMITS[parameter]
-            if parameter == "pressure_hpa":
-                upper = int(settings["pressure_max"])
+            lower, upper = settings["ranges"][parameter]
             if quality == "invalid_number" or (value is not None and not lower <= value <= upper):
                 raise ValueError(f"Строка {line}, {parameter}: введите число в диапазоне {lower}–{upper} или оставьте ячейку пустой.")
             before = term.get(parameter)
@@ -723,6 +632,8 @@ def _manual_timeline(payload):
     bucket = payload["timeline_days"]
     groups = {entry["time"]: entry for entry in timeline}
     fills = Counter()
+    method_fills = Counter()
+    method_synthetic = Counter()
     for group in groups.values():
         group.update(filled=0, filled_parameters={}, manual=0, manual_parameters={})
 
@@ -734,10 +645,13 @@ def _manual_timeline(payload):
     for row in payload["rows"]:
         if row["estimates"]:
             group = group_for(row["datetime"])
-            for parameter in row["estimates"]:
+            for parameter, estimate in row["estimates"].items():
                 group["filled"] += 1
                 group["filled_parameters"][parameter] = group["filled_parameters"].get(parameter, 0) + 1
                 fills[parameter] += 1
+                method = estimate.get("method")
+                method_fills[method, parameter] += 1
+                method_synthetic[method, parameter] += row["synthetic"]
     for parameter, entries in payload["manual_cells"].items():
         for stamp in entries:
             group = group_for(stamp)
@@ -746,6 +660,14 @@ def _manual_timeline(payload):
     for parameter, stats in payload["stats"]["parameters"].items():
         stats["filled"] = fills[parameter]
     payload["stats"]["filled"] = sum(fills.values())
+    for method in ("external", "model"):
+        for parameter, status in payload.get(method, {}).items():
+            count = method_fills[method, parameter]
+            if status["status"] == "estimated" and not count:
+                status.update(status="unavailable", reason="replaced_manually")
+            status["estimated_count"] = count
+            if "synthetic_count" in status:
+                status["synthetic_count"] = method_synthetic[method, parameter]
 
 
 def _manual_points(payload):
@@ -836,12 +758,13 @@ def confirm_file(query):
         raise ValueError("Для подтверждения нужен актуальный предпросмотр.")
     with _database() as db:
         row = _lookup(db, query, ", draft")
-    settings, _ = _settings(query, row["station"])
     record = _record(row)
-    confirmed = record["confirmed"]
+    confirmed, draft = record["confirmed"], record["preview"]
+    legacy = any(item and revision == item["revision"] and "buddy" in item["settings"]["filters"]
+                 for item in (draft, confirmed))
+    settings, _ = _settings(query, row["station"], allow_legacy_buddy=legacy)
     if confirmed and revision == confirmed["revision"] and settings == confirmed["settings"] and not record["preview"]:
         return record
-    draft = record["preview"]
     if not draft or draft["revision"] != revision or draft["settings"] != settings:
         raise ValueError("Настройки или версия изменились. Запустите фильтрацию заново.")
     payload = _unpack(row["draft"])
@@ -900,8 +823,29 @@ def _write_sheet(output, columns, rows, count):
     output.write((f'</sheetData><autoFilter ref="A1:{_column(len(columns))}{count + 1}"/></worksheet>').encode())
 
 
+def _quality_settings_table(parameters, settings):
+    columns = [
+        ("Параметр", 31), ("Единица", 12), ("Нижняя граница", 17), ("Верхняя граница", 17),
+        ("Хампель · отклонение", 22), ("Скачок · отклонение", 22), ("Без изменений, ч", 19),
+        ("Повторы срока", 25), ("Архивный фильтр", 28),
+    ]
+    filters = settings["filters"]
+    repeat_mode = None
+    if "conflicts" in filters:
+        repeat_mode = "Разобрать" if settings["conflict_policy"] == "best" else "Исключить все"
+    rows = []
+    for param in parameters:
+        label, unit = PARAMS[param]
+        thresholds = [settings["thresholds"][method][param] if method in filters else None
+                      for method in ("hampel", "spike", "stuck")]
+        legacy = "Соседняя станция" if param == "t_air" and "buddy" in filters else None
+        values = [label, unit, *settings["ranges"][param], *thresholds, repeat_mode, legacy]
+        rows.append([(value, 0) for value in values])
+    return columns, rows, len(rows)
+
+
 def preview_excel(query):
-    record, payload, _ = _saved(query)
+    record, payload, summary = _saved(query)
     parameters = [item["id"] for item in payload["params"]]
     rows, changes = payload["rows"], payload["changes"]
     marked = {(item[0], item[2]) for item in changes}
@@ -922,7 +866,7 @@ def preview_excel(query):
             yield cells
 
     estimates = [
-        (row["datetime"], param, data["value"], data["source"], data["confidence"])
+        (row["datetime"], param, data)
         for row in rows for param, data in row["estimates"].items()
     ]
     repeats = payload.get("repeats", [])
@@ -931,15 +875,19 @@ def preview_excel(query):
         names = ["Очищенные данные", "Исключённые ячейки", "Оценки"]
         if repeats:
             names.append("Повторы сроков")
+        names.append("Настройки контроля")
         _write_package(archive, names)
         tables = [
             ([("datetime", 22), *[(param, 18) for param in parameters]], working_rows(), len(rows)),
             ([("Срок", 22), ("Строка источника", 18), ("Параметр", 18), ("Исходная ячейка", 23), ("Правила", 38)],
              ([(time, 0), (line, 0), (param, 0), (value, BAD), (", ".join(codes), 0)]
               for time, line, param, value, codes in changes), len(changes)),
-            ([("Срок", 22), ("Параметр", 18), ("Оценка", 18), ("Источник", 48), ("Валидация", 62)],
-             ([(time, 0), (param, 0), (value, ESTIMATED), (source, 0), (confidence, 0)]
-              for time, param, value, source, confidence in estimates), len(estimates)),
+            ([("Срок", 22), ("Параметр", 18), ("Оценка", 18), ("Способ", 25), ("Источник", 48),
+              ("Валидация", 62), ("Происхождение оценки", 62)],
+             ([(time, 0), (param, 0), (estimate["value"], ESTIMATED),
+               ("По модели станции" if estimate.get("method") == "model" else "По данным метеосервисов", 0),
+               (estimate["source"], 0), (estimate["confidence"], 0), (estimate.get("provenance"), 0)]
+              for time, param, estimate in estimates), len(estimates)),
         ]
         if repeats:
             tables.append((
@@ -947,6 +895,7 @@ def preview_excel(query):
                 ([(stamp, 0), (line, 0), (param, 0), (value, 0)] for stamp, line, param, value in repeats),
                 len(repeats),
             ))
+        tables.append(_quality_settings_table(parameters, summary["settings"]))
         for index, (columns, data, count) in enumerate(tables, 1):
             with archive.open(f"xl/worksheets/sheet{index}.xml", "w") as part:
                 _write_sheet(part, columns, data, count)
