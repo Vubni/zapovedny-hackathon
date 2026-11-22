@@ -1,0 +1,130 @@
+{
+  "command": "python3 -B verify_replay.py",
+  "archive": "data/meteo_hack_dataset.zip",
+  "genuine_exports": {
+    "http_export_kr1_pressure": {
+      "day": "2024-04-01",
+      "station": "kr1",
+      "param": "pressure_hpa",
+      "source": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+      "rows": 48,
+      "null_values": 0,
+      "archive_exit": 0
+    },
+    "incomplete_kr1_pressure": {
+      "day": "2024-04-29",
+      "station": "kr1",
+      "param": "pressure_hpa",
+      "source": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+      "rows": 31,
+      "null_values": 0,
+      "archive_exit": 0
+    },
+    "ame60_wind_with_conflicts": {
+      "day": "1993-04-02",
+      "station": "ame60",
+      "param": "wind_dir",
+      "source": "meteo_clgz_hackathon/data/ame60/ame60_1993.csv",
+      "rows": 97,
+      "null_values": 0,
+      "archive_exit": 0
+    },
+    "empty_values_in_existing_parameter_column": {
+      "day": "2011-07-30",
+      "station": "ame60",
+      "param": "wind_speed",
+      "source": "meteo_clgz_hackathon/data/ame60/ame60_2011.csv",
+      "rows": 96,
+      "null_values": 15,
+      "archive_exit": 0
+    },
+    "archived_csv_without_parameter_column": {
+      "day": "1998-07-01",
+      "station": "ame60",
+      "param": "wind_dir",
+      "source": "meteo_clgz_hackathon/data/ame60/ame60_1998.csv",
+      "rows": 96,
+      "null_values": 96,
+      "archive_exit": 0
+    },
+    "empty_day_in_existing_csv": {
+      "day": "2023-12-31",
+      "station": "kr2",
+      "param": "t_air",
+      "source": "meteo_clgz_hackathon/data/sokol_m1/kr2_2023.csv",
+      "rows": 0,
+      "null_values": 0,
+      "archive_exit": 0
+    },
+    "absent_year_csv": {
+      "day": "2000-01-01",
+      "station": "ame60",
+      "param": "t_air",
+      "source": null,
+      "rows": 0,
+      "null_values": 0,
+      "archive_exit": 0
+    }
+  },
+  "deliberate_tampering_detected_by_archive": {
+    "omitted_conflict_row": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Число строк расходится с CSV. В JSON 96, в архиве 97"
+    },
+    "added_conflict_row": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Число строк расходится с CSV. В JSON 98, в архиве 97"
+    },
+    "reordered_rows": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Запись JSON 1, строка CSV 4334. Поле line расходится с архивом"
+    },
+    "changed_excluded_value_to_null": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Запись JSON 39, строка CSV 4372. Поле value расходится с архивом"
+    },
+    "changed_value_below_summary_tolerance": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Запись JSON 1, строка CSV 4334. Поле value расходится с архивом"
+    },
+    "changed_other_parameter_flag": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Запись JSON 1, строка CSV 4334. Поле flags расходится с архивом"
+    },
+    "changed_physical_csv_line": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Запись JSON 1, строка CSV 4334. Поле line расходится с архивом"
+    },
+    "changed_timestamp_within_hour": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Запись JSON 1, строка CSV 4334. Поле time расходится с архивом"
+    },
+    "substituted_existing_csv_member": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Поле source расходится с архивом. Ожидается meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv"
+    },
+    "removed_source_from_empty_existing_day": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. Поле source расходится с архивом. Ожидается meteo_clgz_hackathon/data/sokol_m1/kr2_2023.csv"
+    },
+    "invented_source_for_absent_year": {
+      "arithmetic_exit": 0,
+      "archive_exit": 1,
+      "archive_error": "Ошибка проверки JSON. В архиве отсутствует CSV за 2000 год. Ожидается source=null и пустой список строк"
+    }
+  },
+  "deliberate_boolean_as_number": {
+    "arithmetic_exit": 1,
+    "archive_exit": 1
+  }
+}

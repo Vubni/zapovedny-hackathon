@@ -1,0 +1,80 @@
+"""Собрать переносимый архив команды и проверить запуск в отдельной папке."""
+import argparse
+import hashlib
+import os
+from pathlib import Path
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+
+ROOT = Path(__file__).resolve().parent
+FOLDERS = ("web", "checks", "docs", "data", "results")
+SKIP = {"__pycache__", ".DS_Store", "weather.sqlite", "node_modules"}
+
+
+def sources():
+    files = {p for p in ROOT.iterdir() if p.is_file() and p.suffix in {".py", ".md"}}
+    files.add(ROOT / ".gitignore")
+    config = ROOT / ".impeccable" / "config.json"
+    if config.is_file():
+        files.add(config)
+    for folder in FOLDERS:
+        for p in (ROOT / folder).rglob("*"):
+            if p.is_file() and not p.is_symlink() and not any(
+                    part in SKIP or part.startswith(".weather-build-") for part in p.relative_to(ROOT).parts):
+                files.add(p)
+    return sorted(files)
+
+
+def check(project, command, expected):
+    result = subprocess.run([sys.executable, "-B", *command], cwd=project, capture_output=True,
+                            text=True, encoding="utf-8", check=True)
+    if expected not in result.stdout:
+        raise ValueError(f"Не подтвердился результат {command}: {result.stdout}")
+
+
+def pack(destination):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=destination.parent) as stage:
+        stage = Path(stage)
+        packet = stage / "packet.zip"
+        with ZipFile(packet, "w", ZIP_DEFLATED) as archive:
+            for file in sources():
+                entry = ZipInfo(file.relative_to(ROOT).as_posix(), date_time=(1980,1,1,0,0,0))
+                entry.external_attr = 0o100644 << 16
+                archive.writestr(entry, file.read_bytes(), compress_type=ZIP_DEFLATED)
+        project = stage / "project"
+        with ZipFile(packet) as archive:
+            if archive.testzip() is not None:
+                raise ValueError("Повреждён член архива")
+            archive.extractall(project)
+            file_count = len(archive.namelist())
+        check(project, ["research_results.py"], "оба наклона")
+        check(project, ["journal.py"], "334/366")
+        check(project, ["replay_day.py", "results/examples/kr1-pressure-april-29-incomplete.json",
+                        "--archive", "data/meteo_hack_dataset.zip"], "все строки за дату (31)")
+        check(project, ["import_station.py", "--station", "kr1", "--year", "2024", "--input",
+                        "results/examples/kr1-station-2024-04-01.json", "--output-dir", "trial-import"],
+              "Прочитано строк: 48")
+        for rel in ("web/index.html","web/app.js","web/import.html","web/import.js"):
+            if not (project / rel).is_file():
+                raise ValueError(f"Отсутствует файл интерфейса {rel}")
+        sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+        note = stage / "proof.txt"
+        note.write_text(
+            f"{destination.name} · SHA-256 {sha}\n"
+            f"Проверено файлов {file_count}, Python {sys.version.split()[0]}.\n"
+            "В отдельной папке проверены CRC, сборка из исходного ZIP, воспроизведение исследования и месячного расчёта, сверка "
+            "со всеми 31 исходными строками 29 апреля и импорт 48 наблюдений за 1 апреля.\n"
+            "Отчёт фактического браузерного прогона этой версии находится в results/browser/acceptance.json.\n",
+            encoding="utf-8")
+        os.replace(packet, destination)
+        os.replace(note, destination.with_name("Проверка.txt"))
+        print(f"{destination} · {file_count} файлов · SHA-256 {sha}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "handoff" / "meteo-team.zip")
+    pack(parser.parse_args().output)

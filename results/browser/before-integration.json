@@ -1,0 +1,41 @@
+{
+  "browser": "153.0.8010.12",
+  "runs": [
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "steps": [
+        {
+          "label": "Загрузка архива и выбор Кр1",
+          "status": "failed",
+          "message": "page.waitForFunction: Timeout 6500ms exceeded."
+        }
+      ],
+      "api": [],
+      "jsErrors": [],
+      "status": "failed",
+      "error": "page.waitForFunction: Timeout 6500ms exceeded.",
+      "visibleStatus": "Загружаем архив…"
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "steps": [
+        {
+          "label": "Загрузка архива и выбор Кр1",
+          "status": "failed",
+          "message": "page.waitForFunction: Timeout 6500ms exceeded."
+        }
+      ],
+      "api": [],
+      "jsErrors": [],
+      "status": "failed",
+      "error": "page.waitForFunction: Timeout 6500ms exceeded.",
+      "visibleStatus": "Загружаем архив…"
+    }
+  ]
+}

@@ -2,15 +2,20 @@
 
 import argparse
 from collections import Counter
+import csv
 from datetime import date, datetime
+import io
 import json
 import math
 from pathlib import Path
 import re
 import sys
+from zipfile import BadZipFile, ZipFile
 
 
 STATIONS = {"ame60": "АМЕ-60", "kr1": "Кр1", "kr2": "Кр2"}
+ARCHIVE_YEARS = {"ame60": range(1992, 2022), "kr1": range(2022, 2026), "kr2": range(2022, 2026)}
+AME_MISSING_YEARS = {2000, 2001, 2002}
 PARAMETERS = {
     "t_air": "Температура воздуха, °C",
     "rh": "Относительная влажность, %",
@@ -133,6 +138,51 @@ def compare(data, result):
         require(matches, f"Итог {key} расходится с расчётом. В JSON {actual!r}, по строкам {expected!r}")
 
 
+def verify_archive(data, path):
+    station, param, day = data["station"], data["param"], data["day"]
+    year = int(day[:4])
+    require(year in ARCHIVE_YEARS[station], "Дата за пределами периода архива этой станции")
+    directory = "ame60" if station == "ame60" else "sokol_m1"
+    prefix = f"meteo_clgz_hackathon/data/{directory}/{station}_"
+    name = f"{prefix}{year}.csv"
+    with ZipFile(path) as archive:
+        matches = [member for member in archive.infolist() if member.filename == name]
+        if station == "ame60" and year in AME_MISSING_YEARS:
+            require(not matches,
+                    "Состав ZIP расходится с архивом АМЕ-60 за период пропуска")
+            require(data["source"] is None and not data["rows"],
+                    f"В архиве отсутствует CSV за {year} год. Ожидается source=null и пустой список строк")
+            return f"В ZIP отсутствует CSV за {year} год. Пустой экспорт совпадает с архивом."
+        require(len(matches) == 1, f"В ZIP должен быть ровно один файл {name}")
+        require(data["source"] == name, f"Поле source расходится с архивом. Ожидается {name}")
+
+        original = []
+        with io.TextIOWrapper(archive.open(matches[0]), encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream, strict=True)
+            headers = reader.fieldnames or []
+            require({"datetime", "qc_flag"} <= set(headers) and len(set(headers)) == len(headers),
+                    f"Некорректный заголовок CSV в ZIP. Файл {name}")
+            for row in reader:
+                line = reader.line_num
+                require(None not in row and None not in row.values(), f"Некорректная строка CSV {line}")
+                if row["datetime"][:10] != day:
+                    continue
+                sample = row.get(param, "")
+                value = float(sample) if sample else None
+                require(number_or_null(value), f"Неконечное значение в строке CSV {line}")
+                original.append((line, row["datetime"], row["qc_flag"], value))
+
+    raw = data["rows"]
+    require(len(raw) == len(original),
+            f"Число строк расходится с CSV. В JSON {len(raw)}, в архиве {len(original)}")
+    fields = ("line", "time", "flags", "value")
+    for number, (row, expected) in enumerate(zip(raw, original), start=1):
+        for field, value in zip(fields, expected):
+            require(row[field] == value,
+                    f"Запись JSON {number}, строка CSV {expected[0]}. Поле {field} расходится с архивом")
+    return f"С ZIP сверены источник и все строки за дату ({len(original)})."
+
+
 def report(data, result, flags, missing):
     station, param = data["station"], data["param"]
     total, unit = (96, "сроков") if station == "ame60" else (24, "ч")
@@ -162,14 +212,17 @@ def report(data, result, flags, missing):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("json_file", type=Path, help="суточный экспорт JSON метеожурнала")
+    parser.add_argument("--archive", type=Path, metavar="ZIP", help="дополнительно сверить строки с архивом организаторов")
     args = parser.parse_args()
     try:
         with args.json_file.open(encoding="utf-8-sig") as stream:
             data = json.load(stream)
         result, flags, missing = replay(data)
         compare(data, result)
+        provenance = verify_archive(data, args.archive) if args.archive else "Режим проверки по строкам JSON."
         report(data, result, flags, missing)
-    except (OSError, ValueError, OverflowError) as error:
+        print(provenance)
+    except (OSError, ValueError, OverflowError, BadZipFile, csv.Error) as error:
         print(f"Ошибка проверки JSON. {error}", file=sys.stderr)
         return 1
     return 0

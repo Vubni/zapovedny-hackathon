@@ -41,12 +41,13 @@ a { color: var(--green); text-underline-offset: .18em; }
 .brand > span { line-height: 1.2; font-size: 1rem; font-weight: 700; }
 .brand small { display: block; margin-top: 3px; color: #c8d8c7; font-size: .74rem; font-weight: 500; }
 .masthead nav { display: flex; align-items: stretch; gap: 24px; }
-.nav-button { position: relative; padding: 2px 5px 0; color: #d3e0d1; border: 0; border-bottom: 3px solid transparent; background: transparent; font-size: .89rem; white-space: nowrap; }
+.nav-button { position: relative; padding: 2px 5px 0; color: #d3e0d1; border: 0; border-bottom: 3px solid transparent; background: var(--forest); font-size: .89rem; white-space: nowrap; }
 .nav-button:hover { color: #fffefa; border-bottom-color: #61836a; }
 .nav-button[aria-current] { color: #fffefa; border-bottom-color: #c2d1a8; font-weight: 650; }
 .masthead :focus-visible { outline-color: #dbe7bf; outline-offset: -4px; }
 
 .page-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; padding-block: 27px 19px; }
+.page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 h1, h2, h3, p { margin: 0; }
 h1 { font: 500 3.05rem/1.03 var(--serif); letter-spacing: -.035em; }
 h2 { font-size: 1.2rem; line-height: 1.25; letter-spacing: -.018em; }
@@ -120,6 +121,9 @@ h3 { line-height: 1.25; }
 .legend-mark { display: inline-block; flex: none; width: 15px; height: 8px; }
 .legend-mark.current { height: 2px; background: var(--green); }
 .legend-mark.reference { height: 0; border-top: 2px dashed #687a68; }
+.legend-mark.point, .legend-mark.reference-point { width: 8px; height: 8px; margin-inline: 3px; border-radius: 50%; }
+.legend-mark.point { border: 1.5px solid var(--green); }
+.legend-mark.reference-point { background: #687a68; }
 .legend-mark.gap { width: 8px; height: 8px; margin-inline: 3px; border: 1.5px solid var(--ochre); transform: rotate(45deg); }
 .legend-mark.positive { background: #317657; }
 .legend-mark.negative { background: #a86f35; }

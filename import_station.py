@@ -1,13 +1,21 @@
 """Сформировать отдельный отчёт из одного CSV или JSON со сроками наблюдений."""
 
 import argparse
+import csv
+import io
 import json
 import sqlite3
 from contextlib import closing
+from datetime import date
+from itertools import groupby
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from build_data import SCHEMA, STATIONS, export_csv, read_csv, read_records, sha256, validate_headers, write_year
+from analytics import PARAMS, bounds
+from build_data import (
+    SCHEMA, STATIONS, Observations, daily_record, export_csv, monthly_record, read_csv,
+    read_records, sha256, validate_headers, write_year,
+)
 
 
 REPORT_FORMAT = "weather-station-report-v1"
@@ -16,6 +24,8 @@ EXPORTS = {
     "monthly.csv": ("monthly", "station, param, month"),
     "station_coverage.csv": ("station_monthly", "station, month"),
 }
+CONTENT_FORMATS = {"text/csv": "csv", "application/json": "json"}
+MAX_UPLOAD = 5 * 1024 * 1024
 
 
 class JSONObject(list):
@@ -49,21 +59,146 @@ def json_records(file, source, station):
         yield location, row
 
 
-def read_input(source, station, year):
-    suffix = source.suffix.lower()
-    if suffix not in {".csv", ".json"}:
-        raise ValueError(f"{source}: поддерживаются расширения .csv и .json")
+def read_input_stream(file, source, source_format, station, year):
     try:
-        with source.open(encoding="utf-8-sig", newline="") as file:
-            if suffix == ".csv":
-                observations, counts = read_csv(file, source, station, year)
-            else:
-                observations, counts = read_records(json_records(file, source, station), station, year)
+        if source_format == "csv":
+            observations, counts = read_csv(file, source, station, year)
+        else:
+            observations, counts = read_records(json_records(file, source, station), station, year)
     except UnicodeDecodeError:
         raise ValueError(f"{source}: файл должен быть в кодировке UTF-8") from None
     if not counts["raw_rows"]:
         raise ValueError(f"{source}: нет строк наблюдений")
     return observations, counts
+
+
+def read_input(source, station, year):
+    suffix = source.suffix.lower()
+    if suffix not in {".csv", ".json"}:
+        raise ValueError(f"{source}: поддерживаются расширения .csv и .json")
+    with source.open(encoding="utf-8-sig", newline="") as file:
+        return read_input_stream(file, source, suffix[1:], station, year)
+
+
+def preview_date(value, fallback, year):
+    if not value:
+        return date.fromisoformat(fallback)
+    try:
+        parsed = date.fromisoformat(value)
+        if parsed.isoformat() != value:
+            raise ValueError
+    except ValueError:
+        raise ValueError("Укажите даты в формате ГГГГ-ММ-ДД") from None
+    if parsed.year != year:
+        raise ValueError(f"Даты просмотра должны относиться к {year} году")
+    return parsed
+
+
+def preview_row(station_id, param, grain, members):
+    start, end = members[0].day, members[-1].day
+    station = STATIONS[station_id]
+    row = {
+        "period": start, "start": start, "end": end, "days": len(members),
+        "n": sum(day.n for day in members), "flagged": sum(day.flagged for day in members),
+        "missing": sum(day.missing for day in members), "conflicts": sum(day.conflicts for day in members),
+        "station_valid_days": sum(day.station_slots >= station.minimum_slots for day in members),
+        "slots": None, "station_slots": None,
+    }
+    if grain == "day":
+        day = members[0]
+        unit = "сроков" if station_id == "ame60" else "часов"
+        row.update(
+            slots=day.slots,
+            station_slots=day.station_slots,
+            valid=bool(day.valid), valid_days=day.valid, longest_gap=1 - day.valid,
+            mean=day.mean, min=day.minimum, max=day.maximum,
+            reason=f"{day.slots} {unit} с пригодным значением при пороге {station.minimum_slots}. "
+                   f"Покрытие станции — {day.station_slots}.",
+        )
+    else:
+        month = start[:7]
+        _, _, _, days, valid_days, gap, valid, mean, minimum, maximum = monthly_record(
+            station_id, param, month, members
+        )
+        whole = (start, end) == bounds(start, "month")
+        row.update(
+            period=month, valid_days=valid_days, longest_gap=gap, valid=bool(valid and whole),
+            mean=mean if whole else None, min=minimum if whole else None, max=maximum if whole else None,
+            reason=(f"Неполных суток {days - valid_days} из {days}, подряд — до {gap}."
+                    if whole else "Выбран фрагмент месяца. Для месячного расчёта укажите весь месяц."),
+        )
+    return row
+
+
+def preview_csv(station_id, param, unit, rows):
+    columns = {
+        "period": "Период", "start": "Начало", "end": "Конец", "valid": "Период принят",
+        "mean": "Среднее", "min": "Минимум", "max": "Максимум",
+        "days": "Дней в выборке", "valid_days": "Пригодных суток параметра",
+        "station_valid_days": "Пригодных суток станции", "longest_gap": "Дней подряд без покрытия",
+        "slots": "Пригодных сроков или часов параметра", "station_slots": "Сроков или часов станции",
+        "n": "Пригодных записей", "flagged": "Записей с флагом параметра",
+        "missing": "Пустых значений", "conflicts": "Конфликтных строк", "reason": "Разбор покрытия",
+    }
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow(["Станция", "Параметр", "Единица", *columns.values()])
+    for row in rows:
+        writer.writerow([station_id, param, unit, *(
+            ("да" if value else "нет") if isinstance(value, bool)
+            else format(value, ".12g").replace(".", ",") if isinstance(value, float)
+            else value
+            for value in (row[key] for key in columns)
+        )])
+    return "\ufeff" + buffer.getvalue()
+
+
+def preview_import(body, source_format, query):
+    station_id = query.get("station")
+    station = STATIONS.get(station_id)
+    if station is None:
+        raise ValueError("Выберите станцию из списка")
+    param = query.get("param")
+    if param not in station.params:
+        raise ValueError("Станция не измеряет выбранный параметр")
+    try:
+        year = int(query.get("year", ""))
+        if not 1 <= year <= 9999:
+            raise ValueError
+    except ValueError:
+        raise ValueError("Укажите календарный год от 1 до 9999") from None
+    grain = query.get("grain", "day")
+    if grain not in {"day", "month"}:
+        raise ValueError("Выберите шаг по дням или по месяцам")
+    with io.TextIOWrapper(io.BytesIO(body), encoding="utf-8-sig", newline="") as file:
+        observations, counts = read_input_stream(
+            file, f"Загруженный {source_format.upper()}", source_format, station, year
+        )
+    source_start, source_end = min(observations), max(observations)
+    start = preview_date(query.get("start"), source_start, year)
+    end = preview_date(query.get("end"), source_end, year)
+    if start > end:
+        raise ValueError("Дата начала позже даты окончания")
+    empty = Observations()
+    dates = (date.fromordinal(i).isoformat() for i in range(start.toordinal(), end.toordinal() + 1))
+    daily = (
+        daily_record(station_id, param, when, observations.get(when, empty), station.minimum_slots)
+        for when in dates
+    )
+    groups = groupby(daily, lambda day: day.day if grain == "day" else day.day[:7])
+    rows = [preview_row(station_id, param, grain, list(group)) for _, group in groups]
+    label, unit = PARAMS[param]
+    return {
+        "station": station_id, "year": year, "param": param, "label": label, "unit": unit, "grain": grain,
+        "start": start.isoformat(), "end": end.isoformat(),
+        "source_start": source_start, "source_end": source_end, **counts,
+        "minimum_slots": station.minimum_slots, "expected_slots": 96 if station_id == "ame60" else 24,
+        "rows": rows, "valid_periods": sum(row["valid"] for row in rows),
+        "valid_days": sum(row["valid_days"] for row in rows),
+        "flagged": sum(row["flagged"] for row in rows),
+        "filename": f"{station_id}_{param}_{start}_{end}_{grain}_import.csv",
+        "csv": preview_csv(station_id, param, unit, rows),
+    }
 
 
 def existing_report(path):

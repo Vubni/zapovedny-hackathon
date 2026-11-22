@@ -1,0 +1,593 @@
+{
+  "browser": "153.0.8010.12",
+  "runs": [
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "steps": [
+        {
+          "label": "Загрузка архива и выбор Кр1",
+          "status": "passed",
+          "observed": {
+            "station": "kr1",
+            "param": "pressure_hpa",
+            "navigation": [
+              {
+                "text": "Метеожурнал",
+                "color": "rgb(255, 254, 250)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 11.746366414591575
+              },
+              {
+                "text": "Поляна и поле",
+                "color": "rgb(211, 224, 209)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 8.666321054347804
+              }
+            ]
+          }
+        },
+        {
+          "label": "Год по месяцам, причины пропуска и график",
+          "status": "passed",
+          "observed": {
+            "rows": 12,
+            "april": "Апрель 2024\n\t—\t—\t—\t981,7\t—\t1\t2 из 30\t117\tНеполных суток 28 из 30, самая длинная серия — 28. Допустимо до 10 за месяц и до 4 подряд."
+          }
+        },
+        {
+          "label": "Разрыв на графике и сверка постоянного давления с клавиатуры",
+          "status": "passed",
+          "observed": {
+            "lineSegments": 2,
+            "constantDay": "2024-04-01",
+            "control": "keyboard"
+          }
+        },
+        {
+          "label": "Выгрузка CSV для выбранного периода",
+          "status": "passed",
+          "observed": {
+            "periods": 12,
+            "matchesReference": true
+          }
+        },
+        {
+          "label": "Переход с апреля к исходной строке 5644",
+          "status": "passed",
+          "observed": {
+            "source": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+            "firstLine": 5644,
+            "n": 31,
+            "hours": 15,
+            "required": 18
+          }
+        },
+        {
+          "label": "Смена показателя и точки наблюдений",
+          "status": "passed",
+          "observed": {
+            "kr1TemperatureDays": 28,
+            "kr2PressureDays": 30,
+            "kr2MeanHpa": 980.16
+          }
+        },
+        {
+          "label": "Аварийный ряд АМЕ-60 и восстановление фильтра",
+          "status": "passed",
+          "observed": {
+            "directionMonthsWithoutValue": 12,
+            "leapFebruaryDekads": 3
+          }
+        },
+        {
+          "label": "Многолетний наклон, отклонения и объяснение метода",
+          "status": "passed",
+          "observed": {
+            "slopeDisplayed": 0.063,
+            "unit": "°C/год",
+            "months": 238
+          }
+        },
+        {
+          "label": "Тридцать лет в браузере, пропуски и постраничная таблица",
+          "status": "passed",
+          "observed": {
+            "calendarDays": 10958,
+            "validDays": 8337,
+            "tablePageSize": 60,
+            "elapsedMs": 144
+          }
+        },
+        {
+          "label": "Сбой запроса и повторное получение правильной выборки",
+          "status": "passed",
+          "observed": {
+            "injectedHttpStatus": 503,
+            "oldExportHidden": true,
+            "recoveredPeriods": 3
+          }
+        },
+        {
+          "label": "Сравнение поляны и поля",
+          "status": "passed",
+          "observed": {
+            "months": 12,
+            "hours": 24,
+            "temperatureCurves": 2
+          }
+        },
+        {
+          "label": "Загрузка нового JSON и отказ с указанием ошибочной строки",
+          "status": "passed",
+          "observed": {
+            "inputRows": 48,
+            "accepted": 38,
+            "usableHours": 19,
+            "meanHpa": 1005.45,
+            "navigation": [
+              {
+                "text": "Метеожурнал",
+                "color": "rgb(211, 224, 209)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 8.666321054347804
+              },
+              {
+                "text": "Импорт",
+                "color": "rgb(255, 254, 250)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 11.746366414591575
+              }
+            ],
+            "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
+          }
+        },
+        {
+          "label": "Воспроизведение результата по ссылке после перезагрузки",
+          "status": "passed",
+          "observed": {
+            "restoredParam": "t_air",
+            "restoredDays": 28,
+            "hourlyRows": 24,
+            "invalidLinkRejected": true
+          }
+        }
+      ],
+      "api": [
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=day",
+          "status": 200
+        },
+        {
+          "path": "/api/raw",
+          "query": "?station=kr1&param=pressure_hpa&day=2024-04-01",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=day",
+          "status": 200
+        },
+        {
+          "path": "/api/raw",
+          "query": "?station=kr1&param=pressure_hpa&day=2024-04-29",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=wind_dir&start=2021-01-01&end=2021-12-31&grain=month&base_start=1992&base_end=2021",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=2016-02-01&end=2016-02-29&grain=dekad",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=1993-02-07&end=2020-09-20&grain=month&base_start=1992&base_end=2021",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=1992-01-01&end=2021-12-31&grain=day",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=1992-01-01&end=2021-12-31&grain=day",
+          "status": 503
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=2016-02-01&end=2016-02-29&grain=dekad",
+          "status": 200
+        },
+        {
+          "path": "/api/compare",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/import",
+          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
+          "status": 200
+        },
+        {
+          "path": "/api/import",
+          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
+          "status": 400
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/compare",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        }
+      ],
+      "jsErrors": [],
+      "status": "passed"
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "steps": [
+        {
+          "label": "Загрузка архива и выбор Кр1",
+          "status": "passed",
+          "observed": {
+            "station": "kr1",
+            "param": "pressure_hpa",
+            "navigation": [
+              {
+                "text": "Метеожурнал",
+                "color": "rgb(255, 254, 250)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 11.746366414591575
+              },
+              {
+                "text": "Поляна и поле",
+                "color": "rgb(211, 224, 209)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 8.666321054347804
+              }
+            ]
+          }
+        },
+        {
+          "label": "Год по месяцам, причины пропуска и график",
+          "status": "passed",
+          "observed": {
+            "rows": 12,
+            "april": "Апрель 2024\n\t—\t—\t—\t981,7\t—\t1\t2 из 30\t117\tНеполных суток 28 из 30, самая длинная серия — 28. Допустимо до 10 за месяц и до 4 подряд."
+          }
+        },
+        {
+          "label": "Разрыв на графике и сверка постоянного давления с клавиатуры",
+          "status": "passed",
+          "observed": {
+            "lineSegments": 2,
+            "constantDay": "2024-04-01",
+            "control": "keyboard"
+          }
+        },
+        {
+          "label": "Выгрузка CSV для выбранного периода",
+          "status": "passed",
+          "observed": {
+            "periods": 12,
+            "matchesReference": true
+          }
+        },
+        {
+          "label": "Переход с апреля к исходной строке 5644",
+          "status": "passed",
+          "observed": {
+            "source": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+            "firstLine": 5644,
+            "n": 31,
+            "hours": 15,
+            "required": 18
+          }
+        },
+        {
+          "label": "Смена показателя и точки наблюдений",
+          "status": "passed",
+          "observed": {
+            "kr1TemperatureDays": 28,
+            "kr2PressureDays": 30,
+            "kr2MeanHpa": 980.16
+          }
+        },
+        {
+          "label": "Аварийный ряд АМЕ-60 и восстановление фильтра",
+          "status": "passed",
+          "observed": {
+            "directionMonthsWithoutValue": 12,
+            "leapFebruaryDekads": 3
+          }
+        },
+        {
+          "label": "Многолетний наклон, отклонения и объяснение метода",
+          "status": "passed",
+          "observed": {
+            "slopeDisplayed": 0.063,
+            "unit": "°C/год",
+            "months": 238
+          }
+        },
+        {
+          "label": "Тридцать лет в браузере, пропуски и постраничная таблица",
+          "status": "passed",
+          "observed": {
+            "calendarDays": 10958,
+            "validDays": 8337,
+            "tablePageSize": 60,
+            "elapsedMs": 133
+          }
+        },
+        {
+          "label": "Сбой запроса и повторное получение правильной выборки",
+          "status": "passed",
+          "observed": {
+            "injectedHttpStatus": 503,
+            "oldExportHidden": true,
+            "recoveredPeriods": 3
+          }
+        },
+        {
+          "label": "Сравнение поляны и поля",
+          "status": "passed",
+          "observed": {
+            "months": 12,
+            "hours": 24,
+            "temperatureCurves": 2
+          }
+        },
+        {
+          "label": "Загрузка нового JSON и отказ с указанием ошибочной строки",
+          "status": "passed",
+          "observed": {
+            "inputRows": 48,
+            "accepted": 38,
+            "usableHours": 19,
+            "meanHpa": 1005.45,
+            "navigation": [
+              {
+                "text": "Метеожурнал",
+                "color": "rgb(211, 224, 209)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 8.666321054347804
+              },
+              {
+                "text": "Импорт",
+                "color": "rgb(255, 254, 250)",
+                "background": "rgb(23, 62, 50)",
+                "ratio": 11.746366414591575
+              }
+            ],
+            "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
+          }
+        },
+        {
+          "label": "Воспроизведение результата по ссылке после перезагрузки",
+          "status": "passed",
+          "observed": {
+            "restoredParam": "t_air",
+            "restoredDays": 28,
+            "hourlyRows": 24,
+            "invalidLinkRejected": true
+          }
+        }
+      ],
+      "api": [
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=day",
+          "status": 200
+        },
+        {
+          "path": "/api/raw",
+          "query": "?station=kr1&param=pressure_hpa&day=2024-04-01",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=day",
+          "status": 200
+        },
+        {
+          "path": "/api/raw",
+          "query": "?station=kr1&param=pressure_hpa&day=2024-04-29",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=wind_dir&start=2021-01-01&end=2021-12-31&grain=month&base_start=1992&base_end=2021",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=2016-02-01&end=2016-02-29&grain=dekad",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=1993-02-07&end=2020-09-20&grain=month&base_start=1992&base_end=2021",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=1992-01-01&end=2021-12-31&grain=day",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=1992-01-01&end=2021-12-31&grain=day",
+          "status": 503
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=ame60&param=t_air&start=2016-02-01&end=2016-02-29&grain=dekad",
+          "status": 200
+        },
+        {
+          "path": "/api/compare",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/import",
+          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
+          "status": 200
+        },
+        {
+          "path": "/api/import",
+          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
+          "status": 400
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-04-01&end=2024-04-30&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/compare",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=pressure_hpa&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        },
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        }
+      ],
+      "jsErrors": [],
+      "status": "passed"
+    }
+  ]
+}

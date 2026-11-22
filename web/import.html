@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#173e32">
+  <title>Импорт наблюдений · Урочище «Красное»</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/import.js"></script>
+  <style>
+    .import-nav .nav-button { display: inline-flex; align-items: center; text-decoration: none; }
+    .import-filters { margin: 0; min-width: 0; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .import-file, .import-param { grid-column: span 2; }
+    .import-file input { padding: 7px; }
+    .import-actions { grid-column: span 3; }
+    .import-actions .button:disabled { opacity: 1; color: var(--muted); background: var(--green-tint); border-color: var(--line); }
+    .import-hint { grid-column: 1/-1; margin: 1px 0; font-size: .78rem; }
+    .import-table { overflow: auto; scrollbar-color: #a8b6a5 transparent; }
+    @media (max-width: 750px) {
+      .import-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .import-file, .import-actions { grid-column: 1/-1; }
+      .import-param { grid-column: span 1; }
+    }
+    @media (max-width: 490px) {
+      .import-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#content">К форме импорта</a>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <a class="brand" href="/" aria-label="Метеожурнал, главная">
+        <svg width="35" height="35" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="34" height="34" rx="8" stroke="currentColor" opacity=".55"/>
+          <path d="M9 23h18M12 23l5-10 3 6 2-4 4 8M9 26h18" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="23.5" cy="10.5" r="2" stroke="currentColor" stroke-width="1.35"/>
+        </svg>
+        <span>Урочище «Красное»<small>Архив метеонаблюдений</small></span>
+      </a>
+      <nav class="import-nav" aria-label="Разделы метеожурнала">
+        <a class="nav-button" href="/">Метеожурнал</a>
+        <span class="nav-button" aria-current="page">Импорт</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="shell" id="content">
+    <header class="page-heading">
+      <div>
+        <h1>Импорт наблюдений</h1>
+        <p>Отдельный расчёт по файлу одной станции за календарный год.</p>
+      </div>
+      <div class="page-actions">
+        <a class="button secondary" href="/api/import/example" download>Скачать пример JSON</a>
+      </div>
+    </header>
+
+    <form id="import-form" aria-label="Импорт файла станции">
+      <fieldset class="filters import-filters" id="import-fields" disabled>
+        <div class="filter import-file">
+          <label for="import-file">Файл CSV или JSON до 5 МиБ</label>
+          <input type="file" id="import-file" accept=".csv,.json,text/csv,application/json" required>
+        </div>
+        <div class="filter">
+          <label for="import-station">Станция</label>
+          <select id="import-station"><option>Загрузка…</option></select>
+        </div>
+        <div class="filter import-param">
+          <label for="import-param">Параметр</label>
+          <select id="import-param"><option>Загрузка…</option></select>
+        </div>
+        <div class="filter">
+          <label for="import-year">Год файла</label>
+          <input type="number" id="import-year" inputmode="numeric" min="1" max="9999" value="2024" required>
+        </div>
+        <div class="filter">
+          <label for="import-start">С даты</label>
+          <input type="date" id="import-start" aria-describedby="import-dates">
+        </div>
+        <div class="filter">
+          <label for="import-end">По дату</label>
+          <input type="date" id="import-end" aria-describedby="import-dates">
+        </div>
+        <div class="filter">
+          <label for="import-grain">Шаг</label>
+          <select id="import-grain">
+            <option value="day">По дням</option>
+            <option value="month">По месяцам</option>
+          </select>
+        </div>
+        <div class="page-actions import-actions">
+          <button class="button primary" type="submit">Рассчитать</button>
+          <button class="button secondary" id="import-example" type="button">Открыть пример Кр1</button>
+        </div>
+        <p id="import-dates" class="muted import-hint">Если даты пусты, берём период файла. Для месячного расчёта выберите месяц целиком.</p>
+      </fieldset>
+    </form>
+
+    <p class="status" id="import-status" role="status">Загружаем список станций…</p>
+    <section id="import-result" aria-labelledby="import-result-title" hidden>
+      <dl class="metrics" id="import-metrics" aria-label="Сводка расчёта"></dl>
+      <section class="ledger">
+        <div class="ledger-heading">
+          <div>
+            <h2 id="import-result-title">Результат</h2>
+            <p id="import-context"></p>
+          </div>
+          <a class="button secondary" id="import-download" download>Скачать расчёт CSV</a>
+        </div>
+        <div class="import-table" tabindex="0" role="region" aria-label="Таблица расчёта">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Период</th>
+                <th scope="col">Покрытие</th>
+                <th scope="col" id="import-mean-heading">Среднее</th>
+                <th scope="col">Пригодных записей</th>
+                <th scope="col">С флагом</th>
+                <th scope="col">Пустых</th>
+                <th scope="col">Конфликтных</th>
+                <th scope="col">Условия расчёта</th>
+              </tr>
+            </thead>
+            <tbody id="import-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+    <noscript><p class="status">Включите JavaScript, чтобы рассчитать данные из файла станции.</p></noscript>
+  </main>
+
+  <footer class="footer shell">
+    <span>Метеонаблюдения урочища «Красное»</span>
+    <a href="/">К архиву наблюдений</a>
+  </footer>
+</body>
+</html>

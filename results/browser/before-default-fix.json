@@ -1,0 +1,63 @@
+{
+  "browser": "153.0.8010.12",
+  "runs": [
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "steps": [
+        {
+          "label": "Загрузка архива и выбор Кр1",
+          "status": "failed",
+          "message": "Expected values to be strictly equal: + actual - expected  + 't_air'"
+        }
+      ],
+      "api": [
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        }
+      ],
+      "jsErrors": [],
+      "status": "failed",
+      "error": "Expected values to be strictly equal:",
+      "visibleStatus": ""
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "steps": [
+        {
+          "label": "Загрузка архива и выбор Кр1",
+          "status": "failed",
+          "message": "Expected values to be strictly equal: + actual - expected  + 't_air'"
+        }
+      ],
+      "api": [
+        {
+          "path": "/api/meta",
+          "query": "",
+          "status": 200
+        },
+        {
+          "path": "/api/series",
+          "query": "?station=kr1&param=t_air&start=2024-01-01&end=2024-12-31&grain=month&base_start=2022&base_end=2025",
+          "status": 200
+        }
+      ],
+      "jsErrors": [],
+      "status": "failed",
+      "error": "Expected values to be strictly equal:",
+      "visibleStatus": ""
+    }
+  ]
+}
