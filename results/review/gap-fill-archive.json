@@ -1,0 +1,903 @@
+{
+  "parameter": "t_air",
+  "source_sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+  "seed": 20261122,
+  "max_nonoverlapping_blocks_per_case": 200,
+  "hidden_source": "observed_terms_without_original_temperature_quality_flags",
+  "cases": [
+    {
+      "station": "ame60",
+      "source_member": "meteo_clgz_hackathon/data/ame60/ame60_2021.csv",
+      "year": 2021,
+      "step_minutes": 15,
+      "consecutive_hidden_terms": 1,
+      "anchor_span_minutes": 30,
+      "eligible_blocks": 24617,
+      "tested_blocks": 200,
+      "first_hidden": "2021-01-06 08:30",
+      "last_hidden": "2021-11-04 13:00",
+      "blank_rows": {
+        "model_step_minutes": 15,
+        "hidden_points": 200,
+        "estimated_points": 200,
+        "fully_restored_blocks": 200,
+        "points_with_past_calibration": 200,
+        "paired": {
+          "model": {
+            "mae_c": 0.11749999999999998,
+            "rmse_c": 0.23323807579381198
+          },
+          "linear": {
+            "mae_c": 0.11725000000000005,
+            "rmse_c": 0.23315767197328072
+          },
+          "last_value": {
+            "mae_c": 0.277,
+            "rmse_c": 0.42047592083257274
+          }
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.11725000000000005,
+            "rmse_c": 0.23315767197328072
+          },
+          "last_value": {
+            "mae_c": 0.277,
+            "rmse_c": 0.42047592083257274
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 15,
+        "hidden_points": 200,
+        "estimated_points": 200,
+        "fully_restored_blocks": 200,
+        "points_with_past_calibration": 200,
+        "paired": {
+          "model": {
+            "mae_c": 0.11749999999999998,
+            "rmse_c": 0.23323807579381198
+          },
+          "linear": {
+            "mae_c": 0.11725000000000005,
+            "rmse_c": 0.23315767197328072
+          },
+          "last_value": {
+            "mae_c": 0.277,
+            "rmse_c": 0.42047592083257274
+          }
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.11725000000000005,
+            "rmse_c": 0.23315767197328072
+          },
+          "last_value": {
+            "mae_c": 0.277,
+            "rmse_c": 0.42047592083257274
+          }
+        }
+      }
+    },
+    {
+      "station": "ame60",
+      "source_member": "meteo_clgz_hackathon/data/ame60/ame60_2021.csv",
+      "year": 2021,
+      "step_minutes": 15,
+      "consecutive_hidden_terms": 2,
+      "anchor_span_minutes": 45,
+      "eligible_blocks": 24611,
+      "tested_blocks": 200,
+      "first_hidden": "2021-01-05 20:00",
+      "last_hidden": "2021-11-05 01:00",
+      "blank_rows": {
+        "model_step_minutes": 15,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.20058333333333334,
+            "rmse_c": 0.3624262377060713
+          },
+          "last_value": {
+            "mae_c": 0.5142499999999999,
+            "rmse_c": 0.8107558202072925
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 15,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.20058333333333334,
+            "rmse_c": 0.3624262377060713
+          },
+          "last_value": {
+            "mae_c": 0.5142499999999999,
+            "rmse_c": 0.8107558202072925
+          }
+        }
+      }
+    },
+    {
+      "station": "ame60",
+      "source_member": "meteo_clgz_hackathon/data/ame60/ame60_2021.csv",
+      "year": 2021,
+      "step_minutes": 15,
+      "consecutive_hidden_terms": 4,
+      "anchor_span_minutes": 75,
+      "eligible_blocks": 24599,
+      "tested_blocks": 200,
+      "first_hidden": "2021-01-05 03:45",
+      "last_hidden": "2021-11-04 20:30",
+      "blank_rows": {
+        "model_step_minutes": 15,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.24097500000000005,
+            "rmse_c": 0.41072192539478586
+          },
+          "last_value": {
+            "mae_c": 0.631875,
+            "rmse_c": 1.080977566834761
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 15,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.24097500000000005,
+            "rmse_c": 0.41072192539478586
+          },
+          "last_value": {
+            "mae_c": 0.631875,
+            "rmse_c": 1.080977566834761
+          }
+        }
+      }
+    },
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+      "year": 2025,
+      "step_minutes": 30,
+      "consecutive_hidden_terms": 1,
+      "anchor_span_minutes": 60,
+      "eligible_blocks": 6987,
+      "tested_blocks": 200,
+      "first_hidden": "2025-02-01 08:11",
+      "last_hidden": "2025-11-30 21:02",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 200,
+        "fully_restored_blocks": 200,
+        "points_with_past_calibration": 200,
+        "paired": {
+          "model": {
+            "mae_c": 0.24077499999999993,
+            "rmse_c": 0.411736718061433
+          },
+          "linear": {
+            "mae_c": 0.24255000000000007,
+            "rmse_c": 0.41333279569857506
+          },
+          "last_value": {
+            "mae_c": 0.4745,
+            "rmse_c": 0.8965416889358798
+          }
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.24255000000000007,
+            "rmse_c": 0.41333279569857506
+          },
+          "last_value": {
+            "mae_c": 0.4745,
+            "rmse_c": 0.8965416889358798
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 200,
+        "fully_restored_blocks": 200,
+        "points_with_past_calibration": 200,
+        "paired": {
+          "model": {
+            "mae_c": 0.24077499999999993,
+            "rmse_c": 0.411736718061433
+          },
+          "linear": {
+            "mae_c": 0.24255000000000007,
+            "rmse_c": 0.41333279569857506
+          },
+          "last_value": {
+            "mae_c": 0.4745,
+            "rmse_c": 0.8965416889358798
+          }
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.24255000000000007,
+            "rmse_c": 0.41333279569857506
+          },
+          "last_value": {
+            "mae_c": 0.4745,
+            "rmse_c": 0.8965416889358798
+          }
+        }
+      }
+    },
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+      "year": 2025,
+      "step_minutes": 30,
+      "consecutive_hidden_terms": 2,
+      "anchor_span_minutes": 90,
+      "eligible_blocks": 6942,
+      "tested_blocks": 200,
+      "first_hidden": "2025-02-02 12:41",
+      "last_hidden": "2025-11-28 22:32",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.2779916666666667,
+            "rmse_c": 0.44752706311710605
+          },
+          "last_value": {
+            "mae_c": 0.6426750000000001,
+            "rmse_c": 1.0851927248189606
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.2779916666666667,
+            "rmse_c": 0.44752706311710605
+          },
+          "last_value": {
+            "mae_c": 0.6426750000000001,
+            "rmse_c": 1.0851927248189606
+          }
+        }
+      }
+    },
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+      "year": 2025,
+      "step_minutes": 30,
+      "consecutive_hidden_terms": 4,
+      "anchor_span_minutes": 150,
+      "eligible_blocks": 6853,
+      "tested_blocks": 200,
+      "first_hidden": "2025-02-01 05:41",
+      "last_hidden": "2025-11-30 11:32",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.39074250000000005,
+            "rmse_c": 0.6408869440080677
+          },
+          "last_value": {
+            "mae_c": 1.0495375,
+            "rmse_c": 1.8236723595536561
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.39074250000000005,
+            "rmse_c": 0.6408869440080677
+          },
+          "last_value": {
+            "mae_c": 1.0495375,
+            "rmse_c": 1.8236723595536561
+          }
+        }
+      }
+    },
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+      "year": 2025,
+      "step_minutes": 60,
+      "consecutive_hidden_terms": 1,
+      "anchor_span_minutes": 120,
+      "eligible_blocks": 5196,
+      "tested_blocks": 200,
+      "first_hidden": "2025-01-01 11:00",
+      "last_hidden": "2025-12-31 14:00",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.2922417500000001,
+            "rmse_c": 0.4847244635486228
+          },
+          "last_value": {
+            "mae_c": 0.6743585,
+            "rmse_c": 1.0761357881094746
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.2922417500000001,
+            "rmse_c": 0.4847244635486228
+          },
+          "last_value": {
+            "mae_c": 0.6743585,
+            "rmse_c": 1.0761357881094746
+          }
+        }
+      }
+    },
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+      "year": 2025,
+      "step_minutes": 60,
+      "consecutive_hidden_terms": 2,
+      "anchor_span_minutes": 180,
+      "eligible_blocks": 5190,
+      "tested_blocks": 200,
+      "first_hidden": "2025-01-01 23:00",
+      "last_hidden": "2025-12-31 13:00",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.45428749999999996,
+            "rmse_c": 0.7179835043369729
+          },
+          "last_value": {
+            "mae_c": 1.134375,
+            "rmse_c": 1.8146394269936934
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.45428749999999996,
+            "rmse_c": 0.7179835043369729
+          },
+          "last_value": {
+            "mae_c": 1.134375,
+            "rmse_c": 1.8146394269936934
+          }
+        }
+      }
+    },
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2025.csv",
+      "year": 2025,
+      "step_minutes": 60,
+      "consecutive_hidden_terms": 4,
+      "anchor_span_minutes": 300,
+      "eligible_blocks": 5178,
+      "tested_blocks": 200,
+      "first_hidden": "2025-01-01 13:00",
+      "last_hidden": "2025-12-31 10:00",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.711839125,
+            "rmse_c": 1.1121529933478127
+          },
+          "last_value": {
+            "mae_c": 1.6396416249999999,
+            "rmse_c": 2.588604787064356
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.711839125,
+            "rmse_c": 1.1121529933478127
+          },
+          "last_value": {
+            "mae_c": 1.6396416249999999,
+            "rmse_c": 2.588604787064356
+          }
+        }
+      }
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+      "year": 2025,
+      "step_minutes": 30,
+      "consecutive_hidden_terms": 1,
+      "anchor_span_minutes": 60,
+      "eligible_blocks": 6524,
+      "tested_blocks": 200,
+      "first_hidden": "2025-02-01 23:04",
+      "last_hidden": "2025-11-30 18:04",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 200,
+        "fully_restored_blocks": 200,
+        "points_with_past_calibration": 200,
+        "paired": {
+          "model": {
+            "mae_c": 0.15721250000000003,
+            "rmse_c": 0.2558045518555133
+          },
+          "linear": {
+            "mae_c": 0.15762499999999996,
+            "rmse_c": 0.2561442464706166
+          },
+          "last_value": {
+            "mae_c": 0.3459499999999999,
+            "rmse_c": 0.5591980865489437
+          }
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.15762499999999996,
+            "rmse_c": 0.2561442464706166
+          },
+          "last_value": {
+            "mae_c": 0.3459499999999999,
+            "rmse_c": 0.5591980865489437
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 200,
+        "fully_restored_blocks": 200,
+        "points_with_past_calibration": 200,
+        "paired": {
+          "model": {
+            "mae_c": 0.15721250000000003,
+            "rmse_c": 0.2558045518555133
+          },
+          "linear": {
+            "mae_c": 0.15762499999999996,
+            "rmse_c": 0.2561442464706166
+          },
+          "last_value": {
+            "mae_c": 0.3459499999999999,
+            "rmse_c": 0.5591980865489437
+          }
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.15762499999999996,
+            "rmse_c": 0.2561442464706166
+          },
+          "last_value": {
+            "mae_c": 0.3459499999999999,
+            "rmse_c": 0.5591980865489437
+          }
+        }
+      }
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+      "year": 2025,
+      "step_minutes": 30,
+      "consecutive_hidden_terms": 2,
+      "anchor_span_minutes": 90,
+      "eligible_blocks": 6324,
+      "tested_blocks": 200,
+      "first_hidden": "2025-02-01 01:34",
+      "last_hidden": "2025-11-30 12:34",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.2058583333333333,
+            "rmse_c": 0.3373161639240616
+          },
+          "last_value": {
+            "mae_c": 0.5892000000000001,
+            "rmse_c": 0.9562081363385275
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.2058583333333333,
+            "rmse_c": 0.3373161639240616
+          },
+          "last_value": {
+            "mae_c": 0.5892000000000001,
+            "rmse_c": 0.9562081363385275
+          }
+        }
+      }
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+      "year": 2025,
+      "step_minutes": 30,
+      "consecutive_hidden_terms": 4,
+      "anchor_span_minutes": 150,
+      "eligible_blocks": 5941,
+      "tested_blocks": 200,
+      "first_hidden": "2025-02-01 15:04",
+      "last_hidden": "2025-11-30 19:34",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.268245,
+            "rmse_c": 0.47031250249169443
+          },
+          "last_value": {
+            "mae_c": 0.80295,
+            "rmse_c": 1.4744060668621788
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.268245,
+            "rmse_c": 0.47031250249169443
+          },
+          "last_value": {
+            "mae_c": 0.80295,
+            "rmse_c": 1.4744060668621788
+          }
+        }
+      }
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+      "year": 2025,
+      "step_minutes": 60,
+      "consecutive_hidden_terms": 1,
+      "anchor_span_minutes": 120,
+      "eligible_blocks": 4851,
+      "tested_blocks": 200,
+      "first_hidden": "2025-01-02 10:00",
+      "last_hidden": "2025-12-29 09:00",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.17277099999999992,
+            "rmse_c": 0.29178016317940464
+          },
+          "last_value": {
+            "mae_c": 0.4674584999999999,
+            "rmse_c": 0.7335990548998819
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 200,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.17277099999999992,
+            "rmse_c": 0.29178016317940464
+          },
+          "last_value": {
+            "mae_c": 0.4674584999999999,
+            "rmse_c": 0.7335990548998819
+          }
+        }
+      }
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+      "year": 2025,
+      "step_minutes": 60,
+      "consecutive_hidden_terms": 2,
+      "anchor_span_minutes": 180,
+      "eligible_blocks": 4766,
+      "tested_blocks": 200,
+      "first_hidden": "2025-01-01 15:00",
+      "last_hidden": "2025-12-31 13:00",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.3580584166666667,
+            "rmse_c": 0.5686560624377641
+          },
+          "last_value": {
+            "mae_c": 0.8597000000000001,
+            "rmse_c": 1.3982345321690492
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 400,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.3580584166666667,
+            "rmse_c": 0.5686560624377641
+          },
+          "last_value": {
+            "mae_c": 0.8597000000000001,
+            "rmse_c": 1.3982345321690492
+          }
+        }
+      }
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2025.csv",
+      "year": 2025,
+      "step_minutes": 60,
+      "consecutive_hidden_terms": 4,
+      "anchor_span_minutes": 300,
+      "eligible_blocks": 4614,
+      "tested_blocks": 200,
+      "first_hidden": "2025-01-01 14:00",
+      "last_hidden": "2025-12-30 08:00",
+      "blank_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.561712425,
+            "rmse_c": 0.9257458314529425
+          },
+          "last_value": {
+            "mae_c": 1.1644708750000001,
+            "rmse_c": 1.9143656648515455
+          }
+        }
+      },
+      "removed_rows": {
+        "model_step_minutes": 30,
+        "hidden_points": 800,
+        "estimated_points": 0,
+        "fully_restored_blocks": 0,
+        "points_with_past_calibration": 0,
+        "paired": {
+          "model": null,
+          "linear": null,
+          "last_value": null
+        },
+        "all_hidden": {
+          "linear": {
+            "mae_c": 0.561712425,
+            "rmse_c": 0.9257458314529425
+          },
+          "last_value": {
+            "mae_c": 1.1644708750000001,
+            "rmse_c": 1.9143656648515455
+          }
+        }
+      }
+    }
+  ]
+}

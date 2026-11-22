@@ -220,35 +220,33 @@ async function runViewport(browser, viewport) {
       assert.equal(await page.locator('#compare-chart path.chart-baseline').count(),1);
       return {months:12,hours:24,temperatureCurves:2};
     });
-    await step('Загрузка нового JSON и отказ с указанием ошибочной строки',async()=>{
-      await page.getByRole('button',{name:'Метеожурнал',exact:true}).click();
-      await page.getByRole('link',{name:'Открыть файл станции'}).click();
-      const file=page.locator('#import-file');
-      await file.setInputFiles(path.join(exampleDir,'kr1-station-2024-04-01.json'));
-      await page.locator('#import-station').selectOption('kr1');
-      await page.locator('#import-param').selectOption('pressure_hpa');
-      await page.locator('#import-grain').selectOption('day');
-      await page.getByRole('button',{name:'Рассчитать'}).click();
-      const ledger=page.locator('#import-rows tr');
-      await ledger.first().waitFor({state:'visible'});
-      assert.equal(await ledger.count(),1);
-      const text=(await ledger.innerText()).replace(/[\u202f\u00a0]/g,'');
-      assert.match(text,/1005,45/);
-      assert.match(text,/38/);
-      assert.match(text,/19/);
-      const csv=await downloaded(page.locator('#import-download'),page);
-      assert.match(csv,/2024-04-01/);
+    await step('Загрузка JSON и сообщение о неверной дате',async()=>{
+      await page.goto(base+'/import');
+      const address=new URL(page.url());
+      assert.equal(address.pathname,'/files');
+      assert.equal(address.searchParams.get('source'),'upload');
+      await page.locator('#dropzone').waitFor({state:'visible'});
+      const endpoint=base+'/api/import?station=kr1&year=2024&param=pressure_hpa&grain=day';
+      const headers={'Content-Type':'application/json'};
+      const data=await fs.readFile(path.join(exampleDir,'kr1-station-2024-04-01.json'));
+      const response=await page.request.post(endpoint,{headers,data});
+      assert.equal(response.status(),200);
+      const imported=await response.json();
+      const [day]=imported.rows;
+      assert.deepEqual([imported.raw_rows,day.n,day.slots,day.flagged],[48,38,19,10]);
+      assert.equal(day.mean.toFixed(2),'1005.45');
+      const broken=await page.request.post(endpoint,{
+        headers,data:[{datetime:'2024-02-30 12:00',qc_flag:'',pressure_hpa:1005}]
+      });
+      assert.equal(broken.status(),400);
+      const {error}=await broken.json();
+      assert.match(error,/элемент 1/);
       await checkWidth(page);
       await page.screenshot({path:path.join(evidenceDir,'import-'+viewport.width+'.png')});
-      const bad=Buffer.from(JSON.stringify([{datetime:'2024-02-30 12:00',qc_flag:'',t_air:2}]));
-      await file.setInputFiles({name:'bad-date.json',mimeType:'application/json',buffer:bad});
-      await page.getByRole('button',{name:'Рассчитать'}).click();
-      await page.waitForFunction(()=>document.getElementById('import-status').textContent.includes('элемент 1'));
-      assert.equal(await page.locator('#import-result').isVisible(),false);
-      return {inputRows:48,accepted:38,usableHours:19,meanHpa:1005.45,navigation:await navigationContrast(page),invalidInput:await page.locator('#import-status').innerText()};
+      return {inputRows:imported.raw_rows,accepted:day.n,usableHours:day.slots,meanHpa:day.mean,invalidInput:error};
     });
     await step('Воспроизведение результата по ссылке после перезагрузки',async()=>{
-      await page.goto(base+'/?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month');
+      await page.goto(base+'/journal?station=kr2&param=pressure_hpa&start=2024-04-01&end=2024-04-30&grain=month');
       await tableSettled(page,'Апрель');
       assert.match(await page.locator('#ledger-table tbody tr').innerText(),/980,16/);
       await apply(page,{param:'t_air',station:'kr1',start:'2024-04-01',end:'2024-04-30'});
@@ -258,9 +256,9 @@ async function runViewport(browser, viewport) {
       await page.reload();
       await tableSettled(page,'Апрель');
       assert.match(await page.locator('#ledger-table tbody tr').innerText(),/28\s+из\s+30/);
-      await page.goto(base+'/?view=compare&group=hours');
+      await page.goto(base+'/journal?view=compare&group=hours');
       await page.waitForFunction(()=>document.querySelectorAll('#compare-table tbody tr').length===24);
-      await page.goto(base+'/?station=missing');
+      await page.goto(base+'/journal?station=missing');
       await page.waitForFunction(()=>document.getElementById('journal-status').dataset.error==='true');
       assert.equal(await page.locator('#export').getAttribute('href'),null);
       return {restoredParam:'t_air',restoredDays:28,hourlyRows:24,invalidLinkRejected:true};

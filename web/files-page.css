@@ -1,6 +1,7 @@
 .files-main a.btn,
 .files-dialog a.btn { text-decoration: none; }
 .files-main .heading-actions { flex-wrap: wrap; gap: 8px; }
+.files-main .source-mode { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 
 .files-main .file-message { margin-top: 6px; }
 .files-main .file-queue { container-type: inline-size; }
@@ -8,7 +9,21 @@
 .files-main .upload .btn { margin-top: 2px; }
 .files-main #upload-station-fields { margin-bottom: 13px; }
 .files-main .new-station-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.files-main .field input {
+.files-main .new-station-fields .field:has(#upload-station-label) { grid-column: 1/-1; }
+.files-main .station-param-fields {
+  grid-column: 1/-1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 0 0;
+  margin: 0;
+  border: 0;
+}
+.files-main .station-param-fields legend { font-weight: 750; }
+.files-main .station-param-fields label { display: flex; align-items: flex-start; gap: 5px; }
+.files-main .station-param-fields input { accent-color: var(--green); flex: none; }
+.files-main .field input,
+.files-dialog .field input {
   display: block;
   width: 100%;
   min-width: 0;
@@ -71,6 +86,12 @@
 .files-dialog .dialog-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
 .files-dialog .raw-sample { overflow: auto; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 11px; margin: 0; max-height: 32vh; }
 .files-dialog .raw-sample[hidden] { display: none; }
+.files-dialog .file-excel,
+.files-dialog .file-excel fieldset { display: grid; gap: 10px; }
+.files-dialog .file-excel fieldset { margin: 0; padding: 0; border: 0; }
+.files-dialog .new-station-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.files-dialog .excel-downloads { flex-wrap: wrap; }
+.files-dialog .excel-downloads[hidden] { display: none; }
 
 @container (max-width: 300px) {
   .files-main .queue-item { grid-template-columns: auto minmax(0, 1fr); align-items: start; }

@@ -77,8 +77,8 @@ class PostgreSQLChecks(unittest.TestCase):
         with patch.dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(self.source)):
             station = "kr1"
             if private_station:
-                for identifier, label in (("z-order", "Поле"), ("a-order", "Без загрузок")):
-                    register_station({"id": identifier, "label": label})
+                register_station({"id": "z-order", "label": "Поле", "profile": "kr1"})
+                register_station({"id": "a-order", "label": "Без загрузок"})
                 station = "z-order"
             original = b"\xef\xbb\xbfdatetime;t_air\r\n2024-04-01 00:00;2,5\r\n2024-04-01 00:30;3,25\r\n"
             uploaded = store.upload_file({"filename": "source.csv", "station": station}, original, "text/csv")
@@ -113,6 +113,9 @@ class PostgreSQLChecks(unittest.TestCase):
         self.assertEqual(self.destination.execute("SELECT original_csv FROM file_corrections").fetchone()[0], correction)
         stations = self.destination.execute("SELECT ordinal,id FROM registered_stations ORDER BY ordinal").fetchall()
         self.assertEqual(stations, [(3, "z-order"), (6, "a-order")])
+        profiles = self.destination.execute("SELECT passport FROM registered_stations ORDER BY ordinal").fetchall()
+        self.assertEqual(json.loads(profiles[0][0])["profile"], "kr1")
+        self.assertNotIn("profile", json.loads(profiles[1][0]))
         with self.assertRaisesRegex(MigrationError, "не пуста"):
             migrate(self.source, self.destination)
         self.assertEqual(self.destination.execute("SELECT COUNT(*) FROM files").fetchone()[0], 2)

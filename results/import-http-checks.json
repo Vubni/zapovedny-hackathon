@@ -1,5 +1,5 @@
 {
-  "page": "/import",
+  "page": "/files?source=upload",
   "example": {
     "file": "kr1-station-2024-04-01.json",
     "source_rows": 48,

@@ -7,29 +7,33 @@ import re
 import zlib
 from collections import Counter
 from datetime import date, datetime, timezone
+from hashlib import sha256
 from io import BytesIO, StringIO
 from itertools import groupby
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from analytics import PARAMS
 from build_data import LIMITS
-from external_fill import MAX_DAYS, MODELS, ZONES, apply_estimates
-from gap_fill import estimate_bounds, fill_settings, station_estimates
+from external_fill import (
+    MAX_DAYS, MODELS, apply_estimates, external_reference, external_warnings, reference_inputs, station_location, time_zone,
+)
+from gap_fill import VERIFICATION_LABELS, estimate_bounds, fill_settings, station_estimates, verification_history, verify_estimates
 from observations_db import connection
 from review_excel import (
     BAD, ESTIMATED, GOOD, _cell, _column, _header, _row, _sheet_open, _write_package,
 )
 from review_filter import (
     FILTERS, FILTER_LABELS, STAMP_PATTERN, checked_date, mark_hampel, mark_spikes, mark_stuck,
-    number, prepare, quality_metadata, quality_options, resolve_conflicts, uploaded_observations,
+    number, prepare, quality_metadata, quality_options, quality_profile, resolve_conflicts, uploaded_observations,
 )
 from review_upload import MAX_BYTES, SourceRow, csv_rows, read_upload
 from station_catalog import catalog
 
 MIME_TYPES = {
     ".csv": "text/csv; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 PRIMARY = {
@@ -38,10 +42,10 @@ PRIMARY = {
 }
 FILL_OPTIONS = [
     {"id": "none", "label": "Оставить пропуски", "description": "Сохраняем пропуски после проверки."},
-    {"id": "external", "label": "По данным метеосервисов",
-     "description": "ERA5 и MERRA-2 по району архива или координатам станции, до 31 суток. "
-                    "Нужно указать часовой пояс исходных сроков. Оценки помечаются отдельно."},
-    {"id": "model", "label": "По модели станции",
+    {"id": "external", "label": "Сверить с метеосервисами",
+     "description": "Справочные значения ERA5 и NASA POWER по координатам станции до 31 суток. "
+                    "При согласованности они могут скорректировать оценку модели станции."},
+    {"id": "model", "label": "Восстановить по данным станции",
      "description": "Короткие пропуски между измерениями восстанавливаются по соседним наблюдениям. "
                     "Поправка модели оценивается по данным до пропуска."},
 ]
@@ -99,12 +103,23 @@ def _summary(raw):
     summary = json.loads(raw)
     summary["settings"].update(quality_options(summary["settings"]))
     summary["settings"].update(fill_settings(summary["settings"]))
+    summary["settings"].setdefault("fill_start", None)
+    summary["settings"].setdefault("fill_end", None)
+    summary["settings"].setdefault("fill_params", [])
     return summary
+
+
+def _file_columns(row):
+    header = json.loads(row["columns"])
+    if isinstance(header, list):
+        return header, None
+    return header["fields"], header["provenance"]
 
 
 def _record(row):
     draft = _summary(row["draft_meta"])
     confirmed = _summary(row["confirmed_meta"])
+    fields, provenance = _file_columns(row)
     active = draft or confirmed
     status = "uploaded"
     if row["error"]:
@@ -115,15 +130,18 @@ def _record(row):
         status = "preview"
     elif row["version"]:
         status = "original"
-    return {
+    record = {
         "id": row["id"], "filename": row["filename"], "status": status, "error": row["error"],
         "station": active["settings"]["station"] if active else row["station"],
-        "params": _params(json.loads(row["columns"])),
+        "params": _params(fields),
         "start": row["start"], "end": row["end"], "rows": row["rows"],
         "created_at": row["created_at"], "updated_at": row["updated_at"],
         "version": row["version"], "settings": active["settings"] if active else None,
         "preview": draft, "confirmed": confirmed,
     }
+    if provenance is not None:
+        record["provenance"] = provenance
+    return record
 
 
 def list_files():
@@ -167,14 +185,19 @@ def upload_file(query, body, content_type):
     rows = 0
     try:
         if suffix not in MIME_TYPES:
-            raise ValueError("Поддерживаются таблицы CSV и XLSX.")
+            raise ValueError("Поддерживаются форматы CSV, XLSX и JSON.")
         records = read_upload(body, name, MIME_TYPES[suffix])
-        fields = list(records[0])
+        fields = (list(dict.fromkeys(key for record in records for key in record))
+                  if suffix == ".json" else list(records[0]))
         parameter = next(param for param in PARAMS if param in fields)
         dates = [item.time[:10] for item in uploaded_observations(records, name, parameter)]
         start, end = min(dates), max(dates)
         rows = len(records)
         source = _pack([(record.source_line, dict(record)) for record in records])
+    except json.JSONDecodeError as exc:
+        error = f"Не удалось прочитать JSON. Ошибка в строке {exc.lineno}, столбце {exc.colno}."
+    except RecursionError:
+        error = "Ожидается JSON-массив записей без вложенных объектов."
     except (ValueError, OverflowError) as exc:
         error = str(exc)
     identifier, now = uuid4().hex, _now()
@@ -189,7 +212,8 @@ def upload_file(query, body, content_type):
 
 
 def _settings(query, default_station, *, allow_legacy_buddy=False):
-    fields = ("station", "filters", "fill", "timezone", "subhour", "pressure_reference", "sources", "conflict_policy")
+    fields = ("station", "filters", "fill", "timezone", "subhour", "pressure_reference", "sources", "conflict_policy",
+              "fill_start", "fill_end", "fill_params")
     if any(key in query and not isinstance(query[key], str) for key in fields):
         raise ValueError("Настройки обработки должны быть текстовыми значениями.")
     station = _station(query.get("station") or default_station)
@@ -200,15 +224,26 @@ def _settings(query, default_station, *, allow_legacy_buddy=False):
     filters = [item for item in allowed if item in requested]
     filling = fill_settings(query)
     zone = query.get("timezone") or None
-    if zone is not None and zone not in ZONES:
-        raise ValueError("Укажите часовой пояс исходных сроков: UTC или МСК.")
+    if zone is not None:
+        time_zone(zone)
+    fill_start = fill_end = None
+    fill_params = []
+    if filling["fill_external"] or filling["fill_model"]:
+        fill_start, fill_end = query.get("fill_start") or None, query.get("fill_end") or None
+        if (fill_start is None) != (fill_end is None) or (
+            fill_start is not None and checked_date(fill_start) > checked_date(fill_end)
+        ):
+            raise ValueError("Укажите начало и конец периода заполнения в календарном порядке.")
+        requested_params = {item.strip() for item in query.get("fill_params", "").split(",") if item.strip()}
+        if requested_params - PARAMS.keys():
+            raise ValueError("Выберите поддерживаемые показатели для заполнения.")
+        fill_params = [param for param in PARAMS if param in requested_params]
     subhour = pressure_reference = None
     sources = []
     if filling["fill_external"]:
-        if not station["archive"] and station.get("location_precision") != "exact":
-            raise ValueError("Для внешней оценки укажите координаты в паспорте станции.")
+        station_location(station)
         if zone is None:
-            raise ValueError("Для внешней оценки укажите часовой пояс исходных сроков: UTC или МСК.")
+            time_zone(zone)
         subhour = query.get("subhour") or "skip"
         if subhour not in {"skip", "interpolate"}:
             raise ValueError("Выберите режим обработки минутных сроков.")
@@ -226,15 +261,14 @@ def _settings(query, default_station, *, allow_legacy_buddy=False):
         policy = "all"
     return {
         "station": station["id"], "filters": filters, **filling, "timezone": zone,
+        "fill_start": fill_start, "fill_end": fill_end, "fill_params": fill_params,
         "subhour": subhour, "pressure_reference": pressure_reference, "sources": sources,
         "conflict_policy": policy, **quality_options(query),
     }, station
 
 
 def _quality(records, name, parameter, settings, station):
-    profile = station.get("profile") or station["id"]
-    if profile not in {"kr1", "kr2", "ame60"}:
-        raise ValueError("Для станции не настроен профиль контроля качества.")
+    profile = quality_profile(station)
     rows = sorted(uploaded_observations(records, name, parameter), key=lambda row: row.stamp)
     bounds = settings["ranges"][parameter]
     thresholds = settings["thresholds"]
@@ -243,6 +277,11 @@ def _quality(records, name, parameter, settings, station):
     references, conflicts = prepare(rows, parameter, bounds, use_references=use_references)
     # Imports keep the original QC decision even when the number lies within our ranges.
     for row in rows:
+        previous = row.original.get("origin_decision")
+        origin = row.original.get("origin")
+        if isinstance(previous, str) and previous and isinstance(origin, str) and origin.startswith("confirmed:"):
+            row.note("previously_excluded", f"Ранее исключено при обработке файла: {previous}.", reject=True)
+            row.base_keep = False
         if row.base_keep and f"{parameter}:range" in row.flags:
             row.notes = [(code, text) for code, text in row.notes if code != "source_range_rechecked"]
             row.note("source_range", f"Исходный флаг {parameter}:range исключает значение.", reject=True)
@@ -264,34 +303,41 @@ def _quality(records, name, parameter, settings, station):
     return rows
 
 
-def _external_estimates(rows, parameter, settings, station, start, end):
-    report = {"param": parameter, "start": start.isoformat(), "end": end.isoformat(), "rows": rows}
+def _external_references(rows, parameter, settings, station, start, end, *, validate=False):
+    start_text, end_text = start.isoformat(), end.isoformat()
+    selected = [row for row in rows if start_text <= row["time"][:10] <= end_text]
+    report = {"param": parameter, "start": start_text, "end": end_text,
+              "rows": reference_inputs(selected, settings["subhour"], validate)}
     request = {
         "fill": "1", "timezone": settings["timezone"], "subhour": settings["subhour"],
         "pressure_reference": settings["pressure_reference"], "sources": ",".join(settings["sources"]),
+        **station_location(station),
     }
-    if station.get("location_precision") == "exact":
-        request.update(latitude=station["latitude"], longitude=station["longitude"])
     apply_estimates(report, request)
-    estimates = {}
+    references, observed_references = {}, {}
     first, last = rows[0]["time"], rows[-1]["time"]
-    lower, upper = estimate_bounds(parameter, settings.get("ranges"))
+    bounds = estimate_bounds(parameter, settings.get("ranges"))
+    outside_range = 0
     for row in report["rows"]:
-        value = row.get("estimate")
-        if value is None or not first <= row["time"] <= last or not lower <= value <= upper:
+        if not first <= row["time"] <= last:
             continue
-        source_values = [source["value"] for source in row["provenance"]["sources"]]
-        confidence = {"kind": "source_disagreement", "spread": round(max(source_values) - min(source_values), 4),
-                      "source_count": len(source_values), "unit": PARAMS[parameter][1]}
-        estimates[row["time"]] = {
-            "value": value, "method": "external", "source": row["estimate_sources"],
-            "confidence": confidence, "provenance": row["provenance"], "enters_working_graphs": True,
-        }
+        reference = external_reference(row, bounds)
+        if reference is None:
+            continue
+        if row.get("calibration_sample"):
+            observed_references[row["time"]] = reference
+            continue
+        outside_range += reference["value"] is not None and not reference["usable"]
+        references[row["time"]] = reference
     status = report["external"]
+    if outside_range:
+        status.setdefault("reason_counts", {})["outside_parameter_range"] = outside_range
     observed_times = {row["time"] for row in rows}
-    status.update(status="estimated" if estimates else "unavailable", estimated_count=len(estimates),
-                  synthetic_count=sum(stamp not in observed_times for stamp in estimates))
-    return estimates, status
+    comparable = {stamp for stamp, reference in references.items() if reference["value"] is not None}
+    status.update(status="reference" if comparable else "unavailable", estimated_count=0, reference_count=len(comparable),
+                  validation_reference_count=sum(item["usable"] for item in observed_references.values()),
+                  synthetic_count=sum(stamp not in observed_times for stamp in comparable))
+    return references, observed_references, status
 
 
 def _sample(sequence, limit):
@@ -313,10 +359,19 @@ def _point_indices(rows, estimates):
     return sorted(selected | set(_sample(range(len(rows)), POINT_BUDGET - len(selected))))
 
 
-def _record_point(row, marked, estimate):
+def _source_flags(row, parameter):
+    return ";".join(flag for flag in row.flags if flag == "dup_conflict" or flag.startswith(parameter + ":"))
+
+
+def _record_point(row, parameter, marked, estimate, reference, verification):
+    flags = _source_flags(row, parameter)
+    reasons = [description for _, description in row.notes]
+    if flags and not any(flags in reason for reason in reasons):
+        reasons.append(f"Исходный флаг: {flags}.")
     return {
         "time": row.time, "line": row.line, "value": row.value, "marked": marked,
-        "estimate": estimate, "reasons": [description for _, description in row.notes],
+        "estimate": estimate, "external_reference": reference, "verification": verification,
+        "qc_flag": flags, "reasons": reasons,
     }
 
 
@@ -326,7 +381,7 @@ def _review(source, fields, filename, settings, station, start, end):
     parameters = _params(supported & set(fields))
     omitted = _params((set(fields) & PARAMS.keys()) - supported)
     if omitted:
-        warnings.append("В профиле станции нет параметров: " + ", ".join(item["label"].lower() for item in omitted) + ".")
+        warnings.append("В паспорте станции нет параметров: " + ", ".join(item["label"].lower() for item in omitted) + ".")
     if not parameters:
         raise ValueError("В файле нет параметров выбранной станции.")
     declared = [item["id"] for item in parameters]
@@ -335,14 +390,26 @@ def _review(source, fields, filename, settings, station, start, end):
         if (lower, upper) != LIMITS[param]:
             label, unit = PARAMS[param]
             warnings.append(f"Рабочий диапазон · {label.lower()} · {lower}–{upper} {unit}.")
-    if settings["fill_external"] and (end - start).days >= MAX_DAYS:
-        raise ValueError(f"Для внешних источников выберите файл с периодом до {MAX_DAYS} суток.")
+    fill_start = checked_date(settings["fill_start"]) if settings["fill_start"] else start
+    fill_end = checked_date(settings["fill_end"]) if settings["fill_end"] else end
+    if fill_start < start or fill_end > end:
+        raise ValueError("Выберите период заполнения в пределах дат исходных наблюдений.")
+    fill_params = set(settings["fill_params"] or declared)
+    if fill_params - set(declared):
+        raise ValueError("Выбранный показатель для заполнения отсутствует в исходном ряду станции.")
+    if settings["fill_external"] and (fill_end - fill_start).days >= MAX_DAYS:
+        raise ValueError(f"Для внешних источников выберите период заполнения до {MAX_DAYS} суток.")
+    if settings["fill_external"] and station.get("location_precision") == "area":
+        label = station.get("location_label") or "район архива"
+        reference = station.get("location_reference")
+        detail = f" ({reference})" if reference else ""
+        warnings.append(f"Геопривязка внешних оценок приблизительная: {label}{detail}.")
     records = [SourceRow(values, line) for line, values in source]
     cooked = {}
     changes = []
     repeats = []
-    counts, points, models, external = {}, {}, {}, {}
-    totals = {"marked": 0, "filled": 0}
+    counts, points, models, external, external_references = {}, {}, {}, {}, {}
+    totals = {"marked": 0, "filled": 0, "references": 0}
     timeline = {}
     span = (end - start).days + 1
     bucket = max(1, (span + TIMELINE_BUDGET - 1) // TIMELINE_BUDGET)
@@ -361,6 +428,7 @@ def _review(source, fields, filename, settings, station, start, end):
         label = day.isoformat()
         return timeline.setdefault(label, {
             "time": label, "marked": 0, "filled": 0, "parameters": {}, "filled_parameters": {},
+            "references": 0, "reference_parameters": {},
         })
 
     originals = None
@@ -372,19 +440,30 @@ def _review(source, fields, filename, settings, station, start, end):
             for stamp in sorted(originals):
                 term(stamp)
                 bin_for(stamp)
+            for row in rows:
+                origin = row.original.get("origin")
+                if isinstance(origin, str) and origin.startswith("archive:") and "dup_conflict" in row.flags:
+                    term(row.time)["archived_conflict"] = True
 
-        estimates = {}
-        if settings["fill_external"] or settings["fill_model"]:
+        estimates, references, verifications = {}, {}, {}
+        if parameter in fill_params and (settings["fill_external"] or settings["fill_model"]):
             terms = [{"time": row.time, "keep": row.keep, "value": row.value, "conflict": row.conflict} for row in rows]
-            if settings["fill_external"]:
-                estimates, external[parameter] = _external_estimates(terms, parameter, settings, station, start, end)
             if settings["fill_model"]:
-                fallback, models[parameter] = station_estimates(
-                    terms, parameter, excluded=estimates, ranges=settings.get("ranges"),
+                estimates, models[parameter] = station_estimates(
+                    terms, parameter, ranges=settings.get("ranges"),
+                    period=(fill_start, fill_end),
                 )
-                estimates.update(fallback)
+            if settings["fill_external"]:
+                references, observed_refs, external[parameter] = _external_references(
+                    terms, parameter, settings, station, fill_start, fill_end, validate=bool(estimates),
+                )
+                history = verification_history(terms, observed_refs, parameter, settings.get("ranges"), settings["timezone"])
+                estimates, verifications = verify_estimates(estimates, references, parameter, history=history)
+                external[parameter]["validation_pair_count"] = len(history)
+                external[parameter]["adjusted_count"] = sum(item["method"] == "model_adjusted" for item in estimates.values())
+                external_references[parameter] = references
 
-        stat = {"marked": 0, "kept": 0, "missing": 0, "filled": len(estimates)}
+        stat = {"marked": 0, "kept": 0, "missing": 0, "filled": len(estimates), "references": 0}
         for row in rows:
             if row.keep:
                 target = term(row.time)
@@ -402,7 +481,8 @@ def _review(source, fields, filename, settings, station, start, end):
                 group["marked"] += 1
                 group["parameters"][parameter] = group["parameters"].get(parameter, 0) + 1
                 changes.append((row.time, row.line, parameter, row.original.get(parameter),
-                                [code for code, _ in row.notes]))
+                                [code for code, _ in row.notes], _source_flags(row, parameter),
+                                row.original.get("origin_decision")))
 
         for stamp, estimate in estimates.items():
             term(stamp, stamp not in originals)["estimates"][parameter] = estimate
@@ -410,23 +490,34 @@ def _review(source, fields, filename, settings, station, start, end):
             group["filled"] += 1
             filled_parameters = group["filled_parameters"]
             filled_parameters[parameter] = filled_parameters.get(parameter, 0) + 1
+        for stamp, reference in references.items():
+            if reference["value"] is not None:
+                group = bin_for(stamp)
+                group["references"] += 1
+                reference_parameters = group["reference_parameters"]
+                reference_parameters[parameter] = reference_parameters.get(parameter, 0) + 1
+                stat["references"] += 1
+        seen = estimates.keys() | references.keys()
         selected = [
-            _record_point(row, not row.keep and row.quality != "missing", estimates.get(row.time))
-            for row in (rows[index] for index in _point_indices(rows, estimates))
+            _record_point(row, parameter, not row.keep and row.quality != "missing", estimates.get(row.time),
+                          references.get(row.time), verifications.get(row.time))
+            for row in (rows[index] for index in _point_indices(rows, seen))
         ]
         synthetic = [
             {"time": stamp, "line": None, "value": None, "marked": False,
-             "estimate": estimate, "reasons": ["В исходном файле нет записи за этот срок."]}
-            for stamp, estimate in estimates.items() if stamp not in originals
+             "estimate": estimates.get(stamp), "external_reference": references.get(stamp),
+             "verification": verifications.get(stamp), "reasons": ["В исходном файле нет записи за этот срок."]}
+            for stamp in sorted(seen - originals)
         ]
         selected.extend(_sample(synthetic, POINT_BUDGET // 3))
         points[parameter] = sorted(selected, key=lambda item: item["time"])
         counts[parameter] = stat
         totals["marked"] += stat["marked"]
         totals["filled"] += stat["filled"]
+        totals["references"] += stat["references"]
 
-    if external and not any(status["estimated_count"] for status in external.values()):
-        warnings.append("Для выбранных пропусков не получены сопоставимые значения из двух внешних источников.")
+    for parameter, status in external.items():
+        warnings.extend(f"{PARAMS[parameter][0]} · {message}" for message in external_warnings(status))
     if models and not any(status["estimated_count"] or status.get("reason") == "no_remaining_gaps"
                           for status in models.values()):
         warnings.append("Модель станции не нашла коротких пропусков с пригодными соседними наблюдениями.")
@@ -436,15 +527,122 @@ def _review(source, fields, filename, settings, station, start, end):
     return {
         "params": parameters, "warnings": warnings, "stats": dict(totals, parameters=counts),
         "points": points, "timeline": [timeline[stamp] for stamp in sorted(timeline)], "timeline_days": bucket,
-        "model": models, "external": external, "rows": [cooked[stamp] for stamp in sorted(cooked)],
+        "model": models, "external": external, "external_references": external_references,
+        "rows": [cooked[stamp] for stamp in sorted(cooked)],
         "changes": changes, "repeats": repeats,
     }
 
 
 def _response(row, payload, summary):
     return {
-        key: value for key, value in payload.items() if key not in {"rows", "changes", "repeats", "manual_cells"}
+        key: value for key, value in payload.items() if key not in {"rows", "changes", "repeats", "manual_cells", "external_references"}
     } | {"file": _record(row), "id": row["id"], "revision": summary["revision"], "settings": summary["settings"]}
+
+
+def _draft_summary(settings, payload, created):
+    return {
+        "revision": uuid4().hex, "settings": settings, "stats": payload["stats"], "created_at": created,
+        "params": [param["id"] for param in payload["params"]],
+    }
+
+
+def _selection_files(db, scope):
+    if db is None:
+        return []
+    rows = db.execute(f'SELECT {FILE_COLUMNS} FROM files WHERE start=? AND "end"=?', (scope["start"], scope["end"]))
+    files = []
+    for row in rows:
+        _, provenance = _file_columns(row)
+        if provenance and all(provenance.get(key) == value for key, value in scope.items()):
+            files.append((row, provenance))
+    return files
+
+
+def _confirmed_input(file_id, version):
+    with _database() as db:
+        row = (db.execute("SELECT source, confirmed FROM files WHERE id=? AND version=?", (file_id, version)).fetchone()
+               if db is not None else None)
+    if row is None or row["source"] is None or row["confirmed"] is None:
+        return (), None
+    return _unpack(row["source"]), _unpack(row["confirmed"])
+
+
+def _legacy_selection_matches(db, row, parameter, records, payload):
+    source = db.execute("SELECT source FROM files WHERE id=?", (row["id"],)).fetchone()[0]
+    if source is None:
+        return False
+    origins = {item["datetime"]: item["origin"] for _, item in records}
+    incoming = [(item["datetime"], item.get(parameter), origins[item["datetime"]]) for item in payload["rows"]]
+    previous = [(item["datetime"], number(item.get(parameter))[0], item["origin"]) for _, item in _unpack(source)]
+    return previous == incoming
+
+
+def from_observations(query):
+    """Persist a raw snapshot and reopen it while the independent input stays the same."""
+    from observation_selection import selection_rows
+
+    station = _station(query.get("station"))
+    station_id, parameter = station["id"], query.get("param")
+    if not isinstance(parameter, str) or parameter not in {item["id"] for item in station["params"]}:
+        raise ValueError("Выберите показатель, который измеряет станция.")
+    first, last = checked_date(query.get("start")), checked_date(query.get("end"))
+    if first > last:
+        raise ValueError("Дата начала должна предшествовать дате окончания.")
+    start, end = first.isoformat(), last.isoformat()
+    scope = {"kind": "observations", "station": station_id, "param": parameter, "start": start, "end": end}
+    with _database() as db:
+        existing = _selection_files(db, scope)
+    previous_ids = {row["id"] for row, _ in existing}
+    confirmed = confirmed_rows(
+        station_id, start, end, include_observation_sources=True, exclude_file_ids=previous_ids,
+    )
+    records, source_counts = selection_rows(station_id, parameter, start, end, confirmed, _confirmed_input)
+    fields = ["datetime", parameter, "qc_flag", "origin", "origin_line", "origin_decision"]
+    output = StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(row for _, row in records)
+    body = output.getvalue().encode("utf-8-sig")
+    fingerprint = sha256(body).hexdigest()
+    for row, provenance in existing:
+        if provenance.get("fingerprint") == fingerprint:
+            return _record(row)
+
+    identifier = uuid5(NAMESPACE_URL, f"meteoarchive:observations:{station_id}:{parameter}:{start}:{end}:{fingerprint}").hex
+    filename = f"{station_id}-{parameter}-{start}-{end}-observations.csv"
+    settings, _ = _settings({"station": station_id}, station_id)
+    payload = _review(records, fields, filename, settings, station, first, last)
+    stats = payload["stats"]["parameters"][parameter]
+    provenance = {**scope, "fingerprint": fingerprint, "sources": source_counts,
+                  "measurements": sum(parameter in item for item in payload["rows"]),
+                  "empty": stats["missing"], "flagged": stats["marked"]}
+    created = _now()
+    summary = _draft_summary(settings, payload, created)
+    header = _dumps({"fields": fields, "provenance": provenance})
+    source, draft = _pack(records), _pack(payload)
+    with _database(write=True) as db:
+        for row, prior in _selection_files(db, scope):
+            if prior.get("fingerprint") == fingerprint:
+                return _record(row)
+            if "fingerprint" in prior or not _legacy_selection_matches(db, row, parameter, records, payload):
+                continue
+            # Only refresh the original, untouched automatic draft from the old export format.
+            if row["version"] or row["generation"] or not row["draft_meta"]:
+                return _record(row)
+            db.execute(
+                "UPDATE files SET original=?, source=?, columns=?, rows=?, updated_at=?, draft=?, draft_meta=?, "
+                "generation=generation+1 WHERE id=?",
+                (body, source, header, len(records), created, draft, _dumps(summary), row["id"]),
+            )
+            return _record(_lookup(db, {"id": row["id"]}))
+        db.execute(
+            'INSERT INTO files (id, filename, mime, original, source, columns, rows, start, "end", station, '
+            "created_at, updated_at, draft, draft_meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (id) DO NOTHING",
+            (identifier, filename, MIME_TYPES[".csv"], body, source, header, len(records),
+             start, end, station_id, created, created, draft, _dumps(summary)),
+        )
+        return _record(_lookup(db, {"id": identifier}))
 
 
 def preview_file(query):
@@ -457,13 +655,11 @@ def preview_file(query):
         generation = _lookup(db, query)["generation"] + 1
         db.execute("UPDATE files SET generation=?, draft=NULL, draft_meta=NULL WHERE id=?",
                    (generation, row["id"]))
-    payload = _review(_unpack(row["source"]), json.loads(row["columns"]), row["filename"], settings, station,
+    fields, _ = _file_columns(row)
+    payload = _review(_unpack(row["source"]), fields, row["filename"], settings, station,
                       checked_date(row["start"]), checked_date(row["end"]))
     created = _now()
-    summary = {
-        "revision": uuid4().hex, "settings": settings, "stats": payload["stats"], "created_at": created,
-        "params": [param["id"] for param in payload["params"]],
-    }
+    summary = _draft_summary(settings, payload, created)
     stored = _pack(payload)
     with _database(write=True) as db:
         result = db.execute(
@@ -568,6 +764,7 @@ def _manual_timeline(payload):
     fills = Counter()
     method_fills = Counter()
     method_synthetic = Counter()
+    adjusted_counts = Counter()
     for group in groups.values():
         group.update(filled=0, filled_parameters={}, manual=0, manual_parameters={})
 
@@ -584,6 +781,9 @@ def _manual_timeline(payload):
                 group["filled_parameters"][parameter] = group["filled_parameters"].get(parameter, 0) + 1
                 fills[parameter] += 1
                 method = estimate.get("method")
+                if method == "model_adjusted":
+                    adjusted_counts[parameter] += 1
+                    method = "model"
                 method_fills[method, parameter] += 1
                 method_synthetic[method, parameter] += row["synthetic"]
     for parameter, entries in payload["manual_cells"].items():
@@ -596,6 +796,9 @@ def _manual_timeline(payload):
     payload["stats"]["filled"] = sum(fills.values())
     for method in ("external", "model"):
         for parameter, status in payload.get(method, {}).items():
+            if method == "external" and "reference_count" in status:
+                status["adjusted_count"] = adjusted_counts[parameter]
+                continue
             count = method_fills[method, parameter]
             if status["status"] == "estimated" and not count:
                 status.update(status="unavailable", reason="replaced_manually")
@@ -607,7 +810,7 @@ def _manual_timeline(payload):
 def _manual_points(payload):
     edits = payload["manual_cells"]
     sampled = {param: dict(_sample(sorted(items.items()), POINT_BUDGET // 3)) for param, items in edits.items()}
-    audited = {(stamp, param): (line, value) for stamp, line, param, value, _ in payload["changes"]
+    audited = {(stamp, param): (line, value) for stamp, line, param, value, *_ in payload["changes"]
                if stamp in sampled.get(param, {})}
     for parameter, points in payload["points"].items():
         if parameter not in edits:
@@ -685,6 +888,15 @@ def corrected_file(query, body, content_type):
         return _response(_lookup(db, query), payload, summary)
 
 
+def _publication_entries(identifier, station, rows):
+    for row in rows:
+        if row.get("archived_conflict") and not any(parameter in row for parameter in row["declared"]):
+            if not row["estimates"]:
+                continue
+            row = dict(row, synthetic=True, declared=[])
+        yield identifier, station, row["datetime"], int(row["synthetic"]), _dumps(row)
+
+
 def confirm_file(query):
     revision = query.get("revision")
     if not revision:
@@ -704,10 +916,7 @@ def confirm_file(query):
     next_version = row["version"] + 1
     confirmed = dict(draft, version=next_version, confirmed_at=_now())
     station = settings["station"]
-    entries = [
-        (row["id"], station, item["datetime"], int(item["synthetic"]), _dumps(item))
-        for item in payload["rows"]
-    ]
+    entries = list(_publication_entries(row["id"], station, payload["rows"]))
     with _database(write=True) as db:
         current = _lookup(db, query)
         current_record = _record(current)
@@ -805,31 +1014,50 @@ def preview_excel(query):
         (row["datetime"], param, data)
         for row in rows for param, data in row["estimates"].items()
     ]
+    references = [(stamp, param, reference) for param, rows in payload.get("external_references", {}).items()
+                  for stamp, reference in rows.items()]
+    methods = {"model": "Модель станции", "model_adjusted": "Модель станции со сверкой",
+               "external": "Внешняя оценка (сохранённая версия)"}
     repeats = payload.get("repeats", [])
     workbook = BytesIO()
     with ZipFile(workbook, "w", ZIP_DEFLATED, compresslevel=4) as archive:
         names = ["Очищенные данные", "Исключённые ячейки", "Оценки"]
         if repeats:
             names.append("Повторы сроков")
+        if references:
+            names.append("Справочная сверка")
         names.append("Настройки контроля")
         _write_package(archive, names)
         tables = [
             ([("datetime", 22), *[(param, 18) for param in parameters]], working_rows(), len(rows)),
-            ([("Срок", 22), ("Строка источника", 18), ("Параметр", 18), ("Исходная ячейка", 23), ("Правила", 38)],
-             ([(time, 0), (line, 0), (param, 0), (value, BAD), (", ".join(codes), 0)]
-              for time, line, param, value, codes in changes), len(changes)),
-            ([("Срок", 22), ("Параметр", 18), ("Оценка", 18), ("Способ", 25), ("Источник", 48),
+            ([("Срок", 22), ("Строка источника", 18), ("Параметр", 18), ("Исходная ячейка", 23),
+              ("Правила", 38), ("Исходный флаг", 27), ("Причина прежнего исключения", 38)],
+             ([(time, 0), (line, 0), (param, 0), (value, BAD), (", ".join(codes), 0),
+               (metadata[0] if metadata else None, 0), (metadata[1] if len(metadata) > 1 else None, 0)]
+              for time, line, param, value, codes, *metadata in changes), len(changes)),
+            ([("Срок", 22), ("Параметр", 18), ("Итог", 18), ("Способ", 27), ("Источник", 48),
+              ("Оценка станции", 18), ("Поправка", 14), ("Решение сверки", 48),
               ("Валидация", 62), ("Происхождение оценки", 62)],
-             ([(time, 0), (param, 0), (estimate["value"], ESTIMATED),
-               ("По модели станции" if estimate.get("method") == "model" else "По данным метеосервисов", 0),
-               (estimate["source"], 0), (estimate["confidence"], 0), (estimate.get("provenance"), 0)]
-              for time, param, estimate in estimates), len(estimates)),
+             ([(time, 0), (param, 0), (estimate["value"], ESTIMATED), (methods.get(estimate.get("method")), 0),
+               (estimate["source"], 0), (estimate.get("local_value"), 0), (verification.get("delta"), 0),
+               (VERIFICATION_LABELS.get(verification.get("decision")), 0),
+               (estimate["confidence"], 0), (estimate.get("provenance"), 0)]
+              for time, param, estimate in estimates
+              for verification in [(estimate.get("provenance") or {}).get("verification") or {}]), len(estimates)),
         ]
         if repeats:
             tables.append((
                 [("Срок", 22), ("Строка источника", 18), ("Параметр", 18), ("Исходная ячейка", 23)],
                 ([(stamp, 0), (line, 0), (param, 0), (value, 0)] for stamp, line, param, value in repeats),
                 len(repeats),
+            ))
+        if references:
+            tables.append((
+                [("Срок", 22), ("Параметр", 18), ("Справочное значение", 21), ("Источник", 48),
+                 ("Сопоставимые данные", 25), ("Происхождение оценки", 62)],
+                ([(stamp, 0), (param, 0), (data["value"], 0), (data["source"], 0),
+                  ("Да" if data["usable"] else "Нет", 0), (data["provenance"], 0)]
+                 for stamp, param, data in sorted(references)), len(references),
             ))
         tables.append(_quality_settings_table(parameters, summary["settings"]))
         for index, (columns, data, count) in enumerate(tables, 1):
@@ -852,8 +1080,10 @@ def _legacy_params(db, file_id):
     return [item["id"] if isinstance(item, dict) else item for item in fields]
 
 
-def _merge_terms(db, stamp, candidates, legacy, temperature_calendars):
+def _merge_terms(db, stamp, candidates, legacy, temperature_calendars, include_observation_sources):
     merged = {"datetime": stamp, "synthetic": True, "declared": [], "estimates": {}}
+    if include_observation_sources:
+        merged["observation_sources"] = {}
     declared = set()
     for entry in candidates:
         term = json.loads(entry["data"])
@@ -874,6 +1104,8 @@ def _merge_terms(db, stamp, candidates, legacy, temperature_calendars):
             if param in declared:
                 continue
             declared.add(param)
+            if include_observation_sources:
+                merged["observation_sources"][param] = (entry["file_id"], entry["version"])
             if param in term:
                 merged[param] = term[param]
                 if param == "t_air" and temperature_calendars is not None:
@@ -888,22 +1120,25 @@ def _merge_terms(db, stamp, candidates, legacy, temperature_calendars):
     return merged
 
 
-def confirmed_rows(station_id, start, end, *, include_temperature_timezone=False):
+def confirmed_rows(station_id, start, end, *, include_temperature_timezone=False, include_observation_sources=False,
+                   exclude_file_ids=()):
     """Yield one row per time with the latest real declaration for each parameter."""
     first, last = _limits(start, end)
     with _database() as db:
         if db is None:
             return
+        fields = "p.time, p.data, p.file_id, f.version" if include_observation_sources else "p.time, p.data, p.file_id"
         records = db.execute(
-            "SELECT p.time, p.data, p.file_id FROM published p JOIN files f ON f.id=p.file_id "
+            f"SELECT {fields} FROM published p JOIN files f ON f.id=p.file_id "
             "WHERE p.station=? AND p.time BETWEEN ? AND ? "
             "ORDER BY p.time, p.synthetic, f.confirmed_order DESC",
             (station_id, first, last),
         )
         legacy = {}
         temperature_calendars = {} if include_temperature_timezone else None
-        for stamp, candidates in groupby(records, lambda row: row["time"]):
-            yield _merge_terms(db, stamp, candidates, legacy, temperature_calendars)
+        selected = (row for row in records if row["file_id"] not in exclude_file_ids) if exclude_file_ids else records
+        for stamp, candidates in groupby(selected, lambda row: row["time"]):
+            yield _merge_terms(db, stamp, candidates, legacy, temperature_calendars, include_observation_sources)
 
 
 def confirmed_days(station_id, start, end):

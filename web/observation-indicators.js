@@ -136,6 +136,7 @@ function displayValue(stat, metric, fallbackUnit) {
   const summary = node('span', '', 'observation-indicator__value');
   summary.append(node('strong', numbers.format(Math.abs(value) < 0.05 ? 0 : value)));
   if (unit) summary.append(node('span', unit, 'observation-indicator__unit'));
+  if (metric === 'mean' && Number.isInteger(stat.years)) summary.append(node('small', 'Лет в расчёте — ' + stat.years));
   const date = stat[`${metric}_day`];
   if (isDay(date)) summary.title = dayLabel(date);
   return summary;

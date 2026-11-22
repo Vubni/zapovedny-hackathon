@@ -24,6 +24,21 @@ except ImportError:
     Image = None
 
 
+ERA5_URL = "https://archive-api.open-meteo.com/v1/archive?hourly=temperature_2m&models=era5"
+MERRA2_URL = "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M&format=JSON"
+
+
+def reference(value, first, second):
+    return {
+        "value": value, "usable": True, "source": "ERA5 и MERRA-2",
+        "provenance": {
+            "time_utc": "2025-01-01T02:45:00+00:00", "unit": "°C",
+            "sources": [{"model": "ERA5", "value": first, "url": ERA5_URL},
+                        {"model": "MERRA-2", "value": second, "url": MERRA2_URL}],
+        },
+    }
+
+
 def fixture():
     fields = ["datetime", "t_air", "qc_flag", "метка"]
     example_path = "kr1/2025.csv"
@@ -39,19 +54,36 @@ def fixture():
         )
 
     summary = dict(n=2, slots=24, mean=0, min=-2, max=2, valid=False, reason="Пример покрытия")
-    return dict(
+    report = dict(
         station="kr1", param="t_air", start="2025-01-01", end="2025-01-01", fields=fields,
         rows=[
             observation(0, "000.00", 0, keep=True, official=True, line=17, label='=1+1'),
             observation(1, "-003.00", -3, keep=False, official=True, estimate=-2, line=18),
-            observation(2, "", None, keep=False, official=False, estimate=2, line=19),
+            observation(2, "", None, keep=False, official=False, line=19),
             observation(3, "", None, keep=False, official=False, estimate=3),
-            observation(4, "100", 100, keep=False, official=False, line=20),
+            observation(4, "100", 100, keep=False, official=False, estimate=35, line=20),
             observation(5, "", None, keep=False, official=False),
             observation(6, "7", 7, keep=True, official=True, estimate=41, line=21),
         ],
         summaries={"daily": [dict(day="2025-01-01", raw_n=5, working=summary, official=summary)]},
     )
+    report["rows"][1].update(
+        estimate_method="model_adjusted", local_estimate=-2.25, external_reference=reference(-1.25, -1.125, -1.375),
+        verification={
+            "decision": "adjusted", "delta": 0.25, "limits": {"max_delta": 0.5, "local_validation_mae": 0.4},
+            "calibration": {"accepted": True, "sample_count": 36, "minimum_sample_count": 20,
+                            "local_mae": 0.38, "adjusted_mae": 0.34, "local_rmse": 0.48, "adjusted_rmse": 0.44},
+        },
+        provenance={"kind": "station_model", "unit": "°C",
+                    "anchors": [{"time": "2025-01-01 00:00", "value": 0},
+                                {"time": "2025-01-01 02:00", "value": -4.5}]},
+    )
+    report["rows"][2].update(external_reference=reference(2, 1.125, 2.875),
+                             verification={"decision": "no_local_estimate", "delta": 0})
+    report["rows"][3].update(estimate_method="model")
+    report["rows"][4].update(estimate_method="external", estimate_sources="Метеосервисы из прежнего расчёта")
+    report["rows"][6].update(estimate_method="model")
+    return report
 
 
 def source_workbook(report):
@@ -82,7 +114,8 @@ def source_workbook(report):
 def invalid_observation(report):
     item = report["rows"][1]
     item.update(value=None, estimate=None, estimate_sources="", keep=False, official_keep=False,
-                reason_codes=["invalid_number"], official_status="flagged")
+                reason_codes=["invalid_number"], official_status="flagged", estimate_method=None,
+                local_estimate=None, provenance=None, external_reference=None, verification=None)
     item["original"]["t_air"] = "=1+1"
     return report
 
@@ -96,7 +129,7 @@ class ReviewExcelTest(unittest.TestCase):
             for name in package.namelist():
                 ElementTree.fromstring(package.read(name))
             records = ElementTree.fromstring(package.read("xl/worksheets/sheet2.xml"))
-            self.assertEqual(records.find("{*}autoFilter").attrib["ref"], "A1:Q8")
+            self.assertEqual(records.find("{*}autoFilter").attrib["ref"], "A1:V8")
             self.assertEqual(len(records.findall("{*}conditionalFormatting")), 2)
             styles = ElementTree.fromstring(package.read("xl/styles.xml"))
             differential = styles.findall("{*}dxfs/{*}dxf/{*}fill/{*}patternFill/{*}bgColor")
@@ -114,12 +147,6 @@ class ReviewExcelTest(unittest.TestCase):
     @unittest.skipUnless(load_workbook, "requires the development openpyxl package")
     def test_independent_reader(self):
         sample = fixture()
-        minute = sample["rows"][2]
-        minute["estimate_sources"] = "ERA5 + MERRA-2 · интерполяция к минуте"
-        minute["provenance"] = {
-            "time_utc": "2025-01-01T02:45:00+00:00", "unit": "°C",
-            "sources": [{"model": "ERA5", "value": 1.125}, {"model": "MERRA-2", "value": 2.875}],
-        }
         xlsx = export_xlsx(sample)
         workbook = load_workbook(BytesIO(xlsx))
         self.addCleanup(workbook.close)
@@ -127,15 +154,28 @@ class ReviewExcelTest(unittest.TestCase):
         sheet = workbook["Сроки"]
         self.assertEqual(sheet.freeze_panes, "C2")
         self.assertEqual([c.value for c in sheet[1]][-4:], fixture()["fields"])
-        self.assertEqual(sheet["Q2"].value, "=1+1")
-        self.assertEqual(sheet["Q2"].data_type, "s")
-        self.assertEqual(sheet["O2"].value, "000.00")
+        self.assertEqual(sheet["V2"].value, "=1+1")
+        self.assertEqual(sheet["V2"].data_type, "s")
+        self.assertEqual(sheet["T2"].value, "000.00")
         self.assertEqual(sheet["L2"].value, 17)
         self.assertEqual(sheet["K2"].value, "kr1/2025.csv")
         self.assertEqual(sheet["M2"].value, "Причина архивного контроля")
         self.assertEqual(sheet["I3"].value, -2)
-        self.assertEqual(sheet["J4"].value, "ERA5 + MERRA-2 · интерполяция к минуте\n"
-                         "Срок UTC: 2025-01-01T02:45:00+00:00\nERA5: 1.125 °C\nMERRA-2: 2.875 °C")
+        self.assertEqual(sheet["J4"].value, "Срок UTC: 2025-01-01T02:45:00+00:00\n"
+                         "ERA5: 1.125 °C\nMERRA-2: 2.875 °C\nСреднее для сверки: 2 °C")
+        self.assertIsNone(sheet["I4"].value)
+        self.assertEqual(sheet["N3"].value, -2.25)
+        self.assertEqual(sheet["O3"].value, 0.25)
+        self.assertIn("ограниченная поправка", sheet["P3"].value)
+        self.assertIn("MAE 0.38 → 0.34", sheet["P3"].value)
+        self.assertIn("нет локальной оценки", sheet["P4"].value)
+        self.assertIn("2025-01-01 00:00", sheet["Q3"].value)
+        self.assertEqual(sheet["R6"].value, 35)
+        self.assertIn("прежней версии", sheet["P6"].value)
+        self.assertIsNone(sheet["I6"].value)
+        targets = {cell.hyperlink.target for column in workbook["Управление"].iter_cols()
+                   for cell in column if cell.hyperlink}
+        self.assertEqual(targets, {ERA5_URL, MERRA2_URL})
         self.assertEqual(sheet["G3"].value, "Оставить")
         self.assertIn("Флаги архива", sheet["H3"].value)
         self.assertTrue(sheet["C3"].value.startswith("=IF("))
@@ -146,9 +186,37 @@ class ReviewExcelTest(unittest.TestCase):
         cached = load_workbook(BytesIO(xlsx), data_only=True)
         self.addCleanup(cached.close)
         self.assert_results(cached, [
-            (0, "Исходное"), (-2, "Внешняя оценка"), (2, "Внешняя оценка"),
-            (3, "Внешняя оценка"), (None, "Исключено"), (None, "Нет значения"), (7, "Исходное"),
-        ], [2, 3, 1, 2])
+            (0, "Исходное"), (-2, "Модель с поправкой"), (None, "Нет значения"),
+            (3, "Оценка модели"), (None, "Исключено"), (None, "Нет значения"), (7, "Исходное"),
+        ], [2, 2, 1, 3])
+
+    @unittest.skipUnless(load_workbook, "requires the development openpyxl package")
+    def test_inconsistent_adjustment_falls_back_to_local(self):
+        for candidate in ({"estimate": -1.25}, {"verification": {
+            "decision": "adjusted", "delta": 0.25, "limits": {"max_delta": 0.5},
+        }}):
+            with self.subTest(candidate=candidate):
+                sample = fixture()
+                sample["rows"][1].update(candidate)
+                workbook = load_workbook(BytesIO(export_xlsx(sample)), data_only=True)
+                self.addCleanup(workbook.close)
+                self.assertEqual(workbook["Сроки"]["C3"].value, -2.25)
+                self.assertEqual(workbook["Сроки"]["D3"].value, "Оценка модели")
+
+    @unittest.skipUnless(load_workbook, "requires the development openpyxl package")
+    def test_rejected_correction_preserves_local_value_and_explains_validation(self):
+        sample = fixture()
+        rejected = sample["rows"][1]
+        rejected.update(estimate=-2.25, estimate_method="model")
+        rejected["verification"].update(decision="unvalidated_correction", delta=0)
+        rejected["verification"]["calibration"].update(accepted=False, adjusted_mae=0.51)
+        workbook = load_workbook(BytesIO(export_xlsx(sample)), data_only=True)
+        self.addCleanup(workbook.close)
+        rows = workbook["Сроки"]
+        self.assertEqual(rows["C3"].value, -2.25)
+        self.assertEqual(rows["O3"].value, 0)
+        self.assertIn("не прошла проверку", rows["P3"].value)
+        self.assertIn("MAE 0.38 → 0.51", rows["P3"].value)
 
     def assert_results(self, workbook, expected, counts):
         self.assertEqual(
@@ -172,7 +240,7 @@ class ReviewExcelTest(unittest.TestCase):
                 workbook = load_workbook(BytesIO(xlsx))
                 workbook["Управление"]["B5"] = mode
                 for index, decision in {
-                    2: "Исключить", 3: "Вернуть исходное", 4: "Вернуть исходное",
+                    2: "Исключить", 3: "Вернуть исходное", 4: "Использовать оценку",
                     5: "Использовать оценку", 6: "Использовать оценку", 8: "Использовать оценку",
                 }.items():
                     workbook["Сроки"][f"B{index}"] = decision
@@ -188,8 +256,8 @@ class ReviewExcelTest(unittest.TestCase):
                 ([(None, "Исключено")] * 7, [0, 0, 7, 7]),
                 ([(0, "Исходное"), (-3, "Исходное"), (None, "Нет значения"), (None, "Нет значения"),
                   (100, "Исходное"), (None, "Нет значения"), (7, "Исходное")], [4, 0, 0, 3]),
-                ([(None, "Исключено"), (-3, "Исходное"), (None, "Нет исходного"), (3, "Внешняя оценка"),
-                  (None, "Нет оценки"), (None, "Нет значения"), (41, "Внешняя оценка")], [1, 2, 1, 4]),
+                ([(None, "Исключено"), (-3, "Исходное"), (None, "Нет оценки"), (3, "Оценка модели"),
+                  (None, "Нет оценки"), (None, "Нет значения"), (41, "Оценка модели")], [1, 2, 1, 4]),
             ]
             for path, mode, (expected, counts) in zip(inputs, modes, requirements):
                 with self.subTest(mode=mode):
@@ -197,8 +265,8 @@ class ReviewExcelTest(unittest.TestCase):
                     try:
                         self.assert_results(recalculated, expected, counts)
                         self.assertEqual(recalculated["Сроки"]["B3"].value, "Вернуть исходное")
-                        self.assertEqual(recalculated["Сроки"]["Q2"].data_type, "s")
-                        self.assertEqual(recalculated["Сроки"]["Q2"].value, "=1+1")
+                        self.assertEqual(recalculated["Сроки"]["V2"].data_type, "s")
+                        self.assertEqual(recalculated["Сроки"]["V2"].value, "=1+1")
                     finally:
                         recalculated.close()
 
@@ -224,6 +292,9 @@ class OriginalWorkbookTest(unittest.TestCase):
         self.assertEqual(workbook["Сроки 2"]["E3"].value, "=1+1")
         self.assertEqual(workbook["Сроки 2"]["E3"].data_type, "s")
         self.assertEqual(workbook["Сроки 2"]["F3"].value, "Исключить")
+        targets = {cell.hyperlink.target for column in workbook["Управление 2"].iter_cols()
+                   for cell in column if cell.hyperlink}
+        self.assertEqual(targets, {ERA5_URL, MERRA2_URL})
         self.assertEqual(workbook["Управление"]["A2"].value, "=2+2")
         self.assertIn("'Управление 2'!$B$5", workbook["Сроки 2"]["D2"].value)
         source_sheet = workbook["Сроки"]

@@ -40,6 +40,8 @@ async function assertDates(page, start, end) {
 
 async function dragHandle(page, name, offset) {
   const slider = page.getByRole("slider", { name });
+  await page.evaluate(() => document.fonts.ready);
+  await slider.scrollIntoViewIfNeeded();
   const value = Number(await slider.inputValue());
   const maximum = Number(await slider.getAttribute("max"));
   const rendered = await slider.boundingBox();
@@ -57,20 +59,7 @@ async function dragHandle(page, name, offset) {
 async function screenshot(page, name, fullPage = false) {
   if (process.env.METEO_CAPTURE_OBSERVATIONS !== "1") return;
   await fs.mkdir(screenshotDir, { recursive: true });
-  if (name === "observations") {
-    try {
-      const embedded = await page.locator("#station-overview iframe").elementHandle({timeout: 2500});
-      const provider = await embedded.contentFrame();
-      await provider.waitForFunction(() => {
-        const tiles = performance.getEntriesByType("resource")
-          .filter(resource => resource.name.includes("renderer-tiles.maps.yandex"));
-        return tiles.length >= 4 && performance.now() - Math.max(...tiles.map(tile => tile.responseEnd)) > 700;
-      }, null, {timeout: 12000});
-    } catch {
-      await page.locator('#station-overview [data-provider="local"]').click();
-      await page.locator("#station-overview .station-map-marker").first().waitFor();
-    }
-  }
+  if (name === "observations") await page.locator("#station-overview .station-map-marker").first().waitFor();
   await page.screenshot({ path: path.join(screenshotDir, `${name}.png`), fullPage });
 }
 
@@ -78,6 +67,9 @@ async function selectStations(page, choices, capture) {
   await page.getByRole("button", { name: "Выбрать станции" }).click();
   const picker = page.locator("dialog.station-picker");
   await picker.waitFor();
+  await picker.locator(".station-map-viewport").waitFor();
+  assert.equal(await picker.locator(".station-map-frame").count(), 1);
+  assert.ok(await picker.locator(".station-map-marker").count() > 0);
   for (const [name, checked] of choices) {
     await picker.getByRole("checkbox", { name }).setChecked(checked);
   }
@@ -104,6 +96,7 @@ async function checkDisjointIntervals(browser) {
   const show = () => page.getByRole("button", { name: "Показать", exact: true }).click();
   const chartId = "air";
   const first = "2025-07-01:2025-07-03";
+  const adjacent = "2025-07-04:2025-07-06";
   const second = "2025-07-08:2025-07-10";
   try {
     await page.goto(`${root}/?stations=kr1&start=2025-07-01&end=2025-07-03&grain=day&charts=air`);
@@ -111,10 +104,22 @@ async function checkDisjointIntervals(browser) {
     const fields = page.locator('[data-date-interval] input[type="date"]');
     for (const field of await fields.all()) assert.ok((await field.boundingBox()).width >= 125);
 
-    await page.getByRole("button", { name: "Добавить интервал", exact: true }).click();
+    const add = () => page.getByRole("button", { name: "Добавить интервал", exact: true }).click();
+    const added = await getChart(page, add, { chart: chartId, intervals: `${first},${adjacent}` });
+    assert.deepEqual(added.intervals.map(interval => interval.id), [first, adjacent]);
     const row = page.getByRole("group", { name: "Интервал 2", exact: true });
+    assert.equal(await row.getByLabel("Дата с", { exact: true }).inputValue(), "2025-07-04");
+    assert.equal(await row.getByLabel("Дата по", { exact: true }).inputValue(), "2025-07-06");
+    assert.equal(await page.locator("[data-interval]").inputValue(), "1");
+    assert.ok(await page.getByRole("slider", { name: "Начало диапазона" }).isEnabled());
+    await row.getByLabel("Дата по", { exact: true }).fill("");
     await show();
     await page.getByText("Интервал 2. Введите обе даты.", { exact: true }).waitFor();
+    await row.getByLabel("Дата по", { exact: true }).fill("2025-07-06");
+    await row.getByLabel("Дата с", { exact: true }).fill("2025-07-03");
+    await show();
+    await page.getByText("Интервалы 1 и 2 пересекаются. Укажите даты без общих дней.", { exact: true }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get("intervals"), `${first},${adjacent}`);
     await row.getByLabel("Дата с", { exact: true }).fill("2025-07-08");
     await row.getByLabel("Дата по", { exact: true }).fill("2025-07-07");
     await page.getByText("Интервал 2. Дата начала должна быть раньше даты окончания или совпадать с ней.", { exact: true }).waitFor();
@@ -159,13 +164,17 @@ async function checkDisjointIntervals(browser) {
     await page.getByRole("button", { name: "Убрать интервал 2", exact: true }).click();
     await assertDates(page, "2025-07-01", "2025-07-03");
     assert.equal(new URL(page.url()).searchParams.has("intervals"), false);
-    await page.getByRole("button", { name: "Добавить интервал", exact: true }).click();
-    await row.getByLabel("Дата с", { exact: true }).fill("2025-07-04");
+    await getChart(page, add, { chart: chartId, intervals: `${first},${adjacent}` });
     await row.getByLabel("Дата по", { exact: true }).fill("2025-07-05");
-    await show();
-    await page.getByText("Смежные и пересекающиеся интервалы объединены.", { exact: true }).waitFor();
-    await assertDates(page, "2025-07-01", "2025-07-05");
-    assert.equal(await page.locator("[data-date-interval]").count(), 1);
+    const updated = `${first},2025-07-04:2025-07-05`;
+    await getChart(page, show, { chart: chartId, intervals: updated });
+    await page.getByRole("button", { name: "Открыть меню", exact: true }).click();
+    await page.getByRole("link", { name: "Прогноз", exact: true }).click();
+    await page.goBack();
+    await hasPlot(page, chartId);
+    assert.equal(new URL(page.url()).searchParams.get("intervals"), updated);
+    assert.equal(await page.locator("[data-date-interval]").count(), 2);
+    assert.equal(await row.getByLabel("Дата с", { exact: true }).inputValue(), "2025-07-04");
     await page.getByRole("button", { name: "Сбросить даты", exact: true }).click();
     await assertDates(page, originalStart, originalEnd);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
@@ -190,6 +199,11 @@ async function run() {
     await assertDates(page, originalStart, originalEnd);
     assert.equal(await page.locator("[data-observation-chart]").count(), 1);
     assert.equal(await page.getByRole("link", { name: "Наблюдения", exact: true }).getAttribute("aria-current"), "page");
+    const stationOverview = page.locator("#station-overview");
+    await stationOverview.locator(".station-map-marker").first().waitFor();
+    await stationOverview.locator("[data-selected-stations]").waitFor();
+    await stationOverview.locator("[data-other-stations]").waitFor();
+    assert.equal(await stationOverview.locator("iframe").count(), 0);
     await screenshot(page, "observations");
     await dragHandle(page, "Начало диапазона", -65);
     assert.ok((await page.getByLabel("Дата с", { exact: true }).inputValue()) < originalStart);
@@ -287,11 +301,9 @@ async function run() {
 
     await chart(page, "temp_diurnal").locator('[data-chart-action="hide"]').click();
     assert.equal(await chart(page, "temp_diurnal").count(), 0);
-    await page.getByRole("link", { name: "Журнал наблюдений", exact: true }).click();
-    await page.waitForURL("**/journal");
-    await page.getByRole("link", { name: "Переходы через 0 °C" }).waitFor();
-    await page.getByRole("link", { name: "Календарь температуры по годам" }).waitFor();
-    await page.locator('a[href^="/api/export/latest-five"]').waitFor();
+    assert.equal(await page.getByRole("link", { name: "Журнал наблюдений", exact: true }).count(), 0);
+    await page.getByRole("link", { name: "Прогноз", exact: true }).click();
+    await page.waitForURL("**/forecast");
     await page.goBack();
     await hasPlot(page, "air");
     await assertDates(page, "2025-01-01", "2025-12-31");
@@ -327,7 +339,7 @@ async function run() {
     await freshPage.close();
     await checkDisjointIntervals(browser);
     assert.deepEqual(pageErrors, []);
-    console.log("Наблюдения: стартовые данные, диапазон 2005–2015, АМЕ-60, ползунки мышью и клавиатурой, пустой выбор, сравнение, режимы, экспорт, ссылки журнала, общий URL, отдельные интервалы и объединение соседних дат, 390 и 320 px.");
+    console.log("Наблюдения: карта, архив 2005–2015, ползунки мышью и клавиатурой, сравнение, экспорт, навигация, общий URL, сохранение соседних интервалов и проверка пересечений, 390 и 320 px.");
   } finally {
     await browser.close();
   }

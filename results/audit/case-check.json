@@ -1,0 +1,220 @@
+{
+  "case": {
+    "file": "docs/case-2-weather.pdf",
+    "sha256": "d46abc57db344fb1d6cfbb7558a47900d852e54f8c4985625b50f1807603e0ef",
+    "pages_read": [
+      1,
+      2,
+      3
+    ]
+  },
+  "archive": {
+    "sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+    "raw_rows": 874560,
+    "comparison": {
+      "station_monthly": {
+        "calculated_rows": 456,
+        "database_keys": 456,
+        "different_rows": 0,
+        "missing_rows": 0
+      },
+      "monthly": {
+        "calculated_rows": 3456,
+        "database_keys": 3456,
+        "different_rows": 0,
+        "missing_rows": 0
+      },
+      "daily": {
+        "calculated_rows": 105196,
+        "database_keys": 105196,
+        "different_rows": 0,
+        "missing_rows": 0
+      }
+    },
+    "official_station_months_matched": 420
+  },
+  "quality": {
+    "conflict_times": 36,
+    "conflict_rows": 72,
+    "example_conflict_file_lines": [
+      8802,
+      8803
+    ],
+    "kr1_2024_04_02_pressure_flagged": 48,
+    "same_date_air_admitted": 48,
+    "ame60_2018_off_grid_times": 4909
+  },
+  "daily_threshold_examples": {
+    "ame60": [
+      {
+        "day": "1999-01-01",
+        "slots": 71,
+        "n": 71,
+        "valid": false
+      },
+      {
+        "day": "1994-02-18",
+        "slots": 72,
+        "n": 72,
+        "valid": true
+      }
+    ],
+    "kr2": [
+      {
+        "fixture": "synthetic",
+        "slots": 17,
+        "n": 34,
+        "valid": false
+      },
+      {
+        "day": "2025-05-20",
+        "slots": 18,
+        "n": 18,
+        "valid": true
+      }
+    ]
+  },
+  "sokol_all_readings_mean": {
+    "day": "2024-01-04",
+    "distinct_hours": 24,
+    "eligible_readings": 47,
+    "measured_mean": -24.675744680851064,
+    "equally_weighted_hour_mean": -24.628125
+  },
+  "monthly_boundaries": [
+    {
+      "incomplete_days": 10,
+      "longest_gap": 4,
+      "valid": true
+    },
+    {
+      "incomplete_days": 10,
+      "longest_gap": 5,
+      "valid": false
+    },
+    {
+      "incomplete_days": 11,
+      "longest_gap": 4,
+      "valid": false
+    }
+  ],
+  "full_decades_february_2024": [
+    [
+      "2024-02-01",
+      "2024-02-10",
+      true
+    ],
+    [
+      "2024-02-11",
+      "2024-02-20",
+      true
+    ],
+    [
+      "2024-02-21",
+      "2024-02-29",
+      true
+    ]
+  ],
+  "partial_decades_suppressed": 2,
+  "pressure_2024": {
+    "station_comparison": [
+      {
+        "station": "kr1",
+        "valid_days": 334,
+        "valid_months": 11,
+        "station_valid_days": 363,
+        "station_valid_months": 12
+      },
+      {
+        "station": "kr2",
+        "valid_days": 366,
+        "valid_months": 12,
+        "station_valid_days": 366,
+        "station_valid_months": 12
+      }
+    ],
+    "kr1_flags": 1362,
+    "kr1_april_pressure_mean": null,
+    "kr1_april_air_mean": 7.612257521661504
+  },
+  "ame60_wind_non_null_rose_points": {
+    "1998": {
+      "modern": 0,
+      "togu": 0,
+      "semenov": 0
+    },
+    "2021": {
+      "modern": 0,
+      "togu": 0,
+      "semenov": 0
+    }
+  },
+  "station_trends": {
+    "ame60": {
+      "first": "1992",
+      "last": "2021",
+      "trend_months": 254,
+      "slope": 0.05697468241302926
+    },
+    "kr1": {
+      "first": "2022",
+      "last": "2025",
+      "trend_months": 24,
+      "slope": 0.5804749798648093
+    },
+    "kr2": {
+      "first": "2022",
+      "last": "2025",
+      "trend_months": 6,
+      "slope": 0.9075787073140015
+    }
+  },
+  "anomalies": {
+    "baseline_years": "1992-2006",
+    "previous_all_seasons_baseline": 4.855439579483044,
+    "previous_all_seasons_year_count": 11,
+    "calendar_results": [
+      {
+        "month": "2010-01",
+        "baseline": -6.0042184386352035,
+        "years": 6,
+        "anomaly": -9.193391330898447
+      },
+      {
+        "month": "2010-06",
+        "baseline": 14.579351521723854,
+        "years": 9,
+        "anomaly": 2.1880095893872564
+      }
+    ],
+    "ame60_1999_2005_observed_summary_years": 4
+  },
+  "clearing_field_2025": {
+    "common_days": 361,
+    "common_hour_pairs": 8498,
+    "verified_months": 12,
+    "verified_hours": 24,
+    "january_kr2_minus_kr1": 0.18532258064516127
+  },
+  "confirmed_estimates": {
+    "day": "2026-05-15",
+    "factual_mean": null,
+    "working_mean": 2.875,
+    "estimated_cells": {
+      "model": 2
+    },
+    "factual_eligible_days": 1,
+    "factual_measurements_in_eligible_days": 24
+  },
+  "external_reference_import": {
+    "transport": "local saved provider responses (no live request)",
+    "sources": 2,
+    "reference_c": 6.0,
+    "filled": 0,
+    "public_valid_days": 0,
+    "public_series_roles": [
+      "mean"
+    ]
+  },
+  "verification": "Прямые проверки расчётного контура. Пересчёт исходного архива независим от построителя SQLite."
+}

@@ -5,8 +5,8 @@ import sys
 from email.message import Message
 from http import HTTPStatus
 
-from admin_auth import OperatorAuth
-from server import ROOT, Routes, ready
+from request_origin import configured_origin
+from server import Routes, ready
 
 DEFAULT_PORT = 8766
 REQUEST_LIMIT = 17 * 1024 * 1024
@@ -14,7 +14,6 @@ LOGGER = logging.getLogger("meteo.http")
 REQUEST_HEADERS = {
     "Host": "HTTP_HOST",
     "Origin": "HTTP_ORIGIN",
-    "Cookie": "HTTP_COOKIE",
     "Sec-Fetch-Site": "HTTP_SEC_FETCH_SITE",
     "Content-Length": "CONTENT_LENGTH",
     "Content-Type": "CONTENT_TYPE",
@@ -23,13 +22,14 @@ REQUEST_HEADERS = {
 
 
 class WSGIRequest(Routes):
-    def __init__(self, environ, start_response, auth, port):
+    def __init__(self, environ, start_response, port, public_origin):
         self.command = environ["REQUEST_METHOD"]
         self.route = environ.get("PATH_INFO") or "/"
         self.cache_path = self.route
         self.query_string = environ.get("QUERY_STRING", "")
         self.local_port = port
-        self.operator_auth = auth
+        self.request_scheme = environ["wsgi.url_scheme"]
+        self.public_origin = public_origin
         self.headers = Message()
         for header, key in REQUEST_HEADERS.items():
             value = environ.get(key)
@@ -51,9 +51,9 @@ class WSGIRequest(Routes):
         LOGGER.error(message, *args)
 
 
-def make_application(auth, port):
+def make_application(port=DEFAULT_PORT, public_origin=None):
     def application(environ, start_response):
-        request = WSGIRequest(environ, start_response, auth, port)
+        request = WSGIRequest(environ, start_response, port, public_origin)
         if request.command == "GET":
             request.do_GET()
         elif request.command == "POST":
@@ -78,16 +78,16 @@ def main():
         sys.exit("METEO_PORT должен быть целым числом от 1 до 65535.")
 
     try:
-        auth = OperatorAuth.from_environment(ROOT)
-    except (OSError, ValueError) as error:
-        sys.exit(f"Не удалось настроить вход оператора. {error}")
+        public_origin = configured_origin()
+    except ValueError as error:
+        sys.exit(f"Некорректный METEO_PUBLIC_ORIGIN. {error}")
     ready()
     try:
         initialize()
     except Exception as error:
         sys.exit(f"Не удалось открыть хранилище наблюдений ({type(error).__name__}).")
 
-    serve(make_application(auth, port), host="0.0.0.0", port=port, threads=4,
+    serve(make_application(port, public_origin), host="0.0.0.0", port=port, threads=4,
           max_request_body_size=REQUEST_LIMIT, max_request_header_size=64 * 1024,
           channel_timeout=30, cleanup_interval=10,
           trusted_proxy=None, clear_untrusted_proxy_headers=True)

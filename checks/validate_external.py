@@ -76,7 +76,8 @@ def references(station, hours):
 def predictions(zone):
     # В оператор оценки не передаются ни исходные замеры, ни их производные.
     query = {"fill": "1", "timezone": zone}
-    result = external_fill.apply_estimates({"start": START, "end": END, "param": "t_air", "rows": []}, query)
+    result = external_fill.apply_estimates({"start": START, "end": END, "param": "t_air", "rows": []}, query,
+                                           allow_snapshot=True)
     if any(source["mode"] != "snapshot" for source in result["external"]["sources"]):
         raise RuntimeError("Для проверки требуются сохранённые ответы источников")
     predicted = {}

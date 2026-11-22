@@ -1,0 +1,36 @@
+[
+  {
+    "width": 1280,
+    "localRaster": {
+      "status": 200,
+      "mime": "image/webp"
+    },
+    "nationalRaster": {
+      "status": 200,
+      "mime": "image/webp"
+    },
+    "archiveReference": [
+      56.46431,
+      32.97029
+    ],
+    "markerCount": 3,
+    "outerRequests": []
+  },
+  {
+    "width": 390,
+    "localRaster": {
+      "status": 200,
+      "mime": "image/webp"
+    },
+    "nationalRaster": {
+      "status": 200,
+      "mime": "image/webp"
+    },
+    "archiveReference": [
+      56.46431,
+      32.97029
+    ],
+    "markerCount": 3,
+    "outerRequests": []
+  }
+]

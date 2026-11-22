@@ -235,13 +235,19 @@ def _annotate_source(sheet_xml, column, lines, names, dxfs):
     return sheet.result()
 
 
+def _sheet_relationships(member):
+    folder, name = posixpath.split(member)
+    return posixpath.join(folder, "_rels", name + ".rels")
+
+
 def _next_part(parts):
     index = 1
-    while f"xl/worksheets/meteoAudit{index}.xml" in parts:
+    while True:
+        member = f"xl/worksheets/meteoAudit{index}.xml"
+        if member not in parts and _sheet_relationships(member) not in parts:
+            parts.add(member)
+            return member
         index += 1
-    member = f"xl/worksheets/meteoAudit{index}.xml"
-    parts.add(member)
-    return member
 
 
 def _attach(original, audit, sheet_member, report, output):
@@ -292,6 +298,7 @@ def _attach(original, audit, sheet_member, report, output):
 
     tabs = ET.fromstring(audit.read(WORKBOOK)).find(MAIN + "sheets")
     names = {tab.attrib["name"]: _unique(tab.attrib["name"], tab_names, 31) for tab in tabs}
+    audit_parts = set(audit.namelist())
     next_id = max(int(tab.attrib["sheetId"]) for tab in source_tabs) + 1
     for number, tab in enumerate(tabs, start=1):
         base = tab.attrib["name"]
@@ -301,8 +308,12 @@ def _attach(original, audit, sheet_member, report, output):
         added_tabs.append(_element("sheet", MAIN_NS, None, name=name, sheetId=next_id,
                                    **{"xmlns:r": REL_NS, "r:id": link_id}))
         next_id += 1
-        source = audit.read(f"xl/worksheets/sheet{number}.xml")
+        audit_member = f"xl/worksheets/sheet{number}.xml"
+        source = audit.read(audit_member)
         patches[member] = _update_audit_sheet(source, cell_offset, dxf_offset, names, guide=base == GUIDE)
+        audit_links = _sheet_relationships(audit_member)
+        if audit_links in audit_parts:
+            patches[_sheet_relationships(member)] = audit.read(audit_links)
 
     source = Document(workbook_xml)
     source.append(source.get("sheets"), b"".join(added_tabs))

@@ -9,16 +9,7 @@ button{cursor:pointer}
 button:focus-visible,select:focus-visible,input:focus-visible,svg [tabindex]:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 svg{vertical-align:middle}
 button[aria-disabled=true]{cursor:default}
-.side{position:fixed;inset:0 auto 0 0;width:224px;padding:27px 20px 28px;background:var(--side);color:var(--side-text);display:flex;flex-direction:column;z-index:5}
-.brand{display:flex;align-items:center;gap:11px;background:transparent;border:0;color:inherit;padding:0;font-size:17px;font-weight:800;text-align:left}
-.nav-label{margin:52px 0 12px;color:var(--side-mute);text-transform:uppercase;font-size:11px;font-weight:800;letter-spacing:.08em}
-.nav{display:grid;gap:5px}
-.nav a{display:flex;width:100%;align-items:center;gap:11px;padding:0 12px;height:44px;background:none;color:inherit;border:0;border-radius:8px;font-size:13px;font-weight:750;text-align:left;white-space:nowrap}
-.nav a svg{color:#d2f197;flex:none}
-.nav a:hover,.nav a[aria-current=page]{background:var(--side-active)}
-.side-footer{margin-top:auto;border-top:1px solid var(--side-active);padding-top:12px;font-size:12px;color:var(--side-mute);display:grid;gap:5px}
-.side-footer strong{color:var(--side-text);font-weight:650}
-main{margin-left:224px;padding:25px 32px 40px;max-width:1740px;min-height:100vh}
+main{margin-left:var(--archive-sidebar-offset);padding:25px 32px 40px;max-width:1740px;min-height:100vh}
 main>section,.stack{display:grid;gap:19px}
 .breadcrumb{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--mute)}
 .breadcrumb strong,.breadcrumb svg{color:var(--green)}
@@ -160,8 +151,8 @@ td.numeric,th.numeric{text-align:right;font-variant-numeric:tabular-nums}
 .small{font-size:11px}
 footer{font-size:11px;color:var(--mute)}
 a{color:var(--dark);text-underline-offset:3px}
-@media(max-width:1120px){main{padding-inline:24px}.side{width:194px;padding-inline:15px}main{margin-left:194px}.split{grid-template-columns:minmax(0,1fr) minmax(245px,.42fr)}.card{padding-inline:17px}.heatgrid{grid-template-columns:118px repeat(12,minmax(30px,1fr))}}
-@media(max-width:900px){.side{width:66px;padding:18px 10px}.side .nav-label,.side .side-footer,.side .brand span:last-child,.side .nav span{display:none}.nav{margin-top:27px}.nav a{justify-content:center;padding:0}.brand{margin:auto auto 0}.side .brand{margin:0 auto}main{margin-left:66px;padding:18px}.fields,.thirds{grid-template-columns:repeat(2,minmax(0,1fr))}.half,.split{grid-template-columns:minmax(0,1fr)}.heatgrid{grid-template-columns:92px repeat(12,minmax(25px,1fr))}h1{font-size:36px}.weather-cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1120px){main{padding-inline:24px}.split{grid-template-columns:minmax(0,1fr) minmax(245px,.42fr)}.card{padding-inline:17px}.heatgrid{grid-template-columns:118px repeat(12,minmax(30px,1fr))}}
+@media(max-width:900px){main{padding:18px}.fields,.thirds{grid-template-columns:repeat(2,minmax(0,1fr))}.half,.split{grid-template-columns:minmax(0,1fr)}.heatgrid{grid-template-columns:92px repeat(12,minmax(25px,1fr))}h1{font-size:36px}.weather-cards{grid-template-columns:repeat(2,1fr)}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation-duration:0s!important;transition-duration:0s!important}}
 @media print{.side,.dialog,.btn,.icon-btn{display:none!important}main{margin:0;padding:0}.card{break-inside:avoid}}
 .dash-toolbar{padding-block:18px}
@@ -240,23 +231,6 @@ button:disabled{cursor:default;opacity:.56}
 @media(max-width:1150px){.dash-controls{grid-template-columns:1fr}.date-controls{grid-template-columns:repeat(2,minmax(0,1fr)) auto auto}.queue-item{grid-template-columns:auto minmax(0,1fr)}.queue-item .btn{grid-column:2;justify-self:start}}
 @media(max-width:730px){.date-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-modes a{margin-left:0}.board-title{align-items:flex-start}.file-context{align-items:flex-start;flex-direction:column}.publish-bar{gap:10px;align-items:flex-start;flex-direction:column}}
 
-/* Navigation uses real links so the three workspaces also open in a new tab. */
-.side a { text-decoration: none; }
-.side a:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
-.side .nav a { box-sizing: border-box; }
-.skip-archive { position: fixed; top: 8px; left: 8px; z-index: 30; padding: 8px 14px; transform: translateY(-160%); background: white; color: var(--dark); }
-.skip-archive:focus { transform: none; }
 @media (max-width: 660px) {
-  .side { position: static; width: 100%; padding: 12px 14px 8px; gap: 10px; }
-  .side .brand { margin: 0; font-size: 15px; }
-  .side .brand span:last-child,.side .nav span { display: inline; }
-
-  .side .nav { display: flex; margin: 0; gap: 4px; }
-  .side .nav a { width: auto; height: 36px; padding-inline: 9px; gap: 5px; font-size: 12px; }
-  .side .nav a svg { width: 15px; }
   main { margin: 0; padding: 16px 12px 28px; }
-}
-@media (max-width: 350px) {
-  .side .nav { flex-wrap: wrap; }
-  .side .nav a { padding-inline: 3px; font-size: 11px; }
 }

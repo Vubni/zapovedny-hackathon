@@ -52,10 +52,13 @@ def get(port, path, **params):
 
 
 def verify(port):
-    _, document = get(port, "/import")
-    _, script = get(port, "/import.js")
-    assert b'id="import-form"' in document and b'href="/"' in document
-    assert b'/api/import?' in script
+    for address in ("/import", "/import.html"):
+        status, headers, _ = request(port, address)
+        assert (status, headers.get("Location")) == (303, "/files?source=upload")
+    _, document = get(port, headers["Location"])
+    assert b'/files-page.js' in document
+    _, script = get(port, "/files-page.js")
+    assert b'filesUrl("upload"' in script
 
     headers, sample = get(port, "/api/import/example")
     assert sample == IMPORT_EXAMPLE.read_bytes()
@@ -110,7 +113,7 @@ def verify(port):
     bad_mime = post(port, sample, mime="text/plain", status=415)["error"]
 
     return {
-        "page": "/import",
+        "page": "/files?source=upload",
         "example": {"file": IMPORT_EXAMPLE.name, "source_rows": preview["raw_rows"], **first},
         "csv": {"name": preview["filename"], "mean_cell": imported_csv[0]["Среднее"]},
         "official_csv": {"member": member, "matched_months": len(imported["rows"]),

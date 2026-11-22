@@ -1,13 +1,179 @@
-.side[data-archive-nav] .reserve-logo { display: block; flex: 0 0 auto; width: 100px; height: 100px; object-fit: contain; }
-
-.side[data-archive-nav] .brand { flex-direction: column; align-items: flex-start; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid #405749; letter-spacing: -.02em; }
-.side[data-archive-nav] .nav { margin-top: 18px; }
-@media (min-width: 661px) and (max-width: 900px) {
-  .side[data-archive-nav] .brand { width: 100%; align-items: center; }
-  .side[data-archive-nav] .reserve-logo { width: 46px; height: 46px; }
+:root {
+  --archive-sidebar-width: 224px;
+  --archive-sidebar-offset: var(--archive-sidebar-width);
 }
+
+[data-archive-nav] {
+  --sidebar-bg: #172c23;
+  --sidebar-active: #284438;
+  --sidebar-text: #e6eee6;
+  --sidebar-accent: #d2f197;
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 5;
+  width: var(--archive-sidebar-width);
+  padding: 12px 13px 20px;
+  overflow: auto;
+  color: var(--sidebar-text);
+  background: var(--sidebar-bg);
+  font: 600 14px/1.45 Manrope, "Avenir Next", Arial, sans-serif;
+}
+
+[data-archive-nav] [hidden] { display: none; }
+
+.archive-sidebar-head {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  padding: 35px 0 16px;
+}
+
+[data-archive-nav] .archive-sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0 3px;
+  color: var(--sidebar-text);
+  text-align: center;
+  text-decoration: none;
+}
+
+[data-archive-nav] .reserve-logo {
+  display: block;
+  flex: none;
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+}
+
+[data-archive-nav] .archive-sidebar-name {
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+.archive-sidebar-name > span { white-space: nowrap; }
+
+.archive-sidebar-toggle {
+  position: absolute;
+  inset: 0 0 auto auto;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--sidebar-accent);
+  background: var(--sidebar-bg);
+  cursor: pointer;
+}
+
+.archive-sidebar-links {
+  display: grid;
+  gap: 4px;
+  padding-top: 13px;
+  border-top: 1px solid #405749;
+}
+
+[data-archive-nav] .archive-sidebar-links a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 43px;
+  height: auto;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: var(--sidebar-text);
+  background: var(--sidebar-bg);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.archive-sidebar-links a svg { flex: none; color: var(--sidebar-accent); }
+
+.archive-sidebar-toggle:hover,
+[data-archive-nav] .archive-sidebar-links a:is(:hover, [aria-current="page"]) {
+  background: var(--sidebar-active);
+}
+
+[data-archive-nav] :is(a, button):focus-visible {
+  outline: 2px solid var(--sidebar-accent);
+  outline-offset: 2px;
+}
+
+[data-archive-nav][data-layout="rail"] { padding-inline: 10px; }
+[data-layout="rail"] .archive-sidebar-toggle { right: 50%; transform: translateX(50%); }
+[data-layout="rail"] .archive-sidebar-head { padding-bottom: 12px; }
+[data-archive-nav][data-layout="rail"] .reserve-logo { width: 39px; height: 39px; }
+[data-layout="rail"] :is(.archive-sidebar-name, .archive-sidebar-links a span) { display: none; }
+[data-archive-nav][data-layout="rail"] .archive-sidebar-links a { justify-content: center; padding-inline: 0; }
+
+.archive-sidebar-resize {
+  position: absolute;
+  inset: 5px 0 5px auto;
+  display: grid;
+  width: 14px;
+  align-items: center;
+  justify-items: start;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.archive-sidebar-resize::before {
+  width: 2px;
+  height: 34px;
+  margin-inline-start: 10px;
+  border-radius: 1px;
+  background: #95b5a0;
+  content: "";
+}
+
+.archive-sidebar-resize:is(:hover, :focus-visible)::before,
+[data-archive-resizing] .archive-sidebar-resize::before {
+  width: 3px;
+  height: 42px;
+  background: var(--sidebar-accent);
+}
+
+.archive-sidebar-resize:focus-visible { outline: 2px solid var(--sidebar-accent); outline-offset: -3px; }
+[data-archive-resizing], [data-archive-resizing] * { user-select: none; cursor: col-resize; }
+
+.skip-archive {
+  position: fixed;
+  z-index: 30;
+  top: 8px;
+  left: 8px;
+  padding: 8px 14px;
+  transform: translateY(-160%);
+  background: white;
+  color: #20563b;
+}
+.skip-archive:focus { transform: none; }
+
 @media (max-width: 660px) {
-  .side[data-archive-nav] .brand { flex-direction: row; align-items: center; gap: 12px; padding: 0; border: 0; }
-  .side[data-archive-nav] .reserve-logo { width: 54px; height: 54px; }
-  .side[data-archive-nav] .nav { margin-top: 0; }
+  :root { --archive-sidebar-offset: 0px; }
+  [data-archive-nav] { position: static; width: 100%; padding: 6px 10px; overflow: visible; }
+  .archive-sidebar-head {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    padding: 0;
+  }
+  [data-archive-nav] .archive-sidebar-brand { grid-column: 2; flex-direction: row; min-width: 0; }
+  [data-archive-nav] .reserve-logo { width: 42px; height: 42px; }
+  [data-archive-nav] .archive-sidebar-name { max-width: 154px; }
+  .archive-sidebar-toggle { position: static; grid-column: 3; width: 44px; height: 44px; }
+  .archive-sidebar-links { margin-top: 5px; padding: 6px 0 3px; }
+  [data-archive-nav] .archive-sidebar-links a { min-height: 44px; padding-inline: 10px; }
+}
+
+@media print {
+  [data-archive-nav], .skip-archive { display: none; }
+  :root { --archive-sidebar-offset: 0px; }
 }

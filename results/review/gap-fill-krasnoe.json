@@ -1,0 +1,493 @@
+{
+  "parameter": "t_air",
+  "from": "2024-04-01",
+  "through": "2024-04-30",
+  "archive_sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
+  "input_archive_timezone_confirmed": false,
+  "sources": [
+    {
+      "id": "era5",
+      "url": "https://archive-api.open-meteo.com/v1/archive?latitude=56.46431&longitude=32.97029&start_date=2024-03-31&end_date=2024-05-01&hourly=temperature_2m%2Crelative_humidity_2m%2Csurface_pressure&timezone=GMT&models=era5",
+      "requested_point": [
+        56.46431,
+        32.97029
+      ],
+      "retrieved_utc": "2026-11-22T13:07:16.215844+00:00",
+      "status": 200,
+      "bytes": 25347,
+      "sha256": "854a898f5639e7eba217871839d9f472b3a44ee01b720c47407bfd4f004ec5dc",
+      "filename": "era5-krasnoe-april-2024.json",
+      "returned_grid": {
+        "latitude": 56.5,
+        "longitude": 33.0,
+        "elevation_m": 243.0
+      },
+      "model": "ERA5"
+    },
+    {
+      "id": "merra2",
+      "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CPS&community=SB&longitude=32.97029&latitude=56.46431&start=20240331&end=20240501&format=JSON&time-standard=UTC",
+      "requested_point": [
+        56.46431,
+        32.97029
+      ],
+      "retrieved_utc": "2026-11-22T13:07:16.216208+00:00",
+      "status": 200,
+      "bytes": 43704,
+      "sha256": "176533ad2a86bc29d10105d5518f49129e025c406e6fe11859a9f0cc5999f093",
+      "filename": "merra2-krasnoe-april-2024.json",
+      "returned_grid": {
+        "latitude": 56.464,
+        "longitude": 32.97,
+        "elevation_m": 237.92
+      },
+      "model": "MERRA-2"
+    }
+  ],
+  "stations": [
+    {
+      "station": "kr1",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr1_2024.csv",
+      "model_step_minutes": 30,
+      "first_hidden": "2024-04-01 07:02",
+      "last_hidden": "2024-04-30 21:36",
+      "scenarios": [
+        {
+          "timezone_hypothesis": "UTC",
+          "subhour_mode": "skip",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 0,
+          "local": {
+            "mae_c": 0.28834999999999994,
+            "rmse_c": 0.47408668774813745
+          },
+          "ungated": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "external_unavailable": 200
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.28834999999999994,
+              "rmse_c": 0.47408668774813745
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "external_unavailable": 200
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.28834999999999994,
+              "rmse_c": 0.47408668774813745
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 0,
+          "historical_comparable_errors": 0,
+          "candidates_with_minimum_previous_pairs": 0,
+          "prefix_check_hidden_timestamp": null,
+          "external_reference_only": null
+        },
+        {
+          "timezone_hypothesis": "UTC",
+          "subhour_mode": "interpolate",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 200,
+          "local": {
+            "mae_c": 0.28834999999999994,
+            "rmse_c": 0.47408668774813745
+          },
+          "ungated": {
+            "corrected_points": 76,
+            "decision_counts": {
+              "local_departure": 50,
+              "providers_disagree": 74,
+              "adjusted": 76
+            },
+            "max_adjustment_c": 0.4005,
+            "with_correction": {
+              "mae_c": 0.31763949999999996,
+              "rmse_c": 0.4959994968243415
+            },
+            "corrected_point_outcomes": {
+              "closer": 18,
+              "farther": 58,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "local_departure": 50,
+              "providers_disagree": 74,
+              "unvalidated_correction": 76
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.28834999999999994,
+              "rmse_c": 0.47408668774813745
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 699,
+          "historical_comparable_errors": 143,
+          "candidates_with_minimum_previous_pairs": 59,
+          "prefix_check_hidden_timestamp": "2024-04-16 01:32",
+          "external_reference_only": {
+            "mae_c": 2.5006,
+            "rmse_c": 3.2153483481576304
+          }
+        },
+        {
+          "timezone_hypothesis": "Europe/Moscow",
+          "subhour_mode": "skip",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 0,
+          "local": {
+            "mae_c": 0.28834999999999994,
+            "rmse_c": 0.47408668774813745
+          },
+          "ungated": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "external_unavailable": 200
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.28834999999999994,
+              "rmse_c": 0.47408668774813745
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "external_unavailable": 200
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.28834999999999994,
+              "rmse_c": 0.47408668774813745
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 0,
+          "historical_comparable_errors": 0,
+          "candidates_with_minimum_previous_pairs": 0,
+          "prefix_check_hidden_timestamp": null,
+          "external_reference_only": null
+        },
+        {
+          "timezone_hypothesis": "Europe/Moscow",
+          "subhour_mode": "interpolate",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 200,
+          "local": {
+            "mae_c": 0.28834999999999994,
+            "rmse_c": 0.47408668774813745
+          },
+          "ungated": {
+            "corrected_points": 105,
+            "decision_counts": {
+              "local_departure": 28,
+              "adjusted": 105,
+              "providers_disagree": 65,
+              "already_equal": 2
+            },
+            "max_adjustment_c": 0.3862,
+            "with_correction": {
+              "mae_c": 0.3243439999999999,
+              "rmse_c": 0.4990846131669458
+            },
+            "corrected_point_outcomes": {
+              "closer": 28,
+              "farther": 77,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "local_departure": 28,
+              "unvalidated_correction": 105,
+              "providers_disagree": 65,
+              "already_equal": 2
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.28834999999999994,
+              "rmse_c": 0.47408668774813745
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 699,
+          "historical_comparable_errors": 168,
+          "candidates_with_minimum_previous_pairs": 92,
+          "prefix_check_hidden_timestamp": "2024-04-16 01:32",
+          "external_reference_only": {
+            "mae_c": 1.4554,
+            "rmse_c": 1.9695783812785923
+          }
+        }
+      ]
+    },
+    {
+      "station": "kr2",
+      "source_member": "meteo_clgz_hackathon/data/sokol_m1/kr2_2024.csv",
+      "model_step_minutes": 30,
+      "first_hidden": "2024-04-01 02:28",
+      "last_hidden": "2024-04-30 19:42",
+      "scenarios": [
+        {
+          "timezone_hypothesis": "UTC",
+          "subhour_mode": "skip",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 2,
+          "local": {
+            "mae_c": 0.20550000000000002,
+            "rmse_c": 0.304640566898107
+          },
+          "ungated": {
+            "corrected_points": 2,
+            "decision_counts": {
+              "external_unavailable": 198,
+              "adjusted": 2
+            },
+            "max_adjustment_c": 0.1286,
+            "with_correction": {
+              "mae_c": 0.20612399999999997,
+              "rmse_c": 0.3049503516967967
+            },
+            "corrected_point_outcomes": {
+              "closer": 1,
+              "farther": 1,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "external_unavailable": 198,
+              "unvalidated_correction": 2
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.20550000000000002,
+              "rmse_c": 0.304640566898107
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 21,
+          "historical_comparable_errors": 10,
+          "candidates_with_minimum_previous_pairs": 0,
+          "prefix_check_hidden_timestamp": "2024-04-15 03:00",
+          "external_reference_only": {
+            "mae_c": 0.3550000000000002,
+            "rmse_c": 0.4552471856036016
+          }
+        },
+        {
+          "timezone_hypothesis": "UTC",
+          "subhour_mode": "interpolate",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 200,
+          "local": {
+            "mae_c": 0.20550000000000002,
+            "rmse_c": 0.304640566898107
+          },
+          "ungated": {
+            "corrected_points": 78,
+            "decision_counts": {
+              "providers_disagree": 73,
+              "local_departure": 49,
+              "adjusted": 78
+            },
+            "max_adjustment_c": 0.3429,
+            "with_correction": {
+              "mae_c": 0.2303155,
+              "rmse_c": 0.31932177446895155
+            },
+            "corrected_point_outcomes": {
+              "closer": 19,
+              "farther": 59,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "providers_disagree": 73,
+              "local_departure": 49,
+              "unvalidated_correction": 78
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.20550000000000002,
+              "rmse_c": 0.304640566898107
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 713,
+          "historical_comparable_errors": 131,
+          "candidates_with_minimum_previous_pairs": 65,
+          "prefix_check_hidden_timestamp": "2024-04-16 10:43",
+          "external_reference_only": {
+            "mae_c": 2.3666,
+            "rmse_c": 3.2016220888793234
+          }
+        },
+        {
+          "timezone_hypothesis": "Europe/Moscow",
+          "subhour_mode": "skip",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 2,
+          "local": {
+            "mae_c": 0.20550000000000002,
+            "rmse_c": 0.304640566898107
+          },
+          "ungated": {
+            "corrected_points": 2,
+            "decision_counts": {
+              "external_unavailable": 198,
+              "adjusted": 2
+            },
+            "max_adjustment_c": 0.1286,
+            "with_correction": {
+              "mae_c": 0.20668699999999998,
+              "rmse_c": 0.3052040989239823
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 2,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "external_unavailable": 198,
+              "unvalidated_correction": 2
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.20550000000000002,
+              "rmse_c": 0.304640566898107
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 21,
+          "historical_comparable_errors": 14,
+          "candidates_with_minimum_previous_pairs": 0,
+          "prefix_check_hidden_timestamp": "2024-04-15 03:00",
+          "external_reference_only": {
+            "mae_c": 0.7900000000000007,
+            "rmse_c": 0.8348652585896725
+          }
+        },
+        {
+          "timezone_hypothesis": "Europe/Moscow",
+          "subhour_mode": "interpolate",
+          "hidden_points": 200,
+          "local_estimates": 200,
+          "available_external_references": 200,
+          "local": {
+            "mae_c": 0.20550000000000002,
+            "rmse_c": 0.304640566898107
+          },
+          "ungated": {
+            "corrected_points": 108,
+            "decision_counts": {
+              "providers_disagree": 78,
+              "insufficient_local_validation": 1,
+              "adjusted": 108,
+              "local_departure": 13
+            },
+            "max_adjustment_c": 0.2963,
+            "with_correction": {
+              "mae_c": 0.2247835,
+              "rmse_c": 0.3115069593925631
+            },
+            "corrected_point_outcomes": {
+              "closer": 36,
+              "farther": 72,
+              "equal": 0
+            }
+          },
+          "prior_validation": {
+            "corrected_points": 0,
+            "decision_counts": {
+              "providers_disagree": 78,
+              "insufficient_local_validation": 1,
+              "unvalidated_correction": 108,
+              "local_departure": 13
+            },
+            "max_adjustment_c": 0,
+            "with_correction": {
+              "mae_c": 0.20550000000000002,
+              "rmse_c": 0.304640566898107
+            },
+            "corrected_point_outcomes": {
+              "closer": 0,
+              "farther": 0,
+              "equal": 0
+            }
+          },
+          "validation_reference_count": 713,
+          "historical_comparable_errors": 205,
+          "candidates_with_minimum_previous_pairs": 95,
+          "prefix_check_hidden_timestamp": "2024-04-16 10:43",
+          "external_reference_only": {
+            "mae_c": 1.16905,
+            "rmse_c": 1.550671951123125
+          }
+        }
+      ]
+    }
+  ]
+}

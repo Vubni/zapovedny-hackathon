@@ -9,12 +9,15 @@ const readline = require("node:readline");
 const bootstrap = `
 import json
 import sys
-from checks.test_observation_workflow import SERVER
+from http.server import ThreadingHTTPServer
+from server import Handler
 from station_catalog import register_station
 
 for station in json.loads(sys.argv[1]):
     register_station(station)
-exec(SERVER)
+with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as http:
+    print(http.server_port, flush=True)
+    http.serve_forever()
 `;
 
 async function withIsolatedMeteo(check, { stations = [] } = {}) {
@@ -25,7 +28,7 @@ async function withIsolatedMeteo(check, { stations = [] } = {}) {
     cwd: path.join(__dirname, ".."),
     env: {
       ...process.env, METEO_DATABASE_URL: "", METEO_OBSERVATION_DB: path.join(temporary, "observations.sqlite3"),
-      YANDEX_MAPS_BROWSER_KEY: "", PYTHONDONTWRITEBYTECODE: "1",
+      METEO_PUBLIC_ORIGIN: "", PYTHONDONTWRITEBYTECODE: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -53,7 +53,8 @@ export function mountTimeline(panel, onEdit) {
     for (const [input, date] of [[start, selected.start], [end, selected.end]]) {
       input.max = size;
       input.value = clamp(date - left, 0, size);
-      input.hidden = date < left || date > right || pending;
+      input.hidden = date < left || date > right;
+      input.disabled = pending;
       input.setAttribute('aria-valuetext', label(date));
     }
     prev.disabled = left <= first;
@@ -66,11 +67,14 @@ export function mountTimeline(panel, onEdit) {
       return mark;
     }));
   }
-  function edit(a, b, final) {
+  function availableSpan(a, b) {
     const before = periods[active - 1], after = periods[active + 1];
     const min = before ? before.end + 1 : first;
     const max = after ? after.start - 1 : last;
-    const newStart = clamp(a, min, max), newEnd = clamp(b, min, max);
+    return [clamp(a, min, max), clamp(b, min, max)];
+  }
+  function edit(a, b, final) {
+    const [newStart, newEnd] = availableSpan(a, b);
     selecting = true;
     try {
       onEdit(active, iso(newStart), iso(newEnd), final);
@@ -88,7 +92,13 @@ export function mountTimeline(panel, onEdit) {
     handle.addEventListener('change', () => move(true));
   }
   scope.addEventListener('change', () => { centerOnInterval(); render(); });
-  picker.addEventListener('change', () => { active = Number(picker.value); centerOnInterval(); render(); });
+  function selectInterval(index) {
+    active = index;
+    picker.value = String(index);
+    centerOnInterval();
+    render();
+  }
+  picker.addEventListener('change', () => selectInterval(Number(picker.value)));
   for (const [button, step] of [[prev,-1],[next,1]]) button.addEventListener('click', () => {
     windowAt((left + right) / 2 + step * Math.max(1, Math.round((right - left + 1) * .75))); render();
   });
@@ -105,17 +115,24 @@ export function mountTimeline(panel, onEdit) {
   function clearDrag() { dragPointer = undefined; preview.hidden = true; }
   track.addEventListener('pointerdown', event => {
     if (event.target !== track || event.button !== 0 || pending || !periods.length) return;
-    dragPointer = event.pointerId; dragStart = dragEnd = at(event);
+    const day = at(event);
+    const clicked = periods.findIndex(period => period.start <= day && day <= period.end);
+    if (clicked !== -1 && clicked !== active) {
+      selectInterval(clicked);
+      return;
+    }
+    dragPointer = event.pointerId; dragStart = dragEnd = day;
     track.setPointerCapture(dragPointer);
   });
   track.addEventListener('pointermove', event => {
     if (event.pointerId !== dragPointer) return;
     dragEnd = at(event);
+    const [start, end] = availableSpan(Math.min(dragStart, dragEnd), Math.max(dragStart, dragEnd));
     preview.hidden = false;
     const size = right - left || 1;
-    preview.style.left = 100 * (Math.min(dragStart, dragEnd) - left) / size + '%';
-    preview.style.right = 100 * (right - Math.max(dragStart, dragEnd)) / size + '%';
-    find('[data-selection]').textContent = label(Math.min(dragStart, dragEnd)) + ' — ' + label(Math.max(dragStart, dragEnd));
+    preview.style.left = 100 * (clamp(start, left, right) - left) / size + '%';
+    preview.style.right = 100 * (right - clamp(end, left, right)) / size + '%';
+    find('[data-selection]').textContent = label(start) + ' — ' + label(end);
   });
   track.addEventListener('pointerup', event => {
     if (event.pointerId !== dragPointer) return;
@@ -124,7 +141,8 @@ export function mountTimeline(panel, onEdit) {
   });
   track.addEventListener('pointercancel', () => { clearDrag(); render(); });
   return {
-    update(bounds, intervals, hasDraft) {
+    get activeIndex() { return active; },
+    update(bounds, intervals, hasDraft, requestedIndex) {
       if (!bounds || !intervals.length) return;
       const old = periods[active];
       const oldSpan = old ? span() : null;
@@ -132,12 +150,14 @@ export function mountTimeline(panel, onEdit) {
       const newBounds = first !== day(bounds.start) || last !== day(bounds.end);
       first = day(bounds.start); last = day(bounds.end);
       periods = nextPeriods;
-      active = Math.min(active, periods.length - 1);
+      const nextActive = Math.min(requestedIndex >= 0 ? requestedIndex : active, periods.length - 1);
+      const selectionChanged = nextActive !== active;
+      active = nextActive;
       pending = hasDraft;
       help.textContent = pending
         ? 'Нажмите «Показать», чтобы применить введённые интервалы и продолжить выбор на шкале.'
         : instructions;
-      if (newBounds || !old || (!selecting && (oldSpan !== span() || value().start > right || value().end < left))) centerOnInterval();
+      if (newBounds || !old || selectionChanged || (!selecting && (oldSpan !== span() || value().start > right || value().end < left))) centerOnInterval();
       picker.closest('label').hidden = periods.length <= 1;
       const options = periods.map((p, i) => new Option('Интервал ' + (i+1) + ' · ' + label(p.start) + ' — ' + label(p.end), String(i)));
       picker.replaceChildren(...options);

@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="/archive.css">
   <link rel="stylesheet" href="/observation-chart.css">
   <link rel="stylesheet" href="/station-map.css">
-  <link rel="stylesheet" href="/yandex-location.css">
   <link rel="stylesheet" href="/coverage-overview.css">
   <link rel="stylesheet" href="/observation-indicators.css">
   <link rel="stylesheet" href="/observations.css">
@@ -15,8 +14,9 @@
   <script type="module" src="/observations.js"></script>
 </head>
 <body>
+  <a class="skip-archive" href="#main">К наблюдениям</a>
   <aside class="side" data-archive-nav></aside>
-  <main id="main">
+  <main id="main" tabindex="-1">
     <section class="observations-page" aria-labelledby="observations-title">
       <header>
         <div class="breadcrumb">
@@ -48,14 +48,14 @@
             <div id="observation-date-rows" class="date-intervals"></div>
             <div class="date-actions">
               <button type="submit" class="btn line">Показать</button>
-              <button type="button" class="btn line" id="add-date-interval">
+              <button type="button" class="btn line" id="add-date-interval" disabled>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 Добавить интервал
               </button>
               <button type="button" class="btn line" id="all-dates" disabled>Весь период</button>
               <button type="button" class="link-button" id="reset-dates">Сбросить даты</button>
             </div>
-            <p class="small muted date-instructions" id="date-instructions" hidden>Нажмите «Показать», чтобы применить даты. Смежные и пересекающиеся интервалы объединяются.</p>
+            <p class="small muted date-instructions" id="date-instructions" hidden>Нажмите «Показать», чтобы применить изменения в полях. Соседние интервалы допустимы. Общих дат у интервалов быть не должно.</p>
           </form>
         </div>
         <p class="inline-status" id="station-error" role="status" hidden></p>
@@ -70,7 +70,7 @@
                 <option value="365">365 дней</option><option value="archive">Весь архив</option>
               </select>
             </label>
-            <label hidden>Редактировать <select data-interval></select></label>
+            <label hidden>Активный интервал <select data-interval></select></label>
             <div class="timeline-travel">
               <button type="button" class="btn line" data-prev aria-label="Сдвинуть шкалу раньше">←</button>
               <button type="button" class="btn line" data-next aria-label="Сдвинуть шкалу позже">→</button>
@@ -134,7 +134,17 @@
       </section>
       <div id="observation-indicators"></div>
       <div id="coverage-overview" hidden></div>
-      <footer><a href="/journal">Журнал наблюдений</a></footer>
+      <details id="recent-days" class="card recent-days">
+        <summary>Таблица последних пяти суток</summary>
+        <div class="recent-day-filters">
+          <label>Станция <select data-recent-station></select></label>
+          <label>Показатель <select data-recent-param></select></label>
+          <a class="btn line" data-recent-csv download hidden>Скачать CSV</a>
+          <a class="btn line" data-recent-process hidden>Обработать этот период</a>
+        </div>
+        <p class="small muted" data-recent-note role="status"></p>
+        <div class="recent-day-table" data-recent-table></div>
+      </details>
     </section>
   </main>
 

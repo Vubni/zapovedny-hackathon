@@ -16,7 +16,7 @@ from statistics import median
 from zipfile import ZipFile
 
 from analytics import ARCHIVE, PARAMS, difference, mean_of
-from build_data import DIRECTION, LIMITS, STATIONS, archive_text, coverage, source_member
+from build_data import DIRECTION, LIMITS, STATIONS, Station, archive_text, coverage, source_member
 
 
 FILTERS = {
@@ -48,8 +48,8 @@ THRESHOLDS = {
 MAX_BOUND = 1_000_000
 MAX_STUCK_HOURS = 168
 CONTEXT_MINUTES = 1440
-LOCAL_TIMESPAN = {"ame60": 180, "kr1": 240, "kr2": 240}
-NEARBY_GAP = {"ame60": 35, "kr1": 80, "kr2": 80}
+LOCAL_TIMESPAN = {"ame60": 180, "kr1": 240, "kr2": 240, "registered": 240}
+NEARBY_GAP = {"ame60": 35, "kr1": 80, "kr2": 80, "registered": 80}
 STAMP_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}(?::00)?")
 DECIMAL_COMMA = re.compile(r"[+-]?[0-9]*,[0-9]+(?:[eE][+-]?[0-9]+)?")
 
@@ -526,11 +526,17 @@ def summaries(rows, start, end, station, param):
     return {"daily": daily, "monthly": monthly}
 
 
-def options(query):
+def quality_profile(passport):
+    profile = passport.get("profile") or passport["id"]
+    return profile if profile in STATIONS else "registered"
+
+
+def options(query, passport=None):
     station, param = query.get("station", "kr1"), query.get("param", "t_air")
-    if not isinstance(station, str) or station not in STATIONS:
+    if passport is None and (not isinstance(station, str) or station not in STATIONS):
         raise ValueError("Неизвестная станция")
-    if param not in STATIONS[station].params:
+    available = tuple(item["id"] for item in passport["params"]) if passport else STATIONS[station].params
+    if param not in available:
         raise ValueError("Станция не измеряет выбранный параметр")
     raw_filters = query.get("filters", "")
     if not isinstance(raw_filters, str):
@@ -547,11 +553,13 @@ def options(query):
 
 def review(query, records=None, *, passport=None):
     """Roll up a reversible selection without reusing or mutating official aggregates."""
-    station, param, filters, settings = options(query)
-    config = STATIONS[station]
-    if passport:
-        from dataclasses import replace
-        config = replace(config, minimum_slots=passport["minimum_slots"], slot_minutes=passport["slot_minutes"])
+    station, param, filters, settings = options(query, passport)
+    profile = quality_profile(passport) if passport else station
+    if records is None and station not in STATIONS:
+        raise ValueError("Для этой станции выберите сохранённые наблюдения.")
+    config = (Station(range(0), tuple(item["id"] for item in passport["params"]), "",
+                      passport["slot_minutes"], passport["minimum_slots"])
+              if passport and records is not None else STATIONS[station])
     bounds = settings["ranges"][param]
     policy = settings["conflict_policy"]
     thresholds = settings["thresholds"]
@@ -587,13 +595,13 @@ def review(query, records=None, *, passport=None):
     rows.sort(key=lambda row: row.stamp)
     references, conflicts = prepare(rows, param, bounds, use_references=bool(context))
     stamps = [row.stamp for row in references]
-    resolve_conflicts(conflicts, references, stamps, param, station, policy if "conflicts" in filters else "off")
+    resolve_conflicts(conflicts, references, stamps, param, profile, policy if "conflicts" in filters else "off")
     if "hampel" in filters:
-        mark_hampel(rows, references, stamps, param, station, thresholds["hampel"][param])
+        mark_hampel(rows, references, stamps, param, profile, thresholds["hampel"][param])
     if "spike" in filters:
-        mark_spikes(rows, references, stamps, param, station, thresholds["spike"][param])
+        mark_spikes(rows, references, stamps, param, profile, thresholds["spike"][param])
     if "stuck" in filters:
-        mark_stuck(rows, param, station, thresholds["stuck"][param])
+        mark_stuck(rows, param, profile, thresholds["stuck"][param])
 
     warnings = []
     if tuple(bounds) != LIMITS[param]:

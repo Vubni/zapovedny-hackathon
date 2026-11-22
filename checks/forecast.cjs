@@ -10,6 +10,11 @@ const api = 'https://api.open-meteo.com/**';
 
 async function check() {
   const saved = JSON.parse(await fs.readFile(path.join(root, 'web/forecast-example.json'), 'utf8'));
+  const requestParameters = new URL(saved.source_url).searchParams;
+  assert.equal(requestParameters.get('latitude'), '56.464310');
+  assert.equal(requestParameters.get('longitude'), '32.970290');
+  assert.equal(requestParameters.get('timezone'), 'Europe/Moscow');
+  assert.equal(requestParameters.get('wind_speed_unit'), 'ms');
   const forecastHour = new Intl.DateTimeFormat('sv-SE', {
     hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Moscow',
   }).format(new Date(saved.retrieved_utc));
@@ -21,12 +26,14 @@ async function check() {
     const page = await browser.newPage({viewport: {width: 390, height: 844}});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const evidence = {};
+    const evidence = {snapshotRetrievedUtc: saved.retrieved_utc, snapshotSource: saved.source_url};
     const waitForForecast = () => page.waitForFunction(() => !document.querySelector('#refresh').disabled);
     const hourlyRows = page.locator('#forecast-hourly-rows tr');
     if (process.env.METEO_LIVE_FORECAST === '1') {
+      const requested = page.waitForRequest(api);
       await page.goto(base + '/forecast');
       await waitForForecast();
+      assert.equal((await requested).url(), saved.source_url);
       assert.match(await page.locator('#forecast-status').textContent(), /Получен актуальный/);
       assert.equal(await page.locator('#forecast-rows tr').count(), 3);
       assert.equal(await hourlyRows.count(), 24);
@@ -39,11 +46,13 @@ async function check() {
       };
     }
     await page.clock.setFixedTime(new Date(saved.retrieved_utc));
-    for (const scenario of ['fresh', 'offline', 'stale', 'malformed', 'daily-only']) {
+    for (const scenario of ['fresh', 'offline', 'stale', 'wrong-location', 'malformed', 'daily-only']) {
       await page.route(api, route => {
+        assert.equal(route.request().url(), saved.source_url);
         if (scenario === 'offline') return route.abort();
         const data = structuredClone(saved.response);
         if (scenario === 'stale') data.daily.time = ['2010-01-01', '2010-01-02', '2010-01-03'];
+        if (scenario === 'wrong-location') data.latitude += 2;
         if (scenario === 'malformed') data.daily.temperature_2m_min.pop();
         if (scenario === 'daily-only') {
           delete data.hourly;
@@ -98,8 +107,29 @@ async function check() {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `Горизонтальная прокрутка при ширине ${width} px`);
     }
-    assert.equal(await page.locator('.weather-actions a[href="/model"]').count(), 1);
+    assert.equal(await page.locator('a[href="/model"]').count(), 0);
     assert.equal(await page.locator('.weather-actions a[href="/precip"]').count(), 1);
+    const legacy = await page.request.get(base + '/model', {maxRedirects: 0});
+    assert.ok([301, 302, 303, 307, 308].includes(legacy.status()));
+    assert.equal(legacy.headers().location, '/forecast');
+
+    await page.clock.setFixedTime(new Date(Date.parse(saved.retrieved_utc) + 5 * 86400000));
+    await page.goto(base + '/forecast');
+    await waitForForecast();
+    evidence.expiredCopy = await page.locator('#forecast-status').textContent();
+    assert.match(evidence.expiredCopy, /архивная копия за прошедшие даты/);
+    assert.equal(await page.locator('#forecast-source').textContent(), 'Архивная копия');
+
+    await page.route('**/forecast-example.json', route => {
+      const foreignSource = new URL(saved.source_url);
+      foreignSource.searchParams.set('latitude', '56.52');
+      return route.fulfill({json: {...saved, source_url: foreignSource.href}});
+    });
+    await page.locator('#refresh').click();
+    await waitForForecast();
+    evidence.otherPointCopy = await page.locator('#forecast-status').textContent();
+    assert.match(evidence.otherPointCopy, /Не удалось получить прогноз/);
+    assert.equal(await page.locator('#forecast-data').isHidden(), true);
     assert.deepEqual(errors, []);
     const report = path.join(root, 'results/browser/forecast.json');
     await fs.writeFile(report, JSON.stringify(evidence, null, 2) + '\n');

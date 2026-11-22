@@ -3,11 +3,8 @@ import argparse
 from pathlib import Path
 
 from PIL import Image, ImageDraw
-import shapefile
 
-from build_russia_map import geometry_parts
-from shapely import make_valid
-from shapely.geometry import shape
+from build_russia_map import geometry_parts, russia_country
 
 
 ROOT = Path(__file__).resolve().parent
@@ -45,22 +42,16 @@ def clip_raster(source, world_file, countries, destination):
     scale = 2 * PIXELS_PER_DEGREE
     country_mask = Image.new("L", (width * 2, height * 2))
     draw = ImageDraw.Draw(country_mask)
-    with shapefile.Reader(str(countries)) as dataset:
-        russian_shapes = [row.shape for row in dataset.iterShapeRecords(fields=["ADM0_A3"])
-                          if row.record["ADM0_A3"] == "RUS"]
-    if not russian_shapes:
-        raise ValueError("В исходном векторном слое не найдена Россия")
-    for russian_shape in russian_shapes:
-        for polygon in geometry_parts(make_valid(shape(russian_shape.__geo_interface__)), "Polygon"):
-            offset = 360 if polygon.bounds[2] < 0 else 0
+    for polygon in geometry_parts(russia_country(countries), "Polygon"):
+        offset = 360 if polygon.bounds[2] < 0 else 0
 
-            def plot(ring):
-                return [((lon + offset - west) * scale, (north - lat) * scale)
-                        for lon, lat in ring.coords]
+        def plot(ring):
+            return [((lon + offset - west) * scale, (north - lat) * scale)
+                    for lon, lat in ring.coords]
 
-            draw.polygon(plot(polygon.exterior), fill=255)
-            for hole in polygon.interiors:
-                draw.polygon(plot(hole), fill=0)
+        draw.polygon(plot(polygon.exterior), fill=255)
+        for hole in polygon.interiors:
+            draw.polygon(plot(hole), fill=0)
 
     background.putalpha(country_mask.resize((width, height), Image.Resampling.BOX))
     background.save(destination, quality=84, method=6)

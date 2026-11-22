@@ -6,16 +6,22 @@
   ],
   "input_order": [
     "pressure",
+    "wind_freq",
     "air_range",
+    "temp_diurnal",
     "soil_05",
+    "wind_rose",
     "rh",
     "air"
   ],
   "visual_and_dom_order": [
     "air",
     "air_range",
+    "temp_diurnal",
     "soil_05",
     "rh",
+    "wind_rose",
+    "wind_freq",
     "pressure"
   ],
   "zip": {
@@ -29,28 +35,68 @@
         "crc32": "8ace3dce"
       },
       {
-        "name": "03-температура-почвы-5-см.svg",
+        "name": "03-средний-суточный-ход-температуры.svg",
+        "crc32": "8a3fca5a"
+      },
+      {
+        "name": "04-температура-почвы-5-см.svg",
         "crc32": "7dffc7a0"
       },
       {
-        "name": "04-средняя-относительная-влажность.svg",
+        "name": "05-средняя-относительная-влажность.svg",
         "crc32": "87a6ab73"
       },
       {
-        "name": "05-среднее-атмосферное-давление.svg",
+        "name": "06-роза-ветров.svg",
+        "crc32": "98c43d94"
+      },
+      {
+        "name": "07-повторяемость-направлений-ветра.svg",
+        "crc32": "7b4a09aa"
+      },
+      {
+        "name": "08-среднее-атмосферное-давление.svg",
         "crc32": "ed0a4bb5"
       }
     ],
-    "png_files": 5,
-    "jpeg_files": 5,
+    "png_files": 8,
+    "jpeg_files": 8,
     "all_entries_passed_zipfile_and_crc32": true,
     "empty_soil": {
       "title": "Температура почвы · 5 см",
       "message": "Нет данных за этот период"
+    },
+    "pdf_in_all_formats": {
+      "name": "Метеоархив — все графики.pdf",
+      "crc32": "79973e4d",
+      "sha256": "a22be5fa2dc436b5b006560e3715fcbfcec371e4a62537353995c17c62d8eeb3",
+      "page_count": 8,
+      "bookmarks": [
+        "Средняя температура воздуха",
+        "Диапазон температуры воздуха",
+        "Средний суточный ход температуры",
+        "Температура почвы · 5 см",
+        "Средняя относительная влажность",
+        "Роза ветров",
+        "Повторяемость направлений ветра",
+        "Среднее атмосферное давление"
+      ],
+      "rendered_pages": 8
+    },
+    "pdf_downloaded_offline": true,
+    "pdf_rose_continuation": {
+      "name": "Метеоархив — все графики.pdf",
+      "crc32": "144ada1c",
+      "sha256": "4776165b888df9dd3daa4434242e6d9241c60f48d942bdd91195d383d70e3656",
+      "page_count": 3,
+      "bookmarks": [
+        "Роза ветров"
+      ],
+      "rendered_pages": 3
     }
   },
   "after_hide_and_zoom": {
-    "files": 4,
+    "files": 7,
     "hidden_card": "rh",
     "visible_air_legend": [
       "Кр1 · поляна"
@@ -60,9 +106,28 @@
     "order_on_reload": [
       "air",
       "air_range",
+      "temp_diurnal",
       "soil_05",
+      "wind_rose",
+      "wind_freq",
       "pressure"
-    ]
+    ],
+    "pdf": {
+      "name": "Метеоархив — все графики.pdf",
+      "crc32": "5217cbc6",
+      "sha256": "0395a19e6987e8bfccefde865de79c6a0d6e1477a615621d8d66b369ec6cb2ef",
+      "page_count": 7,
+      "bookmarks": [
+        "Средняя температура воздуха",
+        "Диапазон температуры воздуха",
+        "Средний суточный ход температуры",
+        "Температура почвы · 5 см",
+        "Роза ветров",
+        "Повторяемость направлений ветра",
+        "Среднее атмосферное давление"
+      ],
+      "rendered_pages": 7
+    }
   },
   "mobile": [
     {

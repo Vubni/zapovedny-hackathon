@@ -11,7 +11,8 @@
   <script type="module" src="/files-page.js"></script>
 </head>
 <body>
-  <aside class="side" data-archive-nav aria-label="Основная навигация"></aside>
+  <a class="skip-archive" href="#main">К файлам и импорту</a>
+  <aside class="side" data-archive-nav></aside>
   <main id="main" class="files-main" tabindex="-1">
     <section aria-busy="true">
       <header>
@@ -21,7 +22,7 @@
       </header>
     </section>
   </main>
-  <input id="fileInput" type="file" multiple accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+  <input id="fileInput" type="file" multiple accept=".csv,.xlsx,.json,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json" hidden>
   <input id="correctedCsvInput" type="file" accept=".csv,text/csv" hidden>
   <dialog id="files-dialog" class="files-dialog dialog-card" aria-labelledby="files-dialog-title"></dialog>
 </body>

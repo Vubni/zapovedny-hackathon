@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
@@ -11,7 +11,8 @@ from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
 import observation_store as store
-from gap_fill import station_estimates
+from checks.fixture_weather import april_response
+from gap_fill import station_estimates, verification_history, verify_estimates
 from review_service import create_report, report_excel, report_page
 
 
@@ -23,15 +24,20 @@ COMBINED = {"fill_external": "1", "fill_model": "1", "timezone": "Europe/Moscow"
 
 
 class GapFillChecks(unittest.TestCase):
+    def setUp(self):
+        offline = patch("external_fill.urlopen", side_effect=april_response)
+        offline.start()
+        self.addCleanup(offline.stop)
+
     def review(self, options):
         return create_report(dict(options, filename="station.csv"), CSV, "text/csv")
 
     def test_review_switches_and_legacy_modes(self):
         expected = {
             "none": [(None, None), (None, None)],
-            "external": [("external", 7.74), (None, None)],
+            "external": [(None, None), (None, None)],
             "model": [("model", 11.0), ("model", 14.0)],
-            "both": [("external", 7.74), ("model", 14.0)],
+            "both": [("model", 11.0), ("model", 14.0)],
         }
         base = self.review({"fill": "none"})
 
@@ -56,7 +62,11 @@ class GapFillChecks(unittest.TestCase):
         combined = self.review(COMBINED)
         cached = report_page({"token": combined["token"], "offset": 0})
         self.assertEqual(cached["rows"], combined["rows"])
-        self.assertEqual(cached["model"]["estimated_count"], 1)
+        self.assertEqual(cached["model"]["estimated_count"], 2)
+        rows = {row["time"]: row for row in cached["rows"]}
+        self.assertIsNotNone(rows[FIRST]["external_reference"]["value"])
+        self.assertIsNone(rows[SECOND]["external_reference"])
+        self.assertEqual(rows[FIRST]["verification"]["delta"], 0)
         with ZipFile(BytesIO(report_excel({"token": combined["token"]})[1])) as archive:
             sheet = ET.fromstring(archive.read("xl/worksheets/sheet2.xml"))
         exported = {}
@@ -64,11 +74,9 @@ class GapFillChecks(unittest.TestCase):
             cells = {cell.get("r").rstrip("0123456789"): cell for cell in row}
             time = cells["A"].findtext("{*}is/{*}t")
             if time in (FIRST, SECOND):
-                exported[time] = (cells["D"].findtext("{*}v"), cells["J"].findtext("{*}is/{*}t"),
-                                  cells["N"].findtext("{*}is/{*}t"))
-        self.assertEqual(exported[FIRST][::2], ("Внешняя оценка", "По данным метеосервисов"))
-        self.assertEqual(exported[SECOND][::2], ("Оценка модели", "По модели станции"))
-        self.assertIn("Наблюдение 2024-04-21 11:00", exported[SECOND][1])
+                exported[time] = (cells["D"].findtext("{*}v"), float(cells["C"].findtext("{*}v")))
+        self.assertEqual(exported[FIRST], ("Оценка модели", 11.0))
+        self.assertEqual(exported[SECOND], ("Оценка модели", 14.0))
 
     def test_unavailable_or_out_of_range_external_falls_back(self):
         for options in ({"sources": "era5"}, {"ranges": {"t_air": [10, 15]}}):
@@ -81,6 +89,33 @@ class GapFillChecks(unittest.TestCase):
                 self.assertIsNone(rows[FIRST]["value"])
                 self.assertFalse(rows[FIRST]["keep"])
 
+    def test_fill_scope_limits_only_external_queries_and_model_targets(self):
+        csv = (b"datetime,t_air,rh\n2024-03-01 00:00,5,50\n2024-04-21 09:00,10,60\n"
+               b"2024-04-21 10:00,,\n2024-04-21 11:00,12,62\n2024-06-01 00:00,8,80\n")
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(Path(directory) / "observations.sqlite")
+        ):
+            uploaded = store.upload_file({"filename": "station.csv"}, csv, "text/csv")
+            query = dict(COMBINED, id=uploaded["id"])
+            with self.assertRaisesRegex(ValueError, "до 31 суток"):
+                store.preview_file(query)
+            scope = dict(fill_start="2024-04-21", fill_end="2024-04-21", fill_params="t_air")
+            report = store.preview_file(dict(query, **scope))
+            self.assertEqual(set(report["external"]), {"t_air"})
+            provider = report["external"]["t_air"]
+            self.assertEqual(provider["target_start"], "2024-04-21")
+            self.assertEqual(provider["target_end"], "2024-04-21")
+            self.assertEqual(provider["location"], {"precision": "area", "label": "Красное",
+                                                      "reference": "Точка сбора 26.07.2019"})
+            self.assertEqual(provider["requested_coordinates"], {"latitude": 56.46431, "longitude": 32.97029})
+            self.assertEqual(report["stats"]["parameters"]["rh"]["filled"], 0)
+            self.assertEqual({row["time"] for row in report["timeline"]}, {"2024-03-01", "2024-04-21", "2024-06-01"})
+            reviewed = create_report(dict(COMBINED, **scope, filename="station.csv"), csv, "text/csv")
+            self.assertEqual((reviewed["start"], reviewed["end"]), ("2024-03-01", "2024-06-01"))
+            self.assertEqual(reviewed["external"]["target_start"], "2024-04-21")
+            with self.assertRaisesRegex(ValueError, "Настройки или версия изменились"):
+                store.confirm_file(dict(query, revision=report["revision"], **(scope | {"fill_params": "rh"})))
+
     def test_file_preview_xlsx_confirmation_and_correction_preserve_methods(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(Path(directory) / "observations.sqlite")
@@ -91,8 +126,9 @@ class GapFillChecks(unittest.TestCase):
             request = dict(query, revision=report["revision"])
             self.assertEqual(report["settings"]["fill"], "both")
             self.assertEqual(report["stats"]["filled"], 2)
-            self.assertEqual(report["external"]["t_air"]["estimated_count"], 1)
-            self.assertEqual(report["model"]["t_air"]["estimated_count"], 1)
+            self.assertEqual(report["external"]["t_air"]["estimated_count"], 0)
+            self.assertEqual(report["external"]["t_air"]["reference_count"], 1)
+            self.assertEqual(report["model"]["t_air"]["estimated_count"], 2)
             self.assertEqual(store.get_file(request)["settings"], report["settings"])
             with self.assertRaisesRegex(ValueError, "Настройки или версия изменились"):
                 store.confirm_file(dict(request, fill_model="0"))
@@ -100,12 +136,14 @@ class GapFillChecks(unittest.TestCase):
             xlsx = store.preview_excel(request)[1]
             with ZipFile(BytesIO(xlsx)) as archive:
                 estimates = archive.read("xl/worksheets/sheet3.xml").decode()
-            for method in ("По данным метеосервисов", "По модели станции", "station_bracket_interpolation"):
+                references = archive.read("xl/worksheets/sheet4.xml").decode()
+            for method in ("Модель станции", "station_bracket_interpolation"):
                 self.assertIn(method, estimates)
+            self.assertIn("ERA5", references)
             published = store.confirm_file(request)
             self.assertEqual(published["confirmed"]["settings"], report["settings"])
             before = {row["datetime"]: row for row in store.confirmed_rows("kr1", "2024-04-21", "2024-04-21")}
-            self.assertEqual(before[FIRST]["estimates"]["t_air"]["method"], "external")
+            self.assertEqual(before[FIRST]["estimates"]["t_air"]["method"], "model")
             self.assertEqual(before[SECOND]["estimates"]["t_air"]["method"], "model")
             corrected_csv = CSV.replace(b"2024-04-21 10:00,\n", b"2024-04-21 10:00,11.25\n")
             corrected = store.corrected_file(dict(request, filename="fixed.csv"), corrected_csv, "text/csv")
@@ -136,6 +174,40 @@ class GapFillChecks(unittest.TestCase):
         self.assertLess(estimates[later]["provenance"]["training_end"], later)
         self.assertGreaterEqual(estimates[later]["provenance"]["training_n"], 10)
         self.assertEqual(station_estimates(terms, "wind_dir")[1]["reason"], "unsupported_direction")
+
+    def test_adjustment_requires_useful_causal_calibration(self):
+        start = datetime(2024, 4, 1)
+        times = [(start + timedelta(hours=index)).isoformat(" ", timespec="minutes") for index in range(130)]
+        target_index = 100
+        actual = [10 + (index % 2) * 0.4 for index in range(len(times))]
+        rows = [{"time": stamp, "keep": index != target_index,
+                 "value": actual[index] if index != target_index else None} for index, stamp in enumerate(times)]
+        target = times[target_index]
+
+        def reference(stamp, value):
+            utc = datetime.fromisoformat(stamp).replace(tzinfo=timezone.utc)
+            return {"value": value, "source": "ERA5 + MERRA-2", "usable": True,
+                    "provenance": {"start_utc": utc.isoformat(), "known_after_utc": (utc + timedelta(hours=1)).isoformat(),
+                                   "sources": [{"id": "era5", "value": value - 0.05},
+                                               {"id": "merra2", "value": value + 0.05}]}}
+
+        local, _ = station_estimates(rows, "t_air")
+        target_refs = {target: reference(target, actual[target_index])}
+        histories = [verification_history(rows, {stamp: reference(stamp, value)
+                                                 for index, (stamp, value) in enumerate(zip(times, actual))
+                                                 if index != target_index}, "t_air")]
+        self.assertGreaterEqual(len(histories[0]), 20)
+        corrected, decision = verify_estimates(local, target_refs, "t_air", history=histories[0])
+        self.assertEqual(corrected[target]["method"], "model_adjusted")
+        self.assertTrue(decision[target]["calibration"]["accepted"])
+        self.assertLess(abs(corrected[target]["value"] - actual[target_index]), abs(local[target]["value"] - actual[target_index]))
+        self.assertLess(decision[target]["calibration"]["latest_known_utc"], target_refs[target]["provenance"]["start_utc"])
+        harmful = [(stamp, corrected_error, initial_error) for stamp, initial_error, corrected_error in histories[0]]
+        no_past = [entry for entry in histories[0] if entry[0] >= datetime.fromisoformat(target).replace(tzinfo=timezone.utc)]
+        for history in (harmful, no_past):
+            unchanged, rejected = verify_estimates(local, target_refs, "t_air", history=history)
+            self.assertEqual(unchanged[target]["value"], local[target]["value"])
+            self.assertEqual(rejected[target]["decision"], "unvalidated_correction")
 
 
 if __name__ == "__main__":

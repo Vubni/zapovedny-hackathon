@@ -154,7 +154,7 @@ def query_dates(query):
 
 
 def query_intervals(query):
-    """Return distinct non-adjacent inclusive ranges, ordered by start date."""
+    """Return non-overlapping inclusive ranges, ordered by start date."""
     if "intervals" not in query:
         return (query_dates(query),)
     raw = query["intervals"]
@@ -173,13 +173,11 @@ def query_intervals(query):
             raise ValueError("Начало периода должно предшествовать его окончанию")
         ranges.append((first, last))
 
-    merged = []
-    for first, last in sorted(ranges):
-        if merged and (first - merged[-1][1]).days <= 1:
-            merged[-1] = (merged[-1][0], max(last, merged[-1][1]))
-        else:
-            merged.append((first, last))
-    return tuple(merged)
+    ordered = sorted(ranges)
+    for (_, previous_end), (start, _) in zip(ordered, ordered[1:]):
+        if start <= previous_end:
+            raise ValueError("Интервалы не должны пересекаться")
+    return tuple(ordered)
 
 
 def interval_details(first, last):
@@ -573,10 +571,8 @@ def make_series(station, param, role, points, unit, *, label=None, parameter_lab
     return series
 
 
-def selected_baseline(query, start, end):
-    if not query.get("baseline"):
-        return start, end
-    baseline = query["baseline"].split("-")
+def selected_baseline(raw):
+    baseline = raw.split("-") if isinstance(raw, str) else ()
     if len(baseline) == 2 and all(len(year) == 4 and year.isdecimal() for year in baseline):
         first, last = baseline[0] + "-01-01", baseline[1] + "-12-31"
         if parse_day(first) <= parse_day(last):
@@ -584,20 +580,52 @@ def selected_baseline(query, start, end):
     raise ValueError("Период сравнения указывается как ГГГГ-ГГГГ")
 
 
-def baseline_values(station, daily, chart_start, chart_end, start, end, grain):
-    if (chart_start, chart_end) != (start, end):
-        daily = load_daily(station, ("t_air",), start, end)["t_air"]
-    valid = {day for day, row in daily.items() if row.valid}
-    if grain in {"month", "year"}:
-        months = valid_months(start, end, valid)
-        used = {day for day in valid if day[:7] in months}
-    elif grain == "decade":
-        used = {day for day in valid if start <= analytics.bounds(day, "dekad")[0]
-                and analytics.bounds(day, "dekad")[1] <= end}
-    else:
-        used = valid
-    return (fmean(daily[day].mean for day in sorted(used)) if used else None,
-            len({day[:4] for day in used}))
+def baseline_key(day, grain):
+    if grain == "month":
+        return day[5:7]
+    return day[5:] if grain != "year" else ""
+
+
+def baseline_values(batches, grain):
+    values, years = defaultdict(list), defaultdict(set)
+    for start, end, daily in batches:
+        valid = {day for day, row in daily.items() if row.valid}
+        months = valid_months(start, end, valid) if grain in {"month", "year"} else ()
+        dated_periods = defaultdict(list)
+        for day in sorted(valid):
+            period = day
+            if grain in {"month", "year"}:
+                if day[:7] not in months:
+                    continue
+                period = day[:7] + "-01"
+            elif grain == "decade":
+                period, last = analytics.bounds(day, "dekad")
+                if period < start or last > end:
+                    continue
+            dated_periods[period].append(daily[day].mean)
+
+        for period, days in dated_periods.items():
+            key = baseline_key(period, grain)
+            years[key].add(period[:4])
+            if grain == "year":
+                values[key].extend(days)
+            else:
+                values[key].append(fmean(days))
+    return {key: (fmean(samples), len(years[key])) for key, samples in values.items()}, len(set().union(*years.values()))
+
+
+def anomaly_inputs(query, ranges, stations, grain):
+    windows = [(first.isoformat(), last.isoformat()) for first, last in ranges]
+    references = [selected_baseline(query["baseline"])] if query.get("baseline") else windows
+    daily = {
+        (start, end): {station["id"]: load_daily(station, ("t_air",), start, end) for station in stations}
+        for start, end in dict.fromkeys([*windows, *references])
+    }
+    baselines = {
+        key: baseline_values(((start, end, daily[start, end][key]["t_air"]) for start, end in references), grain)
+        for key in (station["id"] for station in stations)
+    }
+    return daily, baselines, references
 
 
 def trend_values(daily, valid, months):
@@ -635,9 +663,8 @@ def scalar_series(chart_id, chart, station, series_data, intervals, start, end, 
         details.append(report)
         additional = {}
         if role == "anomaly":
-            reference, years = baseline_values(station, daily, start, end, *baseline, grain)
-            additional.update(baseline=reference, years=years)
-            notes.append(f"{station['label']} · число лет в среднем за выбранный период — {years}.")
+            by_period, total_years = baseline
+            additional.update(baseline=by_period.get("", (None, 0))[0], years=total_years)
         if role == "trend":
             slope, center_x, center_y, count, years = trend_values(daily, valid, months)
             additional.update(slope=slope, trend_months=count, years=years, slope_unit="°C/год")
@@ -645,6 +672,10 @@ def scalar_series(chart_id, chart, station, series_data, intervals, start, end, 
                 notes.append(f"{station['label']}: для тренда нужны сопоставимые месяцы не менее чем за три года.")
         points = []
         for period, good, used in group_periods(intervals, valid, months, grain):
+            extra = {}
+            if role == "anomaly":
+                reference, years = by_period.get(baseline_key(period.start, grain), (None, 0))
+                extra = {"baseline": reference, "years": years}
             value = None
             if used:
                 if role == "min":
@@ -658,7 +689,6 @@ def scalar_series(chart_id, chart, station, series_data, intervals, start, end, 
                     value = fmean(daily[day].mean for day in used)
                     if role == "anomaly":
                         value = value - reference if reference is not None else None
-            extra = {"baseline": reference, "years": years} if role == "anomaly" else {}
             points.append(point(period, value, good, used, **extra))
         label = station["label"]
         param_label = analytics.PARAMS[param][0]
@@ -721,6 +751,7 @@ def station_statistics(station, param, daily, days):
     return {
         "station": station["id"], "label": station["label"], "parameter": param,
         "parameter_label": label, "unit": unit, "valid_days": len(valid), "total_days": days,
+        "years": len({day[:4] for day, _ in valid}),
         "n": sum(row.n for _, row in valid), "mean": fmean(row.mean for _, row in valid) if valid else None,
         "min": minimum.minimum if minimum else None, "max": maximum.maximum if maximum else None,
         "min_day": min_day, "max_day": max_day,
@@ -742,7 +773,8 @@ def chart_data(query):
         series_count += series_count * working_supported + (chart_id == "temp_difference")
         interval_budget(ranges, grain, series_count)
 
-    sections = (_chart_interval(query, chart_id, grain, mode, stations, first, last, working_supported)
+    anomaly = anomaly_inputs(query, ranges, stations, grain) if stations and chart_id == "air_anomaly" else None
+    sections = (_chart_interval(chart_id, grain, mode, stations, first, last, working_supported, anomaly)
                 for first, last in ranges)
     if "intervals" not in query:
         return next(sections)
@@ -782,7 +814,7 @@ def _combine_intervals(sections, details):
     return combined
 
 
-def _chart_interval(query, chart_id, grain, mode, stations, first, last, working_supported):
+def _chart_interval(chart_id, grain, mode, stations, first, last, working_supported, anomaly):
     start, end = first.isoformat(), last.isoformat()
     chart = CHARTS[chart_id]
     result = {"title": chart.title, "unit": chart.unit, "kind": chart.kind, "axis": chart.axis,
@@ -803,10 +835,13 @@ def _chart_interval(query, chart_id, grain, mode, stations, first, last, working
     station_valid = {station["id"]: set() for station in stations} if "pressure_hpa" in parameters else {}
     working = ({station["id"]: {param: {} for param in parameters} for station in stations}
                if working_supported else {})
-    daily = {station["id"]: load_daily(station, parameters, start, end, station_valid.get(station["id"]),
-                                       working.get(station["id"]))
-             for station in stations}
-    baseline = selected_baseline(query, start, end) if chart_id == "air_anomaly" else (start, end)
+    if anomaly is None:
+        daily = {station["id"]: load_daily(station, parameters, start, end, station_valid.get(station["id"]),
+                                           working.get(station["id"]))
+                 for station in stations}
+    else:
+        selected, baselines, references = anomaly
+        daily = selected[start, end]
     scalar = CHARTS["air"] if chart_id == "temp_difference" else chart
     for station in stations:
         station_daily = daily[station["id"]]
@@ -814,7 +849,8 @@ def _chart_interval(query, chart_id, grain, mode, stations, first, last, working
             result["statistics"].extend(station_statistics(station, param, station_daily[param], (last - first).days + 1)
                                         for param in parameters)
         series, details, notes = scalar_series(chart_id, scalar, station, station_daily,
-                                               intervals, start, end, grain, baseline)
+                                               intervals, start, end, grain,
+                                               baselines[station["id"]] if anomaly else None)
         if "pressure_hpa" in station_params(station) and station["id"] in station_valid:
             overall = station_valid[station["id"]]
             for detail in details:
@@ -831,8 +867,9 @@ def _chart_interval(query, chart_id, grain, mode, stations, first, last, working
         add_difference(result, daily, intervals, start, end, grain)
     if grain == "year":
         result["notes"].append("Годовые значения рассчитаны по пригодным суткам полных календарных месяцев.")
-    if chart_id == "air_anomaly":
-        result["notes"].append(f"Отклонение от среднего за выбранный период {baseline[0]} — {baseline[1]}.")
+    if anomaly:
+        dates = ", ".join(f"{lo} — {hi}" for lo, hi in references)
+        result["notes"].append(f"Среднее за выбранный период {dates}. У каждой точки указано число лет в её отсчёте.")
     if any(series["role"] == "estimate" for series in result["series"]):
         result["notes"].append("Ряды с оценками показывают рабочие значения. Покрытие рассчитано по измерениям.")
     return result

@@ -3,9 +3,10 @@
 from collections import Counter
 from io import BytesIO
 import json
-from math import isfinite
+from math import isclose, isfinite
 import re
-from xml.sax.saxutils import escape
+from urllib.parse import urlsplit
+from xml.sax.saxutils import escape, quoteattr
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from review_filter import FILTER_LABELS
@@ -22,15 +23,15 @@ RESTORE = "Вернуть исходное"
 EXCLUDE = "Исключить"
 USE_ESTIMATE = "Использовать оценку"
 ORIGINAL = "Исходное"
-ESTIMATE = "Внешняя оценка"
 MODEL_ESTIMATE = "Оценка модели"
-MODEL_METHOD = "По модели станции"
+ADJUSTED_ESTIMATE = "Модель с поправкой"
 REJECTED = "Исключено"
 MISSING = "Нет значения"
 NO_ORIGINAL = "Нет исходного"
 NO_ESTIMATE = "Нет оценки"
 
 BASE, TITLE, SUBTITLE, LABEL, INPUT, HEADER, RAW_HEADER, NOTE, NUMBER, EMPTY, GOOD, BAD, ESTIMATED, WRAPPED = range(14)
+LINK = 14
 
 XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
 MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -43,8 +44,12 @@ XML_ESCAPE = re.compile(r"_x[0-9a-fA-F]{4}_|[\x00-\x08\x0B\x0C\x0D\x0E-\x1F\uD80
 ROW_COLUMNS = [
     ("Срок", 20), ("Режим строки", 24), ("Рабочее значение", 18), ("Источник результата", 22),
     ("Исходное значение", 18), ("Решение алгоритма", 20), ("Контроль архива", 19),
-    ("Причины и исходные флаги", 58), ("Внешняя оценка", 18), ("Откуда взята оценка", 53),
+    ("Причины и исходные флаги", 58), ("Итог оценки", 18), ("Метеосервисы · справочно", 53),
     ("Исходный файл", 54), ("Номер строки", 15), ("Причины контроля архива", 54),
+]
+ESTIMATE_COLUMNS = [
+    ("Локальная оценка", 18), ("Поправка по сверке", 18), ("Причина решения по оценке", 57),
+    ("Расчёт локальной модели", 55), ("Прежняя внешняя оценка · архив", 19),
 ]
 
 ESTIMATE_REASONS = {
@@ -56,6 +61,21 @@ ESTIMATE_REASONS = {
     "unknown_pressure_reference": "Тип исходного давления не подтверждён как давление у поверхности.",
     "fewer_than_two_sources": "Для часа есть данные менее чем из двух внешних источников.",
     "outside_parameter_range": "Внешняя оценка вне допустимого диапазона показателя.",
+}
+
+VERIFICATION_REASONS = {
+    "adjusted": "Модели согласуются между собой и с локальной оценкой. Применена ограниченная поправка.",
+    "already_equal": "Локальная оценка совпала со средним по метеосервисам.",
+    "no_local_estimate": "Для срока нет локальной оценки. Значения метеосервисов приведены справочно.",
+    "external_unavailable": "Сверка недоступна. Сохранена локальная оценка.",
+    "providers_disagree": "Расхождение метеосервисов превышает порог. Сохранена локальная оценка.",
+    "local_departure": "Расхождение среднего метеосервисов с локальной оценкой превышает порог. Сохранена локальная оценка.",
+    "unsupported_parameter": "Сверка для этого показателя не предусмотрена. Сохранена локальная оценка.",
+    "fewer_than_two_sources": "Для сверки доступно меньше двух метеосервисов. Сохранена локальная оценка.",
+    "outside_parameter_range": "Среднее метеосервисов вышло за границы показателя. Сохранена локальная оценка.",
+    "insufficient_local_validation": "Для поправки недостаточно проверочных сроков модели. Сохранена локальная оценка.",
+    "within_local_precision": "Поправка округляется до нуля при точности локальной модели.",
+    "unvalidated_correction": "Поправка не прошла проверку на предыдущих наблюдениях станции. Сохранена локальная оценка.",
 }
 
 
@@ -146,7 +166,7 @@ def _conditional_format(last_row):
         (f"C2:D{last_row}", (
             (0, f'$D2="{ORIGINAL}"'),
             (1, f'$D2="{REJECTED}"'),
-            (2, f'OR($D2="{ESTIMATE}",$D2="{MODEL_ESTIMATE}")'),
+            (2, f'OR($D2="{MODEL_ESTIMATE}",$D2="{ADJUSTED_ESTIMATE}")'),
             (3, f'OR($D2="{MISSING}",$D2="{NO_ORIGINAL}",$D2="{NO_ESTIMATE}")'),
         )),
         (f"E2:E{last_row}", (
@@ -175,13 +195,16 @@ def _decision(value, keep):
     return ("Оставить", GOOD) if keep else (EXCLUDE, BAD)
 
 
-def _result_formula(number, include_model):
+def _result_formula(number, include_estimates):
     source = f'E{number}'
     estimate = f'I{number}'
     manual = f'B{number}'
     decision = f'F{number}'
     global_mode = f"'{GUIDE}'!$B$5"
-    estimate_kind = f'IF(N{number}="{MODEL_METHOD}","{MODEL_ESTIMATE}","{ESTIMATE}")' if include_model else f'"{ESTIMATE}"'
+    estimate_kind = (
+        f'IF(O{number}<>0,"{ADJUSTED_ESTIMATE}","{MODEL_ESTIMATE}")'
+        if include_estimates else f'"{MODEL_ESTIMATE}"'
+    )
     return (
         f'IF({global_mode}="{EXCLUDE_ALL}","{REJECTED}",'
         f'IF({global_mode}="{RESTORE_ALL}",IF(LEN({source})>0,"{ORIGINAL}","{MISSING}"),'
@@ -197,40 +220,112 @@ def _number(value):
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value) else None
 
 
-def _estimate_detail(item):
-    note = item.get("estimate_sources") or ""
+def _external_reference(item):
+    reference = item.get("external_reference")
+    if reference:
+        return reference
     provenance = item.get("provenance") or {}
-    if not note or not provenance or not isinstance(note, str):
-        return note
-    lines = [note]
+    if provenance.get("sources") or provenance.get("kind") in {"hourly_reanalysis", "subhour_reanalysis"}:
+        return {"provenance": provenance, "source": item.get("estimate_sources")}
+    return {}
+
+
+def _external_detail(reference):
+    provenance = reference.get("provenance") or {}
+    lines = []
     if provenance.get("time_utc"):
         lines.append(f"Срок UTC: {provenance['time_utc']}")
     elif provenance.get("start_utc"):
         lines.append(f"Начало часа UTC: {provenance['start_utc']}")
-    for source in provenance.get("sources", []):
+    for source in provenance.get("sources") or []:
         name = source.get("model") or source.get("name")
         value = _number(source.get("value"))
         if name and value is not None:
             unit = source.get("unit") or provenance.get("unit") or ""
             lines.append(f"{name}: {value} {unit}".rstrip())
-    if provenance.get("kind") == "station_model":
-        unit = provenance["unit"]
-        for anchor in provenance["anchors"]:
-            lines.append(f"Наблюдение {anchor['time']}: {anchor['value']} {unit}")
-        if provenance.get("training_end"):
-            lines.append(f"Поправка {provenance['bias']} {unit} по данным до {provenance['training_end']}")
-            validation = provenance["validation"]
-            lines.append(f"Средняя абсолютная ошибка {validation['mae']} {unit} на {validation['test_n']} сроках")
-        else:
-            lines.append("Линейная интерполяция без обученной поправки.")
+    mean = _number(reference.get("value"))
+    if mean is not None:
+        lines.append(f"Среднее для сверки: {mean} {provenance.get('unit', '')}".rstrip())
+    if not lines and reference.get("source"):
+        lines.append(str(reference["source"]))
     return "\n".join(lines)
 
 
-def _write_review_rows(output, fields, observations, param, include_model):
-    columns = list(ROW_COLUMNS)
-    if include_model:
-        columns[8] = ("Расчётная оценка", 18)
-        columns.append(("Способ оценки", 25))
+def _local_detail(provenance, fallback):
+    if provenance.get("kind") != "station_model":
+        return fallback or ""
+    lines = ["Интерполяция по двум исходным измерениям"]
+    unit = provenance.get("unit", "")
+    for anchor in provenance.get("anchors") or []:
+        lines.append(f"Наблюдение {anchor['time']}: {anchor['value']} {unit}".rstrip())
+    if provenance.get("training_end"):
+        lines.append(f"Калибровка станции: {provenance['bias']} {unit} по данным до {provenance['training_end']}")
+        validation = provenance.get("validation") or {}
+        if validation.get("mae") is not None:
+            lines.append(f"Средняя абсолютная ошибка {validation['mae']} {unit} на {validation['test_n']} сроках")
+    return "\n".join(lines)
+
+
+def _estimate_trace(item):
+    provenance = item.get("provenance") or {}
+    verification = item.get("verification") or provenance.get("verification") or {}
+    method = item.get("estimate_method")
+    saved = _number(item.get("estimate"))
+    local = _number(item.get("local_estimate"))
+    is_model = method == "model" or (method is None and provenance.get("kind") == "station_model")
+    if is_model and local is None:
+        local = saved
+    reference = _external_reference(item)
+    historical = saved if saved is not None and local is None and method != "model_adjusted" and not is_model else None
+    decision = verification.get("decision")
+    reason = VERIFICATION_REASONS.get(decision, "")
+    calibration = verification.get("calibration") or {}
+    result = local
+    delta = 0 if local is not None and decision else None
+    if decision == "adjusted":
+        proposed = _number(verification.get("delta"))
+        limits = verification.get("limits") or {}
+        caps = [cap for key in ("max_delta", "local_validation_mae") if (cap := _number(limits.get(key))) is not None]
+        sources = (reference.get("provenance") or {}).get("sources") or []
+        independent = {source.get("id") or source.get("model") for source in sources
+                       if _number(source.get("value")) is not None}
+        independent.discard(None)
+        verified = (
+            method == "model_adjusted" and local is not None and proposed and saved is not None
+            and isclose(saved, local + proposed, rel_tol=0, abs_tol=0.00005)
+            and caps and abs(proposed) <= min(caps) + 0.00005
+            and len(independent) >= 2 and reference.get("usable", True)
+            and calibration.get("accepted") is True
+        )
+        if verified:
+            result, delta = saved, proposed
+            weight = _number(verification.get("weight"))
+            if weight is not None:
+                reason += f" Вес расхождения {weight:g}, предел поправки {min(caps):g}."
+        else:
+            reason = "Сведения о поправке неполны. В рабочий итог допускается локальная оценка."
+    if historical is not None:
+        reason = "Внешняя оценка прежней версии сохранена для аудита."
+        reference = reference or {"source": item.get("estimate_sources")}
+    elif local is None and reference and not reason:
+        reason = VERIFICATION_REASONS["no_local_estimate"]
+    elif local is not None and not reason:
+        reason = "Локальная оценка по измерениям станции."
+    if calibration:
+        count = calibration.get("sample_count", 0)
+        minimum = calibration.get("minimum_sample_count")
+        reason += f"\nПроверочных сроков {count}" + (f" из необходимых {minimum}." if count < (minimum or 0) else ".")
+        for label, key in (("MAE", "mae"), ("RMSE", "rmse")):
+            before = _number(calibration.get(f"local_{key}"))
+            after = _number(calibration.get(f"adjusted_{key}"))
+            if before is not None and after is not None:
+                reason += f" {label} {before:g} → {after:g}."
+    detail = _local_detail(provenance, item.get("estimate_sources")) if local is not None else ""
+    return local, result, delta, reason, detail, reference, historical
+
+
+def _write_review_rows(output, fields, observations, param, include_estimates):
+    columns = ROW_COLUMNS + (ESTIMATE_COLUMNS if include_estimates else [])
     original_start = len(columns) + 1
     columns.extend((field, max(12, min(29, len(field) + 5))) for field in fields)
     addresses = [_column(i) for i in range(original_start, len(columns) + 1)]
@@ -240,21 +335,23 @@ def _write_review_rows(output, fields, observations, param, include_model):
     counts = Counter()
     for index, item in enumerate(observations, start=2):
         raw = item.get("original") or {}
-        value, estimate = _number(item.get("value")), _number(item.get("estimate"))
+        value = _number(item.get("value"))
+        local, estimate, delta, verification_reason, local_detail, reference, historical = _estimate_trace(item)
         raw_value = raw.get(param)
         original = value
         if original is None and isinstance(raw_value, str) and raw_value.strip():
             original = raw_value
         keep = bool(item["keep"]) and value is not None
-        estimate_source = _estimate_detail(item)
-        from_model = item.get("estimate_method") == "model"
+        external_detail = _external_detail(reference)
         if keep:
             kind, result = ORIGINAL, value
         elif estimate is not None:
-            kind, result = (MODEL_ESTIMATE if from_model else ESTIMATE), estimate
+            kind, result = (ADJUSTED_ESTIMATE if delta else MODEL_ESTIMATE), estimate
         else:
             kind, result = (REJECTED if original is not None else MISSING), None
         counts[kind] += 1
+        if historical is not None:
+            counts["historical_estimates"] += 1
         algorithm, decision_style = _decision(original, keep)
         official, official_style = _decision(value, item["official_keep"])
         if item.get("official_status") in {"conflict", "flagged"}:
@@ -268,34 +365,37 @@ def _write_review_rows(output, fields, observations, param, include_model):
         official_reasons = "\n".join(item.get("official_reasons") or [])
         if raw.get("qc_flag"):
             reasons.append(f"Флаги архива: {raw['qc_flag']}")
-        result_kind = f'D{index}="{ESTIMATE}"'
-        if include_model:
-            result_kind = f'OR({result_kind},D{index}="{MODEL_ESTIMATE}")'
+        result_kind = f'OR(D{index}="{MODEL_ESTIMATE}",D{index}="{ADJUSTED_ESTIMATE}")'
         cells = [
             _cell(f"A{index}", item["time"]),
             _cell(f"B{index}", ALGORITHM, INPUT),
             _formula(f"C{index}", f'IF(D{index}="{ORIGINAL}",E{index},IF({result_kind},I{index},""))', result, NUMBER),
-            _formula(f"D{index}", _result_formula(index, include_model), kind),
+            _formula(f"D{index}", _result_formula(index, include_estimates), kind),
             _cell(f"E{index}", original, NUMBER),
             _cell(f"F{index}", algorithm, decision_style),
             _cell(f"G{index}", official, official_style),
             _cell(f"H{index}", "\n".join(reasons), WRAPPED),
             _cell(f"I{index}", estimate, ESTIMATED if estimate is not None else EMPTY),
-            _cell(f"J{index}", estimate_source, WRAPPED),
+            _cell(f"J{index}", external_detail, WRAPPED),
             _cell(f"K{index}", item["source"]),
             _cell(f"L{index}", item["line"]),
             _cell(f"M{index}", official_reasons, WRAPPED),
         ]
-        if include_model:
-            method = MODEL_METHOD if from_model else "По данным метеосервисов"
-            cells.append(_cell(f"N{index}", method if estimate is not None else None, WRAPPED))
+        if include_estimates:
+            cells.extend((
+                _cell(f"N{index}", local, NUMBER),
+                _cell(f"O{index}", delta, NUMBER),
+                _cell(f"P{index}", verification_reason, WRAPPED),
+                _cell(f"Q{index}", local_detail, WRAPPED),
+                _cell(f"R{index}", historical, NUMBER),
+            ))
         cells.extend(
             _cell(f"{col}{index}", str(raw[field]) if raw.get(field) is not None else None)
             for col, field in zip(addresses, fields)
         )
         lines = max(
             sum(max(1, (len(line) + 54) // 55) for line in detail.split("\n"))
-            for detail in ("\n".join(reasons), str(estimate_source), official_reasons)
+            for detail in ("\n".join(reasons), external_detail, official_reasons, verification_reason, str(local_detail))
         )
         height = min(144, 8 + 12 * lines) if lines > 1 else None
         output.write(_row(index, cells, height).encode())
@@ -312,10 +412,40 @@ def _write_review_rows(output, fields, observations, param, include_model):
     return counts
 
 
+def _sources(report):
+    providers = {}
+    groups = [(report.get("external") or {}).get("sources") or []]
+    for item in report["rows"]:
+        reference = _external_reference(item)
+        if sources := (reference.get("provenance") or {}).get("sources"):
+            groups.append(sources)
+    for sources in groups:
+        for source in sources:
+            label = source.get("model") or source.get("name")
+            url = source.get("url")
+            if label and isinstance(url, str):
+                if source.get("mode") == "snapshot":
+                    label += " · сохранённый снимок"
+                providers.setdefault(url, label)
+    return providers
+
+
+def _safe_link(url):
+    try:
+        target = urlsplit(url)
+        return (
+            target.scheme == "https"
+            and target.netloc.lower() in {"archive-api.open-meteo.com", "power.larc.nasa.gov"}
+            and not any(ord(char) <= 32 for char in url)
+        )
+    except ValueError:
+        return False
+
+
 def _write_guide(output, report, counts):
     count_labels = [
         (10, "Исходных в рабочем ряду", [ORIGINAL], GOOD),
-        (11, "Оценок в рабочем ряду", [ESTIMATE, MODEL_ESTIMATE], ESTIMATED),
+        (11, "Оценок в рабочем ряду", [MODEL_ESTIMATE, ADJUSTED_ESTIMATE], ESTIMATED),
         (12, "Исключено", [REJECTED], BAD),
         (13, "Строк без рабочего значения", [REJECTED, MISSING, NO_ORIGINAL, NO_ESTIMATE], EMPTY),
     ]
@@ -325,7 +455,7 @@ def _write_guide(output, report, counts):
         ("«Исключить все» очищает рабочие значения, включая расчётные оценки. Общий режим имеет приоритет над решениями по строкам.", NOTE),
         ("Верните «По алгоритму» в B5, чтобы снова применить решения в колонке B листа «Сроки». По умолчанию там действует алгоритм.", NOTE),
         ("Пример. Для исключённого наблюдения выберите «Вернуть исходное» в его строке. Чтобы отменить эту правку, снова выберите там «По алгоритму».", NOTE),
-        ("«Использовать оценку» подставляет её из колонки I, если она есть. По алгоритму оценка используется, когда исходник отсутствует или исключён.", NOTE),
+        ("«Использовать оценку» берёт итог модели из колонки I. По алгоритму этот итог применяется, когда исходник отсутствует или исключён.", NOTE),
         ("Как прочитать таблицу", HEADER),
         ("Зелёный — используется исходное наблюдение. Красный — исключено. Лиловый — расчётная оценка. Серый — отсутствующее значение.", NOTE),
         ("Файл и номер строки указывают на источник. Исходные столбцы файла сохранены как текст. Для добавленных сроков исходные поля пусты.", NOTE),
@@ -356,20 +486,24 @@ def _write_guide(output, report, counts):
     if snapshots.get("daily") or snapshots.get("monthly"):
         notes.append(("Снимки рассчитаны при выгрузке по отобранным наблюдениям. Расчётные оценки и ручные правки отражаются на листе «Сроки» и в счётчиках «Управление».", NOTE))
     external = report.get("external") or {}
-    if external:
-        notes.append(("Внешние данные", HEADER))
-        notes.append((f"Часовой пояс исходных сроков для сопоставления: {external.get('timezone', '—')}. Колонка J содержит срок UTC и значения внешних моделей.", NOTE))
+    providers = _sources(report)
+    if external or providers:
+        notes.append(("Сверка оценки с метеосервисами", HEADER))
+        notes.append(("Локальная оценка и поправка указаны в N и O. Колонка P объясняет решение. Срок UTC и значения метеосервисов показаны в J справочно.", NOTE))
+        notes.append(("Поправка допускается после проверки на предыдущих измерениях станции. В колонке P приведены ошибки до и после поправки по проверочным срокам.", NOTE))
+        if external.get("timezone"):
+            notes.append((f"Часовой пояс исходных сроков для сопоставления: {external['timezone']}.", NOTE))
+    if counts["historical_estimates"]:
         notes.extend(
-            (f"{source['model']} · {source['url']}", NOTE)
-            for source in (external.get("sources") or [])
-            if source.get("model") and source.get("url")
+            [("Совместимость с прежними расчётами", HEADER),
+             ("Колонка R хранит прежние внешние оценки для аудита. Рабочий итог использует измерения и допустимую локальную модель.", NOTE)]
         )
     if report.get("warnings"):
         notes.append(("Замечания при выгрузке", HEADER))
         notes.extend((warning, NOTE) for warning in report["warnings"])
     merges = ["A1:F1", "A2:F2", "A9:F9"]
     columns = [("", width) for width in (37, 26, 16, 16, 16, 16)]
-    output.write(_sheet_open(columns, 14 + len(notes)).encode())
+    output.write(_sheet_open(columns, 14 + len(notes) + len(providers)).encode())
     descriptions = {
         1: ("Аудит метеонаблюдений", TITLE, 36),
         2: ("Настройте режим книги и проверьте рабочий ряд на листе «Сроки».", SUBTITLE, 25),
@@ -401,13 +535,29 @@ def _write_guide(output, report, counts):
         merges.append(f"A{index}:F{index}")
         height = 23 if style == HEADER else max(34, min(144, 12 * (2 + len(note) // 140)))
         output.write(_row(index, [_cell(f"A{index}", note, style)], height).encode())
+    links = {}
+    for index, (url, provider) in enumerate(providers.items(), start=15 + len(notes)):
+        address = f"A{index}"
+        merges.append(f"{address}:F{index}")
+        if _safe_link(url):
+            links[address] = url
+        style = LINK if address in links else NOTE
+        output.write(_row(index, [_cell(address, f"{provider} · {url}", style)], 45).encode())
     output.write((
         f'</sheetData><mergeCells count="{len(merges)}">'
         + "".join(f'<mergeCell ref="{target}"/>' for target in merges)
         + '</mergeCells><dataValidations count="1">'
         + _validation("B5", [ALGORITHM, RESTORE_ALL, EXCLUDE_ALL], "Режим для всех сроков")
-        + '</dataValidations></worksheet>'
+        + '</dataValidations>'
     ).encode())
+    if links:
+        hyperlinks = "".join(
+            f'<hyperlink ref="{cell}" xmlns:r="{REL_NS}" r:id="rIdLink{index}"/>'
+            for index, cell in enumerate(links, start=1)
+        )
+        output.write(f"<hyperlinks>{hyperlinks}</hyperlinks>".encode())
+    output.write(b"</worksheet>")
+    return links.values()
 
 
 def _write_snapshot(output, rows, monthly):
@@ -466,11 +616,13 @@ def _styles():
         (0, 4, False, ""), (3, 2, True, ""), (3, 5, True, ""), (0, 6, True, ""),
         (0, 0, False, "right"), (8, 10, False, ""), (5, 7, False, ""),
         (6, 8, False, ""), (7, 9, False, ""), (0, 0, True, ""),
+        (len(fonts), 6, True, ""),
     ]
     font_xml = "".join(
         f'<font>{"<b/>" if bold else ""}<sz val="{size}"/><color rgb="FF{color}"/><name val="Arial"/><family val="2"/></font>'
         for color, size, bold in fonts
     )
+    font_xml += '<font><u/><sz val="10"/><color rgb="FF174B86"/><name val="Arial"/><family val="2"/></font>'
     def fill_xml(color):
         return f'<fill><patternFill patternType="solid"><fgColor rgb="FF{color}"/><bgColor indexed="64"/></patternFill></fill>'
 
@@ -486,7 +638,7 @@ def _styles():
         for fg, bg in palette
     )
     return (
-        f'{XML}<styleSheet xmlns="{MAIN_NS}"><fonts count="{len(fonts)}">{font_xml}</fonts>'
+        f'{XML}<styleSheet xmlns="{MAIN_NS}"><fonts count="{len(fonts) + 1}">{font_xml}</fonts>'
         f'<fills count="{len(fills) + 2}"><fill><patternFill patternType="none"/></fill>'
         '<fill><patternFill patternType="gray125"/></fill>'
         + "".join(map(fill_xml, fills)) + '</fills>'
@@ -540,10 +692,14 @@ def export_xlsx(report):
     observations = report["rows"]
     fields = report["fields"]
     include_model = bool(report.get("fill_model"))
+    include_estimates = include_model or bool(report.get("external")) or any(
+        row and any(row.get(key) is not None for key in ("estimate", "local_estimate", "external_reference", "verification"))
+        for row in observations
+    )
     limit = REVIEW_XLSX_MAX_ROWS + 60_000 * include_model
     if len(observations) > limit:
         raise ValueError(f"Книга вмещает до {limit:,} строк. Выберите более короткий период.".replace(",", " "))
-    if len(fields) + len(ROW_COLUMNS) + include_model > 16384:
+    if len(fields) + len(ROW_COLUMNS) + len(ESTIMATE_COLUMNS) * include_estimates > 16384:
         raise ValueError("Исходный файл содержит слишком много столбцов для одной книги Excel")
     snapshots = report.get("summaries") or {}
     additional = [
@@ -555,9 +711,17 @@ def export_xlsx(report):
     with ZipFile(output, "w", compression=ZIP_DEFLATED, compresslevel=4) as workbook:
         _write_package(workbook, [GUIDE, ROWS, *[name for name, _, _ in additional]])
         with workbook.open("xl/worksheets/sheet2.xml", "w") as part:
-            counts = _write_review_rows(part, fields, observations, report["param"], include_model)
+            counts = _write_review_rows(part, fields, observations, report["param"], include_estimates)
         with workbook.open("xl/worksheets/sheet1.xml", "w") as part:
-            _write_guide(part, report, counts)
+            links = _write_guide(part, report, counts)
+        if links:
+            relationships = "".join(
+                f'<Relationship Id="rIdLink{index}" Type="{REL_NS}/hyperlink" Target={quoteattr(url)} TargetMode="External"/>'
+                for index, url in enumerate(links, start=1)
+            )
+            workbook.writestr("xl/worksheets/_rels/sheet1.xml.rels", (
+                f'{XML}<Relationships xmlns="{PACKAGE_NS}">{relationships}</Relationships>'
+            ))
         for index, (_, rows, monthly) in enumerate(additional, start=3):
             with workbook.open(f"xl/worksheets/sheet{index}.xml", "w") as part:
                 _write_snapshot(part, rows, monthly)

@@ -5,9 +5,10 @@ const dailyFields = [
   ['precipitation_sum', 'mm'], ['wind_speed_10m_max', 'm/s'],
 ];
 const hourlyFields = [['temperature_2m', '°C'], ['wind_speed_10m', 'm/s']];
+const forecastPoint = {latitude: '56.464310', longitude: '32.970290'};
 const endpoint = new URL('https://api.open-meteo.com/v1/forecast');
 endpoint.search = new URLSearchParams({
-  latitude: '56.52', longitude: '32.87',
+  ...forecastPoint,
   daily: [...dailyFields.map(([key]) => key), 'weather_code'].join(','),
   hourly: hourlyFields.map(([key]) => key).join(','),
   wind_speed_unit: 'ms', timezone: 'Europe/Moscow', forecast_days: '3',
@@ -48,8 +49,14 @@ function hasValues(data, units, key, unit) {
 
 function dailyRows(response) {
   const daily = response.daily;
-  if (!Array.isArray(daily?.time) || daily.time.length !== 3 || response.timezone !== 'Europe/Moscow') {
+  if (!Array.isArray(daily?.time) || daily.time.length !== 3 ||
+      response.daily_units?.time !== 'iso8601' || response.timezone !== 'Europe/Moscow') {
     throw new Error('Провайдер вернул неполный период');
+  }
+  if (!Number.isFinite(response.latitude) || !Number.isFinite(response.longitude) ||
+      Math.abs(response.latitude - Number(forecastPoint.latitude)) > 0.15 ||
+      Math.abs(response.longitude - Number(forecastPoint.longitude)) > 0.2) {
+    throw new Error('Ответ относится к другой местности');
   }
   if (!dailyFields.every(([key, unit]) => hasValues(daily, response.daily_units, key, unit))) {
     throw new Error('Провайдер вернул неполную таблицу');
@@ -73,7 +80,7 @@ function dailyRows(response) {
 
 function hourlyRows(response, displayDay, retrieved) {
   const hours = response.hourly;
-  if (!Array.isArray(hours?.time) || !hourlyFields.every(([key, unit]) =>
+  if (!Array.isArray(hours?.time) || response.hourly_units?.time !== 'iso8601' || !hourlyFields.every(([key, unit]) =>
     hasValues(hours, response.hourly_units, key, unit))) return [];
   const start = hours.time.indexOf(displayDay + 'T' + moscowHour.format(retrieved) + ':00');
   if (start === -1) return [];
@@ -221,7 +228,8 @@ function renderHourly() {
 
 function render(response, retrieved, saved) {
   const rows = dailyRows(response);
-  if (!saved && rows[0].iso !== moscowDay.format(retrieved)) throw new Error('Ответ относится к другой дате');
+  if (rows[0].iso !== moscowDay.format(retrieved)) throw new Error('Ответ относится к другой дате');
+  const expired = rows.at(-1).iso < moscowDay.format(new Date());
   hourly = hourlyRows(response, rows[0].iso, retrieved);
   renderDays(rows);
   renderTable('forecast-rows', rows);
@@ -229,9 +237,11 @@ function render(response, retrieved, saved) {
   byId('forecast-period').textContent = rows[0].label + ' — ' + rows[rows.length - 1].label +
     '. Получен ' + moscowTime.format(retrieved) + ' МСК.';
   source.classList.toggle('warn', saved);
-  source.textContent = saved ? 'Сохранённая копия' : 'Open-Meteo';
+  const copyLabel = expired ? 'Архивная копия' : 'Сохранённая копия';
+  source.textContent = saved ? copyLabel : 'Open-Meteo';
   source.hidden = false;
   panel.hidden = false;
+  return expired;
 }
 
 async function loadForecast() {
@@ -253,8 +263,11 @@ async function loadForecast() {
       const snapshot = await response.json();
       const retrieved = new Date(snapshot.retrieved_utc);
       if (!Number.isFinite(retrieved.getTime())) throw new Error('Неизвестная дата сохранения');
-      render(snapshot.response, retrieved, true);
-      statusLine.textContent = 'Свежий прогноз недоступен. Показана сохранённая копия с датами ниже.';
+      if (new URL(snapshot.source_url).href !== endpoint.href) throw new Error('Копия относится к другому запросу');
+      const expired = render(snapshot.response, retrieved, true);
+      statusLine.textContent = expired
+        ? 'Свежий прогноз недоступен. Показана архивная копия за прошедшие даты.'
+        : 'Свежий прогноз недоступен. Показана сохранённая копия с датами ниже.';
     } catch {
       statusLine.textContent = 'Не удалось получить прогноз или открыть сохранённую копию. Попробуйте обновить страницу позже.';
     }

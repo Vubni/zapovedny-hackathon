@@ -22,9 +22,7 @@ services:
     environment:
       METEO_DATABASE_URL: postgresql://meteo_app@db:5432/meteo
       PGPASSWORD: ${METEO_APP_DB_PASSWORD:?Run python3 setup_compose.py first}
-      METEO_ADMIN_PASSWORD: ${METEO_WEB_OPERATOR_PASSWORD:?Run python3 setup_compose.py first}
-      METEO_ADMIN_ORIGIN: ${METEO_ADMIN_ORIGIN:-}
-      YANDEX_MAPS_BROWSER_KEY: ${YANDEX_MAPS_BROWSER_KEY:-}
+      METEO_PUBLIC_ORIGIN: ${METEO_PUBLIC_ORIGIN:-}
       METEO_PORT: ${METEO_PORT:-8766}
     depends_on:
       db:

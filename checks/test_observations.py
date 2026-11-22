@@ -165,8 +165,8 @@ class ObservationsTests(unittest.TestCase):
         result = query(chart="air_anomaly")
         points = series(result, "kr1")["points"]
         self.assertTrue(all(point["years"] == 1 for point in points))
-        self.assertEqual(len({point["baseline"] for point in points}), 1)
-        self.assertAlmostEqual(sum(point["y"] * point["used_days"] for point in points), 0.0)
+        self.assertEqual(len({point["baseline"] for point in points}), 12)
+        self.assertTrue(all(point["y"] == 0 for point in points))
         two_years = query(chart="air_anomaly", baseline="2024-2025")
         self.assertEqual(series(two_years, "kr1")["years"], 2)
         short = query(chart="air_trend")
@@ -176,6 +176,45 @@ class ObservationsTests(unittest.TestCase):
         self.assertIsNotNone(series(long, "ame60")["slope"])
         self.assertTrue(all(point["y"] is None for point in series(long, "kr1")["points"][:-4]))
         self.assertTrue(all(point["y"] is None for point in series(long, "ame60")["points"][-4:]))
+
+    def test_ame60_monthly_anomaly_uses_matching_calendar_months(self):
+        lookup = dict(station="ame60", param="t_air", start="2010-01-01", end="2010-12-31",
+                      grain="month", base_start=1992, base_end=2006)
+        legacy = analytics.analyze(lookup)
+        modern = query("ame60", lookup["start"], lookup["end"], chart="air_anomaly", baseline="1992-2006")
+        points = series(modern, "ame60")["points"]
+        for index, years in ((0, 6), (5, 9)):
+            point, table = points[index], legacy["rows"][index]
+            self.assertEqual((point["years"], table["years"]), (years, years))
+            self.assertAlmostEqual(point["baseline"], table["baseline"])
+            self.assertAlmostEqual(point["y"], table["anomaly"])
+
+    def test_day_decade_and_intervals_keep_separate_reference_years(self):
+        station = "reference-test"
+        register_station(dict(id=station, label="Сезонный отсчёт", minimum_slots=1, params=["t_air"]))
+        readings = {
+            "2020-02-29": 10, "2023-01-10": -8, "2023-02-12": 44, "2023-02-21": 10,
+            "2023-02-28": -40, "2024-01-10": -5, "2024-02-22": 30, "2024-02-28": 20,
+            "2024-02-29": 30, "2026-01-10": 7, "2026-02-21": 40, "2028-02-29": 27,
+        }
+        upload = self.upload(station, "datetime,t_air", [f"{day} 00:00,{value}" for day, value in readings.items()])
+        store.confirm_file(upload)
+        daily = query(station, "2028-02-29", "2028-02-29", chart="air_anomaly", grain="day", baseline="2020-2024")
+        point = series(daily, station)["points"][0]
+        self.assertEqual((point["baseline"], point["years"], point["y"]), (20, 2, 7))
+        decade = query(station, "2026-02-21", "2026-02-28", chart="air_anomaly", grain="decade", baseline="2023-2024")
+        point = series(decade, station)["points"][0]
+        self.assertEqual(point["years"], 2)
+        self.assertAlmostEqual(point["baseline"], fmean((-15, 80 / 3)))
+        self.assertAlmostEqual(point["y"], 40 - fmean((-15, 80 / 3)))
+
+        options = dict(stations=station, grain="day", intervals="2024-01-10:2024-01-10,2026-01-10:2026-01-10")
+        selected = chart_data(dict(options, chart="air_anomaly"))
+        points = [item["points"][0] for item in selected["series"]]
+        self.assertEqual([(p["baseline"], p["years"], p["y"]) for p in points], [(1, 2, -6), (1, 2, 6)])
+        self.assertEqual([item["years"] for item in chart_data(options)["statistics"]], [1, 1])
+        ordinary = query(station, "2024-02-20", "2028-02-29", chart="air", grain="year")
+        self.assertEqual(ordinary["statistics"][0]["years"], 3)
 
     def test_comparison_uses_common_dates_and_original_hours(self):
         result = query("kr2,kr1", chart="temp_difference")

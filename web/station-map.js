@@ -1,12 +1,29 @@
-import {longitudeFrame, mountYandexLocation, wrapLongitude} from './yandex-location.js';
+import {loadRaster, rasterOffsets, reserveRaster, russiaRaster} from './station-map-raster.js';
 
-const reserve = {latitude: 56.52, longitude: 32.87};
+const reserve = {latitude: 56.464310, longitude: 32.970290};
 const russiaExtent = [{latitude: 41, longitude: 19}, {latitude: 82.3, longitude: -169}];
 const initialScale = 410;
 const maxScale = 9600;
 const overviewScale = 40;
 const markerSpacing = 44;
 const degrees = Math.PI / 180;
+const wrapLongitude = longitude => ((longitude + 180) % 360 + 360) % 360 - 180;
+
+function longitudeFrame(points) {
+  const longitudes = points.map(point => wrapLongitude(point.longitude)).sort((a, b) => a - b);
+  let start = longitudes[0];
+  let largestGap = 0;
+  for (const [index, longitude] of longitudes.entries()) {
+    const next = longitudes[index + 1] ?? longitudes[0] + 360;
+    if (next - longitude > largestGap) {
+      largestGap = next - longitude;
+      start = next;
+    }
+  }
+  const span = 360 - largestGap;
+  return {longitude: wrapLongitude(start + span / 2), span};
+}
+
 let mapId = 0;
 let passportId = 0;
 const coordinateFormat = new Intl.NumberFormat('ru', {maximumFractionDigits: 5});
@@ -19,15 +36,6 @@ const terrains = {
   settlement: ['Населённый пункт', '#6d5178'],
   other: ['Другая местность', '#494f78'],
   unknown: ['Тип местности не указан', '#58675f'],
-};
-const commonParams = [
-  ['t_air', 'Температура воздуха'], ['rh', 'Относительная влажность'],
-  ['wind_speed', 'Скорость ветра'], ['wind_gust', 'Порывы ветра'], ['wind_dir', 'Направление ветра'],
-];
-const profileParams = {
-  kr1: [['pressure_hpa', 'Атмосферное давление']],
-  ame60: [['soil_05', 'Температура почвы · 5 см'], ['soil_10', 'Температура почвы · 10 см'],
-    ['soil_20', 'Температура почвы · 20 см']],
 };
 const icons = {
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
@@ -89,7 +97,9 @@ function terrainFill(types) {
 }
 
 function stationLocation(station, point) {
-  if (station.location_precision === 'area') return 'Район заповедника';
+  if (station.location_precision === 'area') {
+    return station.location_label ? `Район заповедника · ${station.location_label}` : 'Район заповедника';
+  }
   return point ? coordinates(point) : 'Координаты отсутствуют';
 }
 
@@ -102,6 +112,13 @@ function stationPassport(station, locationLabel, id) {
     <p>Доступные показатели</p><ul></ul>`;
   panel.querySelector('[data-terrain]').textContent = terrains[terrainType(station)][0];
   panel.querySelector('[data-location]').textContent = locationLabel;
+  if (station.location_precision === 'area' && station.location_reference) {
+    const title = document.createElement('dt');
+    title.textContent = 'Ориентир';
+    const reference = document.createElement('dd');
+    reference.textContent = station.location_reference;
+    panel.querySelector('dl').append(title, reference);
+  }
   const params = panel.querySelector('ul');
   for (const {label, unit} of station.params || []) {
     const parameter = document.createElement('li');
@@ -121,6 +138,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   const overlay = viewport.querySelector('.station-map-markers');
   const overviewNote = viewport.parentElement.querySelector('[data-overview-marker-note]');
   const areaNote = viewport.parentElement.querySelector('[data-area-note]');
+  const imageryNote = viewport.parentElement.querySelector('[data-reserve-credit]');
   const overviewMarkers = new Map();
   const scaleLine = viewport.querySelector('.station-map-scale');
   const frame = viewport.querySelector('.station-map-frame');
@@ -131,11 +149,13 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   let russiaGeography;
   let requestedGeography = false;
   let requestedRussia = false;
+  const rasterImages = new Map();
   const bound = (value, low, high) => Math.min(Math.max(value, low), high);
   const worldScale = () => Math.min(viewport.clientWidth / 370, viewport.clientHeight / 190);
   const cosine = latitude => Math.max(0.25, Math.cos(latitude * degrees));
   let center = reserve;
   let scale = initialScale;
+  let atReserve = true;
   let width = 0;
   let height = 0;
   let pendingFrame;
@@ -146,14 +166,15 @@ function createMap(viewport, onPick, onSelect, onToggle) {
   let mode = 'select';
   let picking = false;
   let pointer = null;
-  const provider = mountYandexLocation(viewport, {
-    center: reserve, onPick,
-    onToggleGroup: group => group.element.click(),
-    onSelectIds: (ids, additive) => {
-      const included = new Set(ids);
-      onSelect(markers.flatMap(group => group.stations).filter(station => included.has(station.id)), additive);
-    },
-  });
+  const isReserve = ({latitude, longitude}) => latitude === reserve.latitude && longitude === reserve.longitude;
+
+  function reserveScale() {
+    const [left, bottom, right, top] = reserveRaster.bounds;
+    const longitudeMargin = Math.min(reserve.longitude - left, right - reserve.longitude);
+    const latitudeMargin = Math.min(reserve.latitude - bottom, top - reserve.latitude);
+    return Math.max(initialScale, width / (1.91 * longitudeMargin * cosine(reserve.latitude)),
+      height / (1.91 * latitudeMargin));
+  }
 
   const projectUnwrapped = (longitude, latitude) => [
     width / 2 + (longitude - center.longitude) * scale * cosine(center.latitude),
@@ -186,22 +207,8 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     }
   }
 
-  function drawRussiaLand(data, {water, landColor}) {
+  function drawRussiaLand(data, landColor) {
     context.save();
-    context.beginPath();
-    for (const [left, bottom, right, top] of data.russiaExtent) {
-      const first = Math.ceil((west - right) / 360);
-      const last = Math.floor((east - left) / 360);
-      for (let copy = first; copy <= last; copy++) {
-        const offset = copy * 360;
-        const [x, y] = projectUnwrapped(left + offset, top);
-        const [rightX, bottomY] = projectUnwrapped(right + offset, bottom);
-        context.rect(x, y, rightX - x, bottomY - y);
-      }
-    }
-    context.clip();
-    context.fillStyle = water;
-    context.fillRect(0, 0, width, height);
     trace(data.russiaLand, true);
     context.fillStyle = landColor;
     context.fill('evenodd');
@@ -210,6 +217,30 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     context.lineWidth = 0.75;
     context.stroke();
     context.restore();
+  }
+
+  function drawRaster(layer, opacity = 1) {
+    const offsets = rasterOffsets(layer.bounds, {west, south, east, north});
+    if (!offsets.length) return false;
+    if (!rasterImages.has(layer)) {
+      rasterImages.set(layer, null);
+      loadRaster(layer).then(image => {
+        rasterImages.set(layer, image);
+        if (viewport.isConnected) redraw();
+      });
+    }
+    const image = rasterImages.get(layer);
+    if (!image) return false;
+    const [left, bottom, right, top] = layer.bounds;
+    context.save();
+    context.globalAlpha = opacity;
+    for (const offset of offsets) {
+      const [x, y] = projectUnwrapped(left + offset, top);
+      const [rightX, bottomY] = projectUnwrapped(right + offset, bottom);
+      context.drawImage(image, x, y, rightX - x, bottomY - y);
+    }
+    context.restore();
+    return true;
   }
 
   function resolveOverviewMarker(groups, active) {
@@ -279,7 +310,13 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     width = viewport.clientWidth;
     height = viewport.clientHeight;
     if (!width || !height) return;
-    if (!requestedGeography) {
+    if (atReserve) scale = reserveScale();
+    ({longitude: west, latitude: north} = unproject(0, 0, false));
+    ({longitude: east, latitude: south} = unproject(width, height, false));
+    const bounds = {west, south, east, north};
+    const reserveVisible = scale >= 135 && rasterOffsets(reserveRaster.bounds, bounds).length > 0;
+    const russiaVisible = rasterOffsets(russiaRaster.bounds, bounds).length > 0;
+    if (!requestedGeography && reserveVisible) {
       requestedGeography = true;
       import('./station-map-data.js').then(data => {
         geography = data;
@@ -289,18 +326,20 @@ function createMap(viewport, onPick, onSelect, onToggle) {
         if (source) source.textContent = 'Географическая основа недоступна. Станции показаны по координатам.';
       });
     }
-    const closeToReserve = scale >= 135 && center.longitude >= 28 && center.longitude <= 38 &&
-      center.latitude >= 54 && center.latitude <= 59;
-    if (!requestedRussia && !closeToReserve) {
+    const [localWest, localSouth, localEast, localNorth] = reserveRaster.bounds;
+    const closeToReserve = reserveVisible && center.longitude >= localWest && center.longitude <= localEast &&
+      center.latitude >= localSouth && center.latitude <= localNorth;
+    if (!requestedRussia && russiaVisible && !closeToReserve) {
       requestedRussia = true;
       import('./russia-map-data.js').then(data => {
         russiaGeography = data;
         if (viewport.isConnected) redraw();
       }).catch(() => {});
     }
-    const {land = [], lakes = [], places = [], rivers = [], roads = []} = geography || {};
-    const detail = russiaGeography && !closeToReserve ? russiaGeography : null;
+    const {land = [], lakes = [], places = [], rivers = [], roads = []} = (reserveVisible ? geography : null) || {};
+    const detail = russiaVisible && !closeToReserve ? russiaGeography : null;
     const water = '#d7e8ea';
+    const background = '#e3ebe7';
     const landColor = '#edf0de';
     const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
     const pixelWidth = Math.round(width * pixelRatio);
@@ -308,18 +347,16 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
     if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
     context.setTransform(pixelWidth / width, 0, 0, pixelHeight / height, 0, 0);
-    context.fillStyle = water;
+    context.fillStyle = background;
     context.fillRect(0, 0, width, height);
-    ({longitude: west, latitude: north} = unproject(0, 0, false));
-    ({longitude: east, latitude: south} = unproject(width, height, false));
-
     trace(land, true);
     context.fillStyle = landColor;
     context.fill('evenodd');
-    context.strokeStyle = '#aabfb4';
-    context.lineWidth = 0.75;
-    context.stroke();
-    if (detail?.russiaLand.length) drawRussiaLand(detail, {water, landColor});
+    if (detail?.russiaLand.length) drawRussiaLand(detail, landColor);
+    const national = russiaVisible && !closeToReserve && drawRaster(russiaRaster);
+    const local = reserveVisible && drawRaster(reserveRaster, .88);
+    viewport.dataset.mapRaster = local ? 'reserve' : national ? 'russia' : 'vector';
+    imageryNote.hidden = !local;
 
     const cell = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 45, 90]
       .find(value => value * scale * cosine(center.latitude) >= 48) || 90;
@@ -332,7 +369,8 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       context.moveTo(...projectUnwrapped(west, lat));
       context.lineTo(...projectUnwrapped(east, lat));
     }
-    context.strokeStyle = '#5d7a661f';
+    context.strokeStyle = local ? '#f5f9eb21' : '#5d7a661f';
+    context.lineWidth = 0.75;
     context.stroke();
 
     if (detail || scale >= 10) {
@@ -374,7 +412,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     for (const {x, y, area} of positionMarkers()) {
       occupied.push([x - 31, y - 25, x + 31, y + 25]);
       if (area && scale >= 180) {
-        const label = 'Район заповедника';
+        const label = '«Красное»';
         context.font = `800 11px ${font}`;
         const labelWidth = context.measureText(label).width;
         const labelX = x + 31 + labelWidth < width - 8 ? x + 31 : x - 31 - labelWidth;
@@ -441,6 +479,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
 
   function zoom(factor, x = width / 2, y = height / 2) {
     fittedPoints = null;
+    atReserve = false;
     const point = unproject(x, y);
     scale = bound(scale * factor, worldScale(), maxScale);
     const latitude = bound(point.latitude + (y - height / 2) / scale, -90, 90);
@@ -450,6 +489,7 @@ function createMap(viewport, onPick, onSelect, onToggle) {
 
   function pan(dx, dy) {
     fittedPoints = null;
+    atReserve = false;
     const {longitude, latitude} = unproject(width / 2 - dx, height / 2 - dy);
     setCenter(latitude, longitude);
     redraw();
@@ -457,9 +497,8 @@ function createMap(viewport, onPick, onSelect, onToggle) {
 
   function focus(point) {
     fittedPoints = null;
+    atReserve = isReserve(point);
     setCenter(point.latitude, point.longitude);
-    provider.focus(point, !markers.some(group => group.area &&
-      group.point.latitude === point.latitude && group.point.longitude === point.longitude));
     scale = initialScale;
     redraw();
   }
@@ -468,11 +507,13 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     fittedPoints = points;
     const box = viewport.getBoundingClientRect();
     if (!points.length || !box.width || !box.height) return;
+    atReserve = points.every(isReserve);
     const latitudes = points.map(p => p.latitude);
     const latRange = Math.max(...latitudes) - Math.min(...latitudes);
     const {longitude, span} = longitudeFrame(points);
     setCenter(Math.min(...latitudes) + latRange / 2, longitude);
-    scale = bound(Math.min(initialScale, (box.height - 90) / (latRange || 1e-6),
+    const verticalPadding = points === russiaExtent ? 58 : 90;
+    scale = bound(Math.min(initialScale, (box.height - verticalPadding) / (latRange || 1e-6),
       (box.width - 80) / ((span || 1e-6) * cosine(center.latitude))), worldScale(), maxScale);
     redraw();
   }
@@ -582,7 +623,6 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       for (const {element, stations} of overviewMarkers.values()) {
         element.setAttribute('aria-pressed', toggleState(stations, selection));
       }
-      provider.update(markers, ids);
     },
     setMarkers(next) {
       markers = next;
@@ -598,7 +638,6 @@ function createMap(viewport, onPick, onSelect, onToggle) {
     pickCoordinates(active) {
       cancelGesture();
       picking = active;
-      provider.setPicking(active);
       for (const button of modes) button.disabled = active;
       for (const marker of markers) marker.element.disabled = active;
       for (const {element} of overviewMarkers.values()) element.disabled = active;
@@ -606,7 +645,6 @@ function createMap(viewport, onPick, onSelect, onToggle) {
       if (active) viewport.focus();
     },
     destroy() {
-      provider.destroy();
       cancelGesture();
       observer.disconnect();
       cancelAnimationFrame(pendingFrame);
@@ -637,8 +675,9 @@ function mapContents() {
     <p class="station-map-instruction" hidden>Укажите точку на карте или нажмите Enter для точки в центре.</p>
   </div>
   <div class="station-map-source">
-    <span>Обзорная карта · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
-    <span data-area-note hidden>Общий маркер показывает район заповедника.</span>
+    <span>Рельеф и география · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
+    <span data-reserve-credit hidden><a href="https://esa-worldcover.org/en/data-access" target="_blank" rel="noreferrer">© ESA WorldCover project 2021</a> / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>)</span>
+    <span data-area-note hidden>Общий маркер показывает ориентир «Красное».</span>
   </div>
   <ul class="station-terrain-legend" data-terrain-legend aria-label="Тип местности на карте" hidden></ul>
   <p id="${hintId}" class="station-map-shortcut"><span data-overview-marker-note hidden>Число в группе показывает количество соседних станций. </span><span class="station-map-mouse-tip">Зажмите левую кнопку и протяните рамку. Ctrl или ⌘ добавят станции к выбору.</span><span class="station-map-touch-tip">Проведите пальцем по карте в режиме выделения.</span></p>
@@ -829,8 +868,9 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       stations = catalog;
       const stationIds = new Set(stations.map(station => station.id));
       selected = new Set(ids.filter(id => stationIds.has(id)));
-      const nextKey = JSON.stringify(stations.map(({id, label, color, terrain, latitude, longitude, location_precision, params}) =>
-        [id, label, color, terrain, latitude, longitude, location_precision, params]));
+      const nextKey = JSON.stringify(stations.map(({id, label, color, terrain, latitude, longitude,
+        location_precision, location_label, location_reference, params}) =>
+        [id, label, color, terrain, latitude, longitude, location_precision, location_label, location_reference, params]));
       if (nextKey !== catalogKey) {
         catalogKey = nextKey;
         rebuild();
@@ -880,25 +920,23 @@ function dialogContents() {
           <div class="station-picker-list-head"><h3>Паспорт станции</h3><button class="btn line" type="button" data-back>К списку</button></div>
           <fieldset>
             <label class="field"><span>Название станции</span><input name="label" type="text" required maxlength="100" placeholder="Например, Лесной кордон"></label>
-            <label class="field"><span>Формат данных</span><select name="profile"><option value="kr1">Сокол М1 (Кр1 / Кр2)</option><option value="ame60">АМЕ-60</option></select></label>
             <label class="field"><span>Тип местности</span><select name="terrain">
               <option value="unknown">Не указан</option>
               ${Object.entries(terrains).filter(([type]) => type !== 'unknown').map(([type, [label]]) => `<option value="${type}">${label}</option>`).join('')}
             </select></label>
             <div class="station-form-coordinates">
-              <label class="field"><span>Широта</span><input name="latitude" type="number" inputmode="decimal" min="-90" max="90" step="any" placeholder="±90"></label>
-              <label class="field"><span>Долгота</span><input name="longitude" type="number" inputmode="decimal" min="-180" max="180" step="any" placeholder="±180"></label>
+              <label class="field"><span>Широта</span><input name="latitude" type="number" inputmode="decimal" min="-90" max="90" step="any" placeholder="±90" required></label>
+              <label class="field"><span>Долгота</span><input name="longitude" type="number" inputmode="decimal" min="-180" max="180" step="any" placeholder="±180" required></label>
             </div>
             <button class="btn line" type="button" data-pick aria-pressed="false">${icon('pin')} Указать на карте</button>
+            <div class="station-form-params"><div>Измеряемые показатели</div><div data-params role="group" aria-label="Измеряемые показатели"></div></div>
             <details>
               <summary>Дополнительные поля</summary>
               <label class="field"><span>Код станции</span><input name="id" type="text" maxlength="56" pattern="[a-z][a-z0-9_\\-]*" placeholder="Сформируется автоматически" title="Строчные латинские буквы, цифры, дефис и подчёркивание"></label>
-              <label class="field"><span>Шаг сырых наблюдений</span><select name="slot_minutes"><option value="">По формату</option><option value="1">1 минута</option><option value="60">1 час</option></select></label>
-              <label class="field"><span>Минимум сроков за сутки</span><input name="minimum_slots" type="number" min="1" max="1440" step="1" placeholder="По формату"></label>
-              <div class="station-form-params"><div>Показатели станции</div><div data-params></div></div>
+              <label class="field"><span>Как считать покрытие суток</span><select name="slot_minutes"><option value="">По числу разных часов</option><option value="1">По числу разных минут</option></select></label>
+              <label class="field"><span>Минимум сроков за сутки</span><input name="minimum_slots" type="number" min="1" max="1440" step="1" placeholder="По умолчанию · 18"></label>
             </details>
             <p class="station-form-error" role="alert" hidden></p>
-            <a class="btn line" href="/operator" target="_blank" rel="noopener" data-operator-signin hidden>Вход оператора</a>
             <button class="btn primary" type="submit" data-save>Зарегистрировать станцию</button>
           </fieldset>
         </form>
@@ -925,8 +963,10 @@ export async function pickStations(stations, selectedIds = []) {
   const add = get('[data-add]');
   const pick = get('[data-pick]');
   const error = get('.station-form-error');
-  const signIn = get('[data-operator-signin]');
   const instruction = get('.station-map-instruction');
+  const paramsGroup = get('[data-params]');
+  let parameterOptions = [...new Map(stations.flatMap(station => station.params || []).map(item => [item.id, item])).values()];
+  let parameterRequest;
   let editing = false;
   let picking = false;
   let saving = false;
@@ -963,23 +1003,42 @@ export async function pickStations(stations, selectedIds = []) {
   }
 
   function previewCoordinates() {
-    fields.latitude.setCustomValidity('');
-    fields.longitude.setCustomValidity('');
     map.setDraft(formPoint());
   }
 
-  function applyProfile() {
-    const params = get('[data-params]');
-    params.replaceChildren(...[...commonParams, ...profileParams[fields.profile.value]].map(([id, label]) => {
+  function renderParameters() {
+    const checked = new Set([...paramsGroup.querySelectorAll('input:checked')].map(input => input.value));
+    const existing = [...paramsGroup.querySelectorAll('input')];
+    if (existing.length === parameterOptions.length && existing.every((input, index) => input.value === parameterOptions[index].id)) return;
+    paramsGroup.replaceChildren(...parameterOptions.map(({id, label, unit}) => {
       const option = document.createElement('label');
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.name = 'params';
       input.value = id;
-      input.checked = true;
-      option.append(input, document.createTextNode(label));
+      input.checked = checked.has(id);
+      option.append(input, document.createTextNode(unit ? `${label} · ${unit}` : label));
       return option;
     }));
+  }
+
+  function loadParameters() {
+    if (parameterRequest) return;
+    parameterRequest = fetch('/api/stations').then(response => {
+      if (!response.ok) throw new Error('Каталог недоступен.');
+      return response.json();
+    }).then(body => {
+      if (Array.isArray(body.param_options) && body.param_options.length && dialog.isConnected) {
+        parameterOptions = body.param_options;
+        renderParameters();
+      }
+    }).catch(() => {
+      parameterRequest = undefined;
+      if (!parameterOptions.length && editing && dialog.isConnected) {
+        error.textContent = 'Не удалось загрузить показатели. Вернитесь к списку и повторите попытку.';
+        error.hidden = false;
+      }
+    });
   }
 
   function showForm(active) {
@@ -990,9 +1049,9 @@ export async function pickStations(stations, selectedIds = []) {
     if (active) {
       form.reset();
       form.querySelector('details').open = false;
-      applyProfile();
+      renderParameters();
+      loadParameters();
       error.hidden = true;
-      signIn.hidden = true;
       fields.label.focus();
     } else {
       add.focus();
@@ -1004,31 +1063,24 @@ export async function pickStations(stations, selectedIds = []) {
   add.addEventListener('click', () => showForm(true));
   get('[data-back]').addEventListener('click', () => showForm(false));
   pick.addEventListener('click', () => setPicking(!picking));
-  fields.profile.addEventListener('change', applyProfile);
   fields.latitude.addEventListener('input', previewCoordinates);
   fields.longitude.addEventListener('input', previewCoordinates);
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (saving) return;
     error.hidden = true;
-    signIn.hidden = true;
     const point = formPoint();
-    if ((fields.latitude.value || fields.longitude.value) && !point) {
-      const missing = fields.latitude.value ? fields.longitude : fields.latitude;
-      missing.setCustomValidity('Укажите широту и долготу.');
-      missing.reportValidity();
-      return;
-    }
+    if (!point) return;
     const data = new FormData(form);
     const params = data.getAll('params');
     if (!data.get('label').trim() || !params.length) {
       error.textContent = params.length ? 'Введите название станции.' : 'Укажите хотя бы один показатель.';
       error.hidden = false;
       if (params.length) fields.label.focus();
-      else form.querySelector('details').open = true;
+      else paramsGroup.querySelector('input')?.focus();
       return;
     }
-    const passport = {label: data.get('label').trim(), profile: data.get('profile'), terrain: data.get('terrain'), params, ...point};
+    const passport = {label: data.get('label').trim(), terrain: data.get('terrain'), params, ...point};
     if (data.get('id')) passport.id = data.get('id');
     for (const key of ['minimum_slots', 'slot_minutes']) {
       if (data.get(key)) passport[key] = Number(data.get(key));
@@ -1044,12 +1096,6 @@ export async function pickStations(stations, selectedIds = []) {
       const response = await fetch('/api/stations', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(passport),
       });
-      if (response.status === 401) {
-        error.textContent = 'Войдите как оператор в новой вкладке, затем вернитесь к паспорту и повторите регистрацию.';
-        error.hidden = false;
-        signIn.hidden = false;
-        return;
-      }
       const body = await response.json();
       if (!response.ok || !body.station?.id) throw new Error(body.error || body.message || 'Станцию не удалось зарегистрировать.');
       stations.push(body.station);

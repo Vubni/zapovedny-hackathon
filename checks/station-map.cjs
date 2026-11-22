@@ -7,8 +7,11 @@ const { chromium } = require('playwright');
 const host = 'http://station-map.test';
 const web = path.join(__dirname, '..', 'web');
 const air = {id: 't_air', label: 'Температура воздуха', unit: '°C'};
+const soil = {id: 'soil_10', label: 'Температура почвы · 10 см', unit: '°C'};
+const pressure = {id: 'pressure_hpa', label: 'Атмосферное давление', unit: 'гПа'};
+const paramOptions = [air, soil, pressure];
 const catalog = [
-  { id: 'kr1', label: 'Кр1 · поляна', color: '#2b7650', terrain: 'clearing', latitude: 56.52, longitude: 32.87, location_precision: 'area', params: [air] },
+  { id: 'kr1', label: 'Кр1 · поляна', color: '#2b7650', terrain: 'clearing', latitude: 56.464310, longitude: 32.970290, location_precision: 'area', location_label: 'Красное', location_reference: 'Точка сбора 26.07.2019', params: [air] },
   { id: 'kr2', label: 'Кр2 · поле', color: '#426583', terrain: 'field', location_precision: 'area' },
   { id: 'ame60', label: 'АМЕ-60', color: '#735579', terrain: 'unknown', location_precision: 'area' },
   { id: 'field-check', label: 'Контрольный пост', terrain: 'forest', latitude: 56.35, longitude: 33.13, location_precision: 'exact', params: [air] },
@@ -41,6 +44,11 @@ const fixture = `<!doctype html><html lang="ru"><meta charset="utf-8">
         },
       });
       window.updateOverview = ids => { selected = ids; overview.update(stations, ids); };
+      window.addOutsideStation = () => {
+        stations.push({id: 'outside', label: 'Зарубежный пост', latitude: 59.91, longitude: 10.75,
+          location_precision: 'exact', params: [${JSON.stringify(air)}]});
+        overview.update(stations, selected);
+      };
       window.destroyOverview = overview.destroy;
       overview.update(stations, selected);
     };
@@ -77,26 +85,28 @@ async function run() {
   const errors = [];
   const external = [];
   const posts = [];
+  const requested = new Set();
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
+    requested.add(url.pathname);
     if (url.origin !== host) {
       external.push(url.href);
       return route.abort();
     }
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: fixture });
-    if (url.pathname === '/api/map-config') return route.fulfill({json: {}});
     if (url.pathname === '/api/stations') {
+      if (request.method() === 'GET') return route.fulfill({json: {stations: catalog, param_options: paramOptions}});
       const body = request.postDataJSON();
       posts.push(body);
       if (posts.length === 1) return route.fulfill({ status: 400, json: { error: 'Станция уже есть.' } });
-      if (posts.length === 2) return route.fulfill({ status: 401, json: { error: 'Требуется вход.' } });
-      const params = body.params.map(id => id === 't_air' ? air : {id, label: id});
+      if (posts.length === 2) return route.fulfill({ status: 503, json: { error: 'Каталог временно недоступен.' } });
+      const params = body.params.map(id => paramOptions.find(param => param.id === id));
       return route.fulfill({ status: 201, json: { station: { ...body, id: 'testing-ame', params, location_precision: 'exact' } } });
     }
     const ext = path.extname(url.pathname);
-    const type = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' }[ext];
+    const type = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.webp': 'image/webp' }[ext];
     if (!type) return route.fulfill({ status: 404 });
     return route.fulfill({ contentType: type, body: await readFile(path.join(web, url.pathname)) });
   });
@@ -116,6 +126,10 @@ async function run() {
     const checked = picker.locator('[data-list] input:checked');
     await open.click();
     await area.waitFor();
+    await picker.locator('[data-map-raster="reserve"]').waitFor();
+    assert.equal(requested.has('/reserve-imagery.webp'), true);
+    assert.equal(requested.has('/russia-relief.webp'), false);
+    assert.equal(await picker.locator('[data-reserve-credit]').isVisible(), true);
     assert.equal(await area.count(), 1);
     assert.equal(await area.textContent(), '3');
     assert.equal(await area.getAttribute('aria-pressed'), 'mixed');
@@ -127,7 +141,8 @@ async function run() {
     const krDetails = picker.locator(`#${await krPassport.getAttribute('aria-controls')}`);
     assert.match(await krDetails.textContent(), /Поляна/);
     assert.match(await krDetails.textContent(), /Район заповедника/);
-    assert.doesNotMatch(await krDetails.textContent(), /56,52/);
+    assert.match(await krDetails.textContent(), /Красное.*Точка сбора 26\.07\.2019/);
+    assert.doesNotMatch(await krDetails.textContent(), /56,46431°/);
     assert.match(await krDetails.textContent(), /Температура воздуха · °C/);
     await krPassport.click();
     const exactPassport = picker.getByRole('button', {name: /Паспорт станции Контрольный пост/});
@@ -139,7 +154,7 @@ async function run() {
       const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
       const colors = new Set();
       for (let p = 0; p < pixels.length; p += 4 * 21) colors.add(pixels[p] + ',' + pixels[p + 1] + ',' + pixels[p + 2]);
-      return colors.size > 18;
+      return colors.size > 150;
     }), 'Подложка должна отображаться вместе с географическими деталями');
     if (process.env.METEO_MAP_SCREENSHOTS) await page.screenshot({ path: '/tmp/station-map-desktop.png' });
 
@@ -245,7 +260,12 @@ async function run() {
     assert.ok((await picker.locator('[data-apply]').boundingBox()).y < 745);
     await picker.locator('[data-add]').click();
     await picker.getByRole('textbox', { name: 'Название станции' }).fill('Тестовая АМЕ');
-    await picker.getByLabel('Формат данных').selectOption('ame60');
+    assert.equal(await picker.locator('[data-station-form] [name="profile"]').count(), 0);
+    await picker.getByRole('checkbox', {name: /Температура почвы · 10 см/}).check();
+    await picker.getByRole('checkbox', {name: /Атмосферное давление/}).check();
+    await picker.locator('[data-save]').click();
+    assert.equal(await picker.locator('input[name="latitude"]').evaluate(input => input.validity.valueMissing), true);
+    assert.equal(posts.length, 0);
     const terrain = picker.getByRole('combobox', {name: /^Тип местности/});
     await terrain.selectOption('wetland');
     await picker.locator('[data-pick]').click();
@@ -260,15 +280,12 @@ async function run() {
     await picker.getByLabel('Код станции').fill('testing-ame');
     await picker.getByLabel('Шаг сырых наблюдений').selectOption('1');
     await picker.getByLabel('Минимум сроков за сутки').fill('78');
-    await picker.getByRole('checkbox', { name: /20 см/ }).uncheck();
     await picker.locator('[data-save]').click();
     await picker.getByRole('alert').getByText('Станция уже есть.').waitFor();
     assert.equal(await picker.getByRole('textbox', { name: 'Название станции' }).inputValue(), 'Тестовая АМЕ');
     await picker.locator('[data-save]').click();
-    const signIn = picker.getByRole('link', {name: 'Вход оператора'});
-    await signIn.waitFor();
-    assert.equal(await signIn.getAttribute('href'), '/operator');
-    assert.equal(await signIn.getAttribute('target'), '_blank');
+    await picker.getByRole('alert').getByText('Каталог временно недоступен.').waitFor();
+    assert.equal(await picker.locator('a[href="/operator"]').count(), 0);
     assert.equal(await terrain.inputValue(), 'wetland');
     await picker.locator('[data-save]').click();
     await picker.getByRole('checkbox', { name: /Тестовая АМЕ/ }).waitFor();
@@ -276,13 +293,13 @@ async function run() {
     assert.deepEqual(posts[0], posts[1]);
     assert.deepEqual(posts[1], posts[2]);
     assert.equal(posts[1].id, 'testing-ame');
-    assert.equal(posts[1].profile, 'ame60');
+    assert.equal(Object.hasOwn(posts[1], 'profile'), false);
     assert.equal(posts[1].terrain, 'wetland');
     assert.equal(posts[1].slot_minutes, 1);
     assert.equal(posts[1].minimum_slots, 78);
     assert.equal(posts[1].latitude, latitude);
     assert.equal(posts[1].longitude, longitude);
-    assert.equal(posts[1].params.includes('soil_20'), false);
+    assert.deepEqual(posts[1].params, ['soil_10', 'pressure_hpa']);
     await picker.locator('[data-apply]').click();
     await picker.waitFor({ state: 'hidden' });
     await result(['kr1', 'testing-ame']);
@@ -334,6 +351,33 @@ async function run() {
     if (process.env.METEO_MAP_SCREENSHOTS) await page.screenshot({path: '/tmp/station-overview-desktop.png'});
 
     await overview.getByRole('button', {name: 'Вся Россия'}).click();
+    await overview.locator('[data-map-raster="russia"]').waitFor();
+    assert.equal(requested.has('/russia-relief.webp'), true);
+    assert.equal(await overview.locator('[data-reserve-credit]').isHidden(), true);
+    const relief = await page.evaluate(async () => {
+      const {loadRaster, russiaRaster} = await import('/station-map-raster.js');
+      const image = await loadRaster(russiaRaster);
+      const raster = document.createElement('canvas');
+      raster.width = image.width;
+      raster.height = image.height;
+      const context = raster.getContext('2d');
+      context.drawImage(image, 0, 0);
+      const [west, south, east, north] = russiaRaster.bounds;
+      const alpha = (lon, lat) => {
+        const longitude = lon < 0 ? lon + 360 : lon;
+        const x = (longitude - west) * image.width / (east - west);
+        const y = (north - lat) * image.height / (north - south);
+        return context.getImageData(x, y, 1, 1).data[3];
+      };
+      return {
+        size: [image.width, image.height],
+        reserve: alpha(32.970290, 56.464310),
+        farEast: alpha(169, 67),
+        dateline: alpha(-173.3, 65.4),
+        outsideRussia: alpha(105, 47),
+      };
+    });
+    assert.deepEqual(relief, {size: [4200, 1056], reserve: 255, farEast: 255, dateline: 255, outsideRussia: 0});
     const cluster = overview.locator('.station-map-overview-marker');
     await cluster.waitFor();
     assert.equal(await cluster.textContent(), '7');
@@ -362,6 +406,7 @@ async function run() {
     assert.equal(await cluster.getAttribute('aria-pressed'), 'true');
     if (process.env.METEO_MAP_SCREENSHOTS) await overview.screenshot({path: '/tmp/station-overview-cluster.png'});
     await overview.getByRole('button', {name: /Показать на карте: Кр1/}).click();
+    await overview.locator('[data-map-raster="reserve"]').waitFor();
     await cluster.waitFor({state: 'hidden'});
     await overviewArea.waitFor();
     assert.equal(await overviewArea.textContent(), '3');
@@ -372,10 +417,18 @@ async function run() {
     assert.ok((await overviewList.boundingBox()).y > (await overviewMap.boundingBox()).y);
     assert.ok(await overview.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
     if (process.env.METEO_MAP_SCREENSHOTS) await page.screenshot({path: '/tmp/station-overview-mobile.png'});
+    await page.evaluate(() => window.addOutsideStation());
+    await overview.getByRole('button', {name: 'Показать на карте: Зарубежный пост'}).click();
+    await overview.locator('[data-map-raster="vector"]').waitFor();
+    const outside = overview.getByRole('button', {name: 'Зарубежный пост', exact: true});
+    await outside.waitFor();
+    await outside.click();
+    assert.equal(await outside.getAttribute('aria-pressed'), 'true');
     await page.evaluate(() => window.destroyOverview());
     assert.equal(await overviewMap.count(), 0);
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
+    assert.equal(requested.has('/api/map-config'), false);
     console.log('Карта станций: обзорные группы, рамка по реальным точкам, паспорта, синхронизация с диалогом, мышь и касания, регистрация, 1280 и 390 px.');
   } finally {
     await browser.close();

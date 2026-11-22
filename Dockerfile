@@ -12,7 +12,6 @@ COPY web/ web/
 COPY data/meteo_hack_dataset.zip data/
 COPY docs/МЕТОДИКА.md docs/
 COPY results/weather.sqlite results/build.json results/
-COPY results/model/temperature.json results/model/
 COPY results/examples/kr1-station-2024-04-01.json results/examples/
 COPY results/review/review-example.xlsx results/review/
 COPY results/review/external/ results/review/external/

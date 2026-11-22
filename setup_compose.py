@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 
 def create_settings(target):
     with NamedTemporaryFile(mode="w", dir=target.parent, encoding="utf-8") as handle:
-        for name in ("METEO_PG_ADMIN_PASSWORD", "METEO_APP_DB_PASSWORD", "METEO_WEB_OPERATOR_PASSWORD"):
+        for name in ("METEO_PG_ADMIN_PASSWORD", "METEO_APP_DB_PASSWORD"):
             handle.write(f"{name}={secrets.token_hex(32)}\n")
         handle.flush()
         os.fsync(handle.fileno())

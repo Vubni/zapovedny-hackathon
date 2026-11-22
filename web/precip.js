@@ -4,19 +4,23 @@ import {reserveBoundary} from './precip-boundary.js';
 const latitudes = [56.625, 56.5625, 56.5, 56.4375, 56.375];
 const longitudes = [32.625, 32.75, 32.875, 33, 33.125];
 const points = latitudes.flatMap(latitude => longitudes.map(longitude => ({latitude, longitude})));
-const reserveIndex = 12;
-const reserve = {latitude: 56.52, longitude: 32.87};
+const forecastPoint = {latitude: 56.464310, longitude: 32.970290};
 const northSouthKmPerDegree = 111.2;
-const eastWestKmPerDegree = northSouthKmPerDegree * Math.cos(reserve.latitude * Math.PI / 180);
+const eastWestKmPerDegree = northSouthKmPerDegree * Math.cos(forecastPoint.latitude * Math.PI / 180);
 const dx = longitudes[1] - longitudes[0];
 const dy = latitudes[0] - latitudes[1];
+const forecastIndex = points.findIndex(point =>
+  Math.abs(point.latitude - forecastPoint.latitude) < dy / 2 &&
+  Math.abs(point.longitude - forecastPoint.longitude) < dx / 2);
 const area = {
   west: longitudes[0] - dx / 2,
   east: longitudes.at(-1) + dx / 2,
   south: latitudes.at(-1) - dy / 2,
   north: latitudes[0] + dy / 2,
 };
-const overview = points[reserveIndex];
+// Outer pixel bounds of the north-up WGS84 crop used by the basemap.
+const imagery = {west: 32.10, south: 56.10, east: 33.75, north: 56.95};
+const overview = {latitude: (area.south + area.north) / 2, longitude: (area.west + area.east) / 2};
 const step = 3600;
 const hours = 24;
 const endpoint = new URL('https://api.open-meteo.com/v1/forecast');
@@ -51,7 +55,9 @@ const coordinateDetails = document.querySelector('#precip-coordinate');
 const nodeDetails = document.querySelector('#precip-node');
 const map = document.querySelector('#precip-map');
 const drawing = document.querySelector('#precip-map-drawing');
+const relief = document.querySelector('#precip-map-relief');
 const shading = document.querySelector('#precip-map-shading');
+const outline = document.querySelector('#precip-map-selection');
 const pointsGroup = document.querySelector('#precip-map-points');
 const scaleLabel = document.querySelector('#precip-scale');
 const mapReading = document.querySelector('#precip-map-reading');
@@ -61,9 +67,12 @@ const zoomReset = document.querySelector('#precip-zoom-reset');
 const zoomLevels = [1, 1.5, 2.25, 3];
 const svgNamespace = 'http://www.w3.org/2000/svg';
 let shown;
-let selected = reserveIndex;
+let selected = forecastIndex;
 let center = overview;
 let zoom = 0;
+
+relief.addEventListener('load', () => { relief.dataset.loaded = 'true'; }, {once: true});
+relief.setAttribute('href', '/reserve-imagery.webp');
 
 function coordinates(point) {
   return `${number.format(point.latitude)}° с. ш., ${number.format(point.longitude)}° в. д.`;
@@ -183,6 +192,11 @@ const cells = points.map((point, index) => {
 pointsGroup.append(...cells.map(cell => cell.button));
 shading.append(...cells.map(cell => cell.rect));
 
+function renderSelection() {
+  const {rect} = cells[selected];
+  for (const axis of ['x', 'y', 'width', 'height']) outline.setAttribute(axis, rect.getAttribute(axis));
+}
+
 function renderMap() {
   const width = map.clientWidth;
   const height = map.clientHeight;
@@ -205,6 +219,12 @@ function renderMap() {
     north: center.latitude + height / (2 * yScale),
   };
   drawing.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  const [imageX, imageY] = project(imagery.west, imagery.north);
+  const [imageRight, imageBottom] = project(imagery.east, imagery.south);
+  relief.setAttribute('x', imageX);
+  relief.setAttribute('y', imageY);
+  relief.setAttribute('width', imageRight - imageX);
+  relief.setAttribute('height', imageBottom - imageY);
   const layers = [
     ['land', land, true], ['rivers', rivers], ['lakes', lakes, true],
     ['roads', roads], ['boundary', reserveBoundary, true],
@@ -237,8 +257,9 @@ function renderMap() {
     for (const [axis, value] of Object.entries({x, y, width: cellWidth, height: cellHeight})) cell.rect.setAttribute(axis, value);
     Object.assign(cell.button.style, {left: x + 'px', top: y + 'px', width: cellWidth + 'px', height: cellHeight + 'px'});
   }
+  renderSelection();
 
-  const [reserveX, reserveY] = project(reserve.longitude, reserve.latitude);
+  const [reserveX, reserveY] = project(forecastPoint.longitude, forecastPoint.latitude);
   const marker = document.querySelector('#precip-map-marker');
   marker.setAttribute('cx', reserveX);
   marker.setAttribute('cy', reserveY);
@@ -279,9 +300,10 @@ function renderHour() {
     button.tabIndex = i === selected ? 0 : -1;
     button.setAttribute('aria-pressed', String(i === selected));
     button.setAttribute('aria-label', `${coordinates(points[i])}, ${display}` +
-      (i === reserveIndex ? ', ячейка с точкой в заповеднике' : ''));
+      (i === forecastIndex ? ', ячейка с точкой краткосрочного прогноза' : ''));
     button.title = display;
   }
+  renderSelection();
   const node = shown.nodes[selected];
   const value = node.precipitation[index];
   cellDetails.textContent = value === null ? 'Нет данных' : number.format(value) + ' мм';

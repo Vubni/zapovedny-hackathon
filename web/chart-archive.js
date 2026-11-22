@@ -1,3 +1,5 @@
+import { createChartReport } from './chart-report.js';
+
 // ZIP "stored" entries keep the individual SVG, PNG and JPEG files byte-for-byte.
 const crcTable = Uint32Array.from({ length: 256 }, (_, byte) => {
   let value = byte;
@@ -34,13 +36,20 @@ function fileHeader(name, size, checksum, localOffset) {
 }
 
 export async function createChartArchive(files) {
+  const sources = files.map(({ blob, filename }, index) => ({
+    blob, filename: `${String(index + 1).padStart(2, "0")}-${filename}`,
+  }));
+  if (files.some(file => file.pdfPages)) {
+    if (!files.every(file => file.pdfPages?.length)) throw new Error("Не удалось собрать страницы отчёта.");
+    sources.push({ blob: createChartReport(files.flatMap(file => file.pdfPages)), filename: "Метеоархив — все графики.pdf" });
+  }
   const encoder = new TextEncoder();
   const entries = [];
   const directory = [];
   let directorySize = 0;
   let offset = 0;
-  for (const [index, { blob, filename }] of files.entries()) {
-    const name = encoder.encode(`${String(index + 1).padStart(2, "0")}-${filename}`);
+  for (const { blob, filename } of sources) {
+    const name = encoder.encode(filename);
     const checksum = crc32(new Uint8Array(await blob.arrayBuffer()));
     const local = fileHeader(name, blob.size, checksum);
     const central = fileHeader(name, blob.size, checksum, offset);
@@ -52,8 +61,8 @@ export async function createChartArchive(files) {
   if (offset + directorySize > 0xffffffff) throw new RangeError("Превышен размер ZIP-архива.");
   const end = new DataView(new ArrayBuffer(22));
   end.setUint32(0, 0x06054b50, true);
-  end.setUint16(8, files.length, true);
-  end.setUint16(10, files.length, true);
+  end.setUint16(8, sources.length, true);
+  end.setUint16(10, sources.length, true);
   end.setUint32(12, directorySize, true);
   end.setUint32(16, offset, true);
   return new Blob([...entries, ...directory, end], { type: "application/zip" });

@@ -6,14 +6,18 @@ const { chromium } = require("playwright");
 
 const root = `http://127.0.0.1:${process.env.METEO_TEST_PORT || 8765}`;
 const reportPath = path.join(__dirname, "..", "results", "observations", "chart-exports.json");
-const sourceOrder = "pressure,air_range,soil_05,rh,air";
+const sourceOrder = "pressure,wind_freq,air_range,temp_diurnal,soil_05,wind_rose,rh,air";
 const cards = [
   { id: "air", title: "Средняя температура воздуха", name: "средняя-температура-воздуха", unit: "°C" },
   { id: "air_range", title: "Диапазон температуры воздуха", name: "диапазон-температуры-воздуха", unit: "°C" },
+  { id: "temp_diurnal", title: "Средний суточный ход температуры", name: "средний-суточный-ход-температуры", unit: "°C" },
   { id: "soil_05", title: "Температура почвы · 5 см", name: "температура-почвы-5-см", empty: true },
   { id: "rh", title: "Средняя относительная влажность", name: "средняя-относительная-влажность", unit: "%" },
+  { id: "wind_rose", title: "Роза ветров", name: "роза-ветров", unit: "%" },
+  { id: "wind_freq", title: "Повторяемость направлений ветра", name: "повторяемость-направлений-ветра", unit: "%" },
   { id: "pressure", title: "Среднее атмосферное давление", name: "среднее-атмосферное-давление", unit: "гПа" },
 ];
+const pdfName = "Метеоархив — все графики.pdf";
 const formatNames = { svg: "SVG", png: "PNG", jpeg: "JPEG / JPG" };
 const fullPeriod = "01.01.2025 – 31.12.2025";
 const stationLabels = ["Кр1 · поляна", "Кр2 · поле"];
@@ -27,13 +31,15 @@ const inspectFiles = String.raw`
 from hashlib import sha256
 from pathlib import Path
 import json
+import re
 import struct
+import subprocess
 import sys
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 from zlib import crc32
 
-def inspect(data, suffix):
+def inspect(data, suffix, render=None):
     result = {"sha256": sha256(data).hexdigest()}
     if suffix == ".svg":
         root = ET.fromstring(data)
@@ -48,11 +54,32 @@ def inspect(data, suffix):
         assert min(result["dimensions"]) > 0
     elif suffix == ".jpeg":
         assert data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9")
+    elif suffix == ".pdf":
+        assert data.startswith(b"%PDF-1.4") and data.endswith(b"%%EOF\n")
+        result["page_count"] = len(re.findall(rb"/Type /Page\b", data))
+        result["bookmarks"] = [bytes.fromhex(title.decode("ascii")).decode("utf-16")
+                               for title in re.findall(rb"/Title <([0-9A-Fa-f]+)> /Parent", data)]
+        assert result["page_count"] >= len(result["bookmarks"]) > 0
+        if render:
+            output = Path(render)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            pdf = output.with_suffix(".pdf")
+            pdf.write_bytes(data)
+            info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
+            assert int(re.search(r"^Pages:\s+(\d+)", info, re.M)[1]) == result["page_count"]
+            assert re.search(r"^Page size:\s+841\.89 x 595\.28 pts", info, re.M)
+            subprocess.run(["pdftoppm", "-r", "110", "-png", str(pdf), str(output)], check=True)
+            pages = sorted(output.parent.glob(output.name + "-*.png"))
+            assert len(pages) == result["page_count"]
+            for page in pages:
+                contents = page.read_bytes()
+                assert contents.startswith(b"\x89PNG\r\n\x1a\n") and len(contents) > 5000
+            result["rendered_pages"] = len(pages)
     else:
         raise AssertionError(f"Unexpected file format: {suffix}")
     return result
 
-filename, kind = sys.argv[1:]
+filename, kind, *render = sys.argv[1:]
 if kind == "svg":
     output = inspect(Path(filename).read_bytes(), ".svg")
 else:
@@ -65,15 +92,17 @@ else:
             assert crc32(contents) == info.CRC
             output.append({
                 "name": info.filename, "crc32": f"{info.CRC:08x}",
-                **inspect(contents, Path(info.filename).suffix)
+                **inspect(contents, Path(info.filename).suffix, render[0] if render else None)
             })
 print(json.dumps(output, ensure_ascii=False))
 `;
 
-async function inspect(download, kind) {
+async function inspect(download, kind, render) {
   assert.equal(await download.failure(), null);
   const file = await download.path();
-  return JSON.parse(execFileSync(process.env.PYTHON || "python3", ["-c", inspectFiles, file, kind], {
+  const renderPath = render && process.env.METEO_TEST_PDF_RENDER_DIR
+    ? [path.join(process.env.METEO_TEST_PDF_RENDER_DIR, render)] : [];
+  return JSON.parse(execFileSync(process.env.PYTHON || "python3", ["-c", inspectFiles, file, kind, ...renderPath], {
     encoding: "utf8",
   }));
 }
@@ -100,21 +129,26 @@ async function openArchiveDialog(page, count) {
   await ready(page);
   await archiveButton(page).click();
   const dialog = archiveDialog(page);
-  assert.match(await dialog.locator("#chart-export-count").innerText(), new RegExp(`архиве: ${count}\\.`));
+  const description = await dialog.locator("#chart-export-count").innerText();
+  assert.match(description, new RegExp(`графики \\(${count}\\)`));
+  assert.match(description, /общий PDF/);
   return dialog;
 }
 
-async function bulkDownload(page, format, expected) {
+async function bulkDownload(page, format, expected, { part = "2025-01-01_2025-12-31", multi = false, render } = {}) {
   const dialog = await openArchiveDialog(page, expected.length);
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 25000 }),
     dialog.getByRole("button", { name: formatNames[format], exact: true }).click(),
   ]);
-  assert.equal(download.suggestedFilename(), `Метеоархив_2025-01-01_2025-12-31_${format}.zip`);
-  const entries = await inspect(download, "zip");
-  assert.deepEqual(entries.map(item => item.name), expected.map((card, index) =>
-    `${String(index + 1).padStart(2, "0")}-${card.name}.${format}`));
-  return entries;
+  assert.equal(download.suggestedFilename(), `Метеоархив_${part}_${format}.zip`);
+  const entries = await inspect(download, "zip", render);
+  const filenames = expected.map((card, index) => `${String(index + 1).padStart(2, "0")}-${card.name}${multi ? `_${part}` : ""}.${format}`);
+  assert.deepEqual(entries.map(item => item.name), [...filenames, pdfName]);
+  const pdf = entries.at(-1);
+  assert.deepEqual(pdf.bookmarks, expected.map(card => card.title));
+  assert.equal(pdf.page_count >= expected.length, true);
+  return { images: entries.slice(0, -1), pdf };
 }
 
 function assertSvg(entries, expected) {
@@ -165,16 +199,21 @@ async function run() {
     await ready(page);
     const initialOrder = (await assertOrder(page, cards)).map(card => card.id);
     assert.deepEqual(await page.locator(".observation-group-title:visible").allTextContents(), [
-      "Температура воздуха", "Температура почвы", "Влажность", "Атмосферное давление",
+      "Температура воздуха", "Температура почвы", "Влажность", "Направление ветра", "Атмосферное давление",
     ]);
     await chart(page, "soil_05").getByText("Нет данных за этот период", { exact: true }).waitFor();
 
-    const svg = await bulkDownload(page, "svg", cards);
+    await page.context().setOffline(true);
+    const { images: svg, pdf } = await bulkDownload(page, "svg", cards, { render: "overview" });
+    await page.context().setOffline(false);
     assertSvg(svg, cards);
+    assert.equal(pdf.page_count, cards.length);
     for (const entry of svg) assert.ok(entry.text.includes(fullPeriod), entry.name);
     for (const label of stationLabels) assert.ok(svg[0].text.includes(label));
-    const png = await bulkDownload(page, "png", cards);
-    const jpeg = await bulkDownload(page, "jpeg", cards);
+    const { images: png, pdf: pngPdf } = await bulkDownload(page, "png", cards);
+    const { images: jpeg, pdf: jpegPdf } = await bulkDownload(page, "jpeg", cards);
+    assert.equal(pngPdf.sha256, pdf.sha256);
+    assert.equal(jpegPdf.sha256, pdf.sha256);
     const mobile = [];
     for (const width of [390, 320]) mobile.push(await assertMobile(page, width));
     await page.setViewportSize({ width: 1440, height: 960 });
@@ -197,7 +236,7 @@ async function run() {
     ]);
     assert.equal(individualDownload.suggestedFilename(), `${cards[0].name}.svg`);
     const individual = await inspect(individualDownload, "svg");
-    const updated = await bulkDownload(page, "svg", remaining);
+    const { images: updated, pdf: updatedPdf } = await bulkDownload(page, "svg", remaining, { render: "after-hide-and-zoom" });
     assertSvg(updated, remaining);
     assert.equal(updated[0].sha256, individual.sha256, "Одиночная выгрузка и ZIP передают одинаковый SVG");
     assert.notEqual(updated[0].sha256, svg[0].sha256);
@@ -206,6 +245,7 @@ async function run() {
     const zoomedPeriod = updated[0].text.find(text => svgDates.test(text));
     assert.ok(zoomedPeriod && zoomedPeriod !== fullPeriod, "Подпись периода учитывает масштаб");
     assert.ok(updated[1].text.includes(fullPeriod), "Другие карточки сохраняют исходный масштаб");
+    assert.notEqual(updatedPdf.sha256, pdf.sha256);
 
     await page.reload();
     await ready(page);
@@ -214,6 +254,17 @@ async function run() {
     await page.getByRole("button", { name: "Очистить выбор" }).click();
     await air.getByText("Выберите хотя бы одну станцию", { exact: true }).waitFor();
     assert.equal(await archiveButton(page).isDisabled(), true);
+
+    const windows = ["01", "03", "05", "07"].map((month, index) => [`2025-${month}-01`, `2025-${month}-${index === 2 ? "30" : "31"}`]);
+    const query = new URLSearchParams({ stations: "kr1,kr2", intervals: windows.map(window => window.join(":")).join(","),
+      grain: "month", charts: "wind_rose", mode: "togu" });
+    const part = windows.map(window => window.join("_")).join("__");
+    const intervalPage = await browser.newPage({ viewport: { width: 1440, height: 960 }, locale: "ru-RU" });
+    intervalPage.on("pageerror", error => pageErrors.push(error.message));
+    await intervalPage.goto(`${root}/?${query}`);
+    const { pdf: rosePdf } = await bulkDownload(intervalPage, "svg", cards.filter(card => card.id === "wind_rose"),
+      { part, multi: true, render: "wind-rose-intervals" });
+    assert.ok(rosePdf.page_count > 1, "Розы ветров за несколько интервалов переходят на страницы продолжения");
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(mutations, []);
 
@@ -227,7 +278,10 @@ async function run() {
         png_files: png.length,
         jpeg_files: jpeg.length,
         all_entries_passed_zipfile_and_crc32: true,
-        empty_soil: { title: svg[2].title, message: "Нет данных за этот период" },
+        empty_soil: { title: svg.find(entry => entry.title === "Температура почвы · 5 см").title, message: "Нет данных за этот период" },
+        pdf_in_all_formats: pdf,
+        pdf_downloaded_offline: true,
+        pdf_rose_continuation: rosePdf,
       },
       after_hide_and_zoom: {
         files: updated.length,
@@ -236,6 +290,7 @@ async function run() {
         period: zoomedPeriod,
         individual_and_bulk_svg_sha256: updated[0].sha256,
         order_on_reload: reloadedOrder,
+        pdf: updatedPdf,
       },
       mobile,
       download_disabled_without_stations: true,
@@ -243,7 +298,7 @@ async function run() {
     };
     await fs.mkdir(path.dirname(reportPath), { recursive: true });
     await fs.writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
-    console.log("PASS: порядок карточек, SVG/PNG/JPEG ZIP, пустой график, масштаб и легенда, 390 и 320 px");
+    console.log("PASS: PDF и SVG/PNG/JPEG в ZIP, порядок и масштаб, розы по интервалам, офлайн-экспорт, 390 и 320 px");
   } finally {
     await browser.close();
   }

@@ -1,0 +1,26 @@
+{
+  "leapDayAndWeeklyDrag": {
+    "first": "2024-02-28:2024-02-29",
+    "resizedSecond": "2024-04-04:2024-04-06",
+    "width": 320
+  },
+  "adjacentAtArchiveEnd": {
+    "ranges": [
+      "2025-12-26:2025-12-28",
+      "2025-12-29:2025-12-31"
+    ],
+    "activeOnAdd": 0,
+    "keyboardClampedAtBoundary": true
+  },
+  "overlap": {
+    "apiStatus": 400,
+    "preservedSavedRanges": [
+      "2025-12-26:2025-12-28",
+      "2025-12-29:2025-12-31"
+    ]
+  },
+  "fullArchive": {
+    "addDidNotOverlap": true,
+    "browserErrors": 0
+  }
+}

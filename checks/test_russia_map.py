@@ -5,7 +5,8 @@ import re
 import unittest
 
 
-ASSET = Path(__file__).resolve().parents[1] / "web" / "russia-map-data.js"
+WEB = Path(__file__).resolve().parents[1] / "web"
+ASSET = WEB / "russia-map-data.js"
 GEOMETRY = ("russiaLand", "russiaCoastlines", "russiaBorders", "russiaBoundaries",
             "russiaLakes", "russiaRivers", "russiaRoads")
 # Windows around travel corridors spread across the whole country, including the Far East.
@@ -25,10 +26,10 @@ CORRIDORS = {
 }
 
 
-def load_asset():
+def load_asset(asset):
     return {
         name: [json.loads(line.strip().removesuffix(",")) for line in rows.splitlines()]
-        for name, rows in re.findall(r"export const (\w+) = \[\n(.*?)\n\];", ASSET.read_text(encoding="utf-8"), re.S)
+        for name, rows in re.findall(r"^export const (\w+) = \[\n(.*?)^\];", asset.read_text(encoding="utf-8"), re.S | re.M)
     }
 
 
@@ -39,23 +40,36 @@ def visits(feature, bounds):
                for lon, lat in zip(points[::2], points[1::2]))
 
 
+def land_at(rings, longitude, latitude):
+    inside = False
+    for west, south, east, north, points in rings:
+        if not (west <= longitude <= east and south <= latitude <= north):
+            continue
+        vertices = list(zip(points[::2], points[1::2]))
+        for (x0, y0), (x1, y1) in zip(vertices, vertices[1:] + vertices[:1]):
+            if (y0 > latitude) != (y1 > latitude) and longitude < x0 + (latitude - y0) * (x1 - x0) / (y1 - y0):
+                inside = not inside
+    return inside
+
+
 class OfflineRussiaMapTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.data = load_asset()
+        cls.data = load_asset(ASSET)
 
     def test_packed_shapes_and_dateline(self):
-        self.assertLess(ASSET.stat().st_size, 2_200_000)
+        self.assertLess(ASSET.stat().st_size, 1_500_000)
+        self.assertEqual(self.data["russiaExtent"], [[18, 40, 180, 84], [-180, 40, -167, 84]])
         for layer in GEOMETRY:
             with self.subTest(layer=layer):
-                self.assertGreater(len(self.data[layer]), 20)
+                self.assertGreater(len(self.data[layer]), 5 if layer == "russiaBorders" else 20)
                 for west, south, east, north, points, *scale in self.data[layer]:
                     lon, lat = points[::2], points[1::2]
                     self.assertEqual(len(lon), len(lat))
                     self.assertGreaterEqual(len(lon), 2)
                     self.assertEqual((west, south, east, north), (min(lon), min(lat), max(lon), max(lat)))
                     self.assertTrue(-180 <= west <= east <= 180)
-                    self.assertTrue(35 <= south <= north <= 85)
+                    self.assertTrue(40 <= south <= north <= 84)
                     self.assertTrue(all(abs(a - b) < 180 for a, b in zip(lon, lon[1:])))
                     self.assertTrue(not scale or (len(scale) == 1 and scale[0] >= 0))
         coast = self.data["russiaCoastlines"]
@@ -69,10 +83,11 @@ class OfflineRussiaMapTest(unittest.TestCase):
             with self.subTest(area=name):
                 self.assertGreaterEqual(sum(visits(row, window) and row[5] <= 11 for row in roads), 2)
         areas = ("район заповедника", "Ростов", "Поволжье", "Урал",
-                 "Западная Сибирь", "Байкал", "Магадан", "Камчатка", "Приморье")
+                 "Западная Сибирь", "Байкал", "Магадан", "Приморье")
         for name in areas:
             with self.subTest(boundaries=name):
                 self.assertTrue(any(visits(row, CORRIDORS[name]) for row in self.data["russiaBoundaries"]))
+        self.assertTrue(any(visits(row, (162, 61, 165, 65)) for row in self.data["russiaBoundaries"]))
 
     def test_named_cities_and_water(self):
         cities = {row[0]: row[1:] for row in self.data["russiaPlaces"]}
@@ -89,7 +104,7 @@ class OfflineRussiaMapTest(unittest.TestCase):
                 self.assertAlmostEqual(lon, longitude, delta=.12)
                 self.assertAlmostEqual(lat, latitude, delta=.12)
                 self.assertLessEqual(zoom, 18)
-        self.assertGreater(len(cities), 1000)
+        self.assertGreater(len(cities), 550)
         water = {(row[0], row[4]): row[1:4] for row in self.data["russiaWaterLabels"]}
         for kind, names in {
             "river": ("Волга", "Обь", "Енисей", "Лена", "Колыма", "Амур"),
@@ -99,6 +114,35 @@ class OfflineRussiaMapTest(unittest.TestCase):
             for name in names:
                 with self.subTest(water=name):
                     self.assertLessEqual(water[name, kind][2], 4)
+
+    def test_foreign_cities_and_roads_are_absent(self):
+        cities = {row[0] for row in self.data["russiaPlaces"]}
+        for name, (lon, lat) in {
+            "Хельсинки": (24.94, 60.17), "Рига": (24.11, 56.96), "Минск": (27.57, 53.90),
+            "Киев": (30.52, 50.45), "Астана": (71.43, 51.13), "Улан-Батор": (106.91, 47.92),
+            "Харбин": (126.63, 45.75), "Ном": (-165.41, 64.50),
+        }.items():
+            with self.subTest(city=name):
+                around_city = (lon - .25, lat - .25, lon + .25, lat + .25)
+                self.assertNotIn(name, cities)
+                self.assertFalse(land_at(self.data["russiaLand"], lon, lat))
+                self.assertFalse(any(visits(row, around_city) for row in self.data["russiaRoads"]))
+        for lon, lat in [(20.50, 54.70), (32.97029, 56.46431), (169, 67), (-173.3, 65.4)]:
+            with self.subTest(russian_land=(lon, lat)):
+                self.assertTrue(land_at(self.data["russiaLand"], lon, lat))
+
+    def test_local_overlay_stays_in_satellite_crop(self):
+        asset = WEB / "station-map-data.js"
+        self.assertLess(asset.stat().st_size, 30_000)
+        local = load_asset(asset)
+        west, south, east, north = (32.1, 56.1, 33.75, 56.95)
+        for name in ("land", "lakes", "rivers", "roads"):
+            for left, bottom, right, top, _ in local[name]:
+                self.assertTrue(west <= left <= right <= east)
+                self.assertTrue(south <= bottom <= top <= north)
+        self.assertIn("Посёлок Заповедный", {row[0] for row in local["places"]})
+        self.assertTrue(all(west <= lon <= east and south <= lat <= north
+                            for _, lon, lat, _ in local["places"]))
 
 
 if __name__ == "__main__":

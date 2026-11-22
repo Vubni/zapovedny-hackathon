@@ -242,6 +242,7 @@
 .timeline-selection span { gap: 12px; }
 .archive-range .nav-track { height: 29px; cursor: crosshair; touch-action: none; }
 .archive-range .nav-track input { top: 0; }
+.archive-range .nav-track input:disabled { opacity: .55; }
 .date-range-band { border-color: #a2b7a6; background: #e4ebe2; }
 .date-range-band[data-active="true"] { background: #c9e2c0; border-color: #67966a; }
 .timeline-preview { position: absolute; inset-block: 0; background: #cbe96a99; border: 1px solid #49712a; pointer-events: none; z-index: 1; }
@@ -254,3 +255,9 @@
 @media (max-width: 480px) {
   .archive-range .nav-track, .archive-range .timeline-ticks { margin-inline: 14px; }
 }
+.recent-days summary { cursor: pointer; font-weight: 700; }
+.recent-day-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0 8px; }
+.recent-day-filters label { display: grid; gap: 4px; }
+.recent-day-table { overflow-x: auto; }
+.recent-day-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.recent-day-table :is(th, td) { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }

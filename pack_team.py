@@ -79,22 +79,22 @@ def pack(destination):
                         "q = dict(station='kr1', param='pressure_hpa', start='2024-04-01', end='2024-04-01', filters='stuck'); "
                         "r = create_report(q, b'', ''); "
                         "print(r['counts']['excluded'], report_excel(r)[1][:2])"], "38 b'PK'")
-        check(project, ["station_model.py", "--output", "trial-model.json"], "Кр1")
         for rel in ("Dockerfile", "compose.yaml", ".dockerignore", "docker/10-app-role.sql",
                     "requirements-container.txt", "setup_compose.py", "serve_container.py", "observations_db.py",
                     "migrate_observations.py", "docs/СТЕК.md", "results/stack/verification.json",
                     "web/observations.html", "web/observations.js", "web/chart-archive.js", "web/station-map-data.js",
                     "web/observation-chart.js", "web/files-page.html", "web/files-page.js",
-                    "web/yandex-location.js", "web/yandex-station-sdk.js", "web/coverage-overview.js",
+                    "web/station-map-raster.js", "web/russia-relief.webp", "web/reserve-imagery.webp",
+                    "web/chart-report.js", "web/coverage-overview.js",
                     "web/russia-map-data.js", "web/precip-boundary.js", "web/observation-timeline.js",
                     "web/reserve-brand.css", "web/clgz-logo.png", "docs/КАРТА.md",
-                    "web/observation-indicators.js", "admin_auth.py", "web/operator.html",
+                    "web/observation-indicators.js",
                     "web/fonts/manrope.ttf", "web/fonts/OFL-Manrope.txt",
-                    "web/index.html", "web/app.js", "web/import.html", "web/import.js",
+                    "web/index.html", "web/app.js",
                     "web/events.html", "web/events.js", "web/forecast.html", "web/forecast.js",
                     "web/forecast-example.json", "web/calendar.html", "web/calendar.js",
-                    "web/calendar.css", "web/review.html", "web/review.js", "web/review.css",
-                    "web/model.html", "web/precip.html", "web/precip-example.json",
+                    "web/calendar.css",
+                    "web/precip.html", "web/precip-example.json",
                     "results/review/review-example.xlsx", "results/review/external-validation.json",
                     "docs/Защита-exeCUtor.pdf"):
             if not (project / rel).is_file():
@@ -106,7 +106,7 @@ def pack(destination):
             f"Проверено файлов {file_count}, Python {sys.version.split()[0]}.\n"
             "В отдельной папке проверены CRC, SHA-256 комплектной базы, запуск с базой и повторная сборка из исходного ZIP, воспроизведение исследования и месячного расчёта, сверка "
             "со всеми 31 исходными строками 29 апреля и импорт 48 наблюдений за 1 апреля.\n"
-            "Проверены отбор 38 записей по залипанию, выгрузка XLSX и обучение модели станции из распакованной копии.\n"
+            "Проверены отбор 38 записей по залипанию и выгрузка XLSX из распакованной копии.\n"
             "В Наблюдениях из распакованной копии доступны три архивных станции. "
             "У Кр1 проходят 334 дня и 11 месяцев давления за 2024 год. "
             "Протокол HTTP для новых станций и импорта находится в results/observations/workflow.json.\n",

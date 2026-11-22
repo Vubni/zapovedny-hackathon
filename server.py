@@ -2,22 +2,19 @@
 import argparse
 import json
 import mimetypes
-import os
 import re
 import sys
 from contextlib import closing
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler
-from shlex import quote as shell_quote
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlsplit
 
-from admin_auth import OperatorHTTPServer, handle_operator_access
 from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, database, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
 from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
+from request_origin import allow_browser_write, configured_origin
 from review_service import ReportExpired, create_report, report_excel, report_page
 from review_upload import MAX_BYTES as MAX_REVIEW_UPLOAD
-from station_model import predict
 from station_catalog import register_station, station_list
 from temperature_events import export_events, query_events
 
@@ -37,13 +34,13 @@ API = {
     "/api/review": "POST — фильтрация архива или XLSX/CSV/JSON, GET — страница готового расчёта по token",
     "/api/review.xlsx": "Полный расчёт в редактируемом Excel по token",
     "/api/review-original.xlsx": "Загруженная книга XLSX с отметками на исходном листе и рабочими решениями",
-    "/api/model": "Прогноз следующей среднесуточной температуры по станции",
-    "/api/model/catalog": "Доступные станции и данные для общего прогноза температуры",
     "/api/stations": "Каталог и карта станций. POST регистрирует пользовательскую станцию",
     "/api/observations": "Ряды, покрытие и сравнение станций за общий выбранный период",
+    "/api/observations/latest-five": "Таблица наблюдений за пять суток по последний фактический срок показателя",
+    "/api/observations/latest-five.csv": "CSV таблицы за последние пять суток",
     "/api/observation-coverage": "Матрица покрытия выбранных станций за отмеченные интервалы",
-    "/api/map-config": "Настройки карты станций для браузера",
     "/api/files": "Очередь, исходные файлы, предпросмотр и подтверждённые наборы наблюдений",
+    "/api/files/from-observations": "POST создаёт рабочий файл из выбранных наблюдений",
 }
 WEB_FILES = {
     "/": "observations.html",
@@ -51,14 +48,8 @@ WEB_FILES = {
     "/observations": "observations.html",
     "/journal": "index.html",
     "/files": "files-page.html",
-    "/operator": "operator.html",
-    "/operator.js": "operator.js",
-    "/operator.css": "operator.css",
     "/app.js": "app.js",
     "/style.css": "style.css",
-    "/import": "import.html",
-    "/import.html": "import.html",
-    "/import.js": "import.js",
     "/forecast": "forecast.html",
     "/forecast.js": "forecast.js",
     "/forecast-example.json": "forecast-example.json",
@@ -68,26 +59,30 @@ WEB_FILES = {
     "/calendar": "calendar.html",
     "/calendar.js": "calendar.js",
     "/calendar.css": "calendar.css",
-    "/review": "review.html",
-    "/review.js": "review.js",
-    "/review.css": "review.css",
-    "/model": "model.html",
-    "/model.js": "model.js",
-    "/model.css": "model.css",
     "/precip": "precip.html",
     "/precip.js": "precip.js",
     "/precip.css": "precip.css",
     "/precip-example.json": "precip-example.json",
 }
-for asset in ("observation-timeline.js", "clgz-logo.png", "reserve-brand.css", "archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js",
+for asset in ("observation-timeline.js", "clgz-logo.png", "reserve-brand.css", "archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js", "chart-report.js",
               "station-map.js", "station-map.css", "station-map-data.js", "russia-map-data.js", "precip-boundary.js", "observation-chart.js",
-              "yandex-location.js", "yandex-location.css", "yandex-station-sdk.js",
-              "coverage-overview.js", "coverage-overview.css", "observation-indicators.js", "observation-indicators.css",
+              "station-map-raster.js", "russia-relief.webp", "reserve-imagery.webp",
+              "coverage-overview.js", "coverage-overview.css", "observation-indicators.js", "observation-indicators.css", "recent-days.js",
               "observation-chart.css", "files-page.js", "files-page.css", "weather-pages.css",
               "fonts/manrope.ttf", "fonts/OFL-Manrope.txt"):
     WEB_FILES["/" + asset] = asset
 FILE_ACTIONS = {"/api/files/preview": "preview_file", "/api/files/confirm": "confirm_file",
-                "/api/files/discard": "discard_clean"}
+                "/api/files/discard": "discard_clean", "/api/files/from-observations": "from_observations"}
+LEGACY_REDIRECTS = {
+    "/import": "/files?source=upload",
+    "/import.html": "/files?source=upload",
+    "/review": "/files",
+    "/review.html": "/files",
+    "/operator": "/files",
+    "/operator.html": "/files",
+    "/model": "/forecast",
+    "/model.html": "/forecast",
+}
 
 
 def ready():
@@ -118,10 +113,10 @@ class Routes:
     """Request routing shared by the loopback HTTP and container WSGI adapters."""
 
     def respond(self, body, content_type, status=200, filename=None, *, headers=None):
-        no_store = self.command == "POST" or self.cache_path.startswith((
-            "/api/review", "/api/files", "/api/observation", "/api/stations", "/api/map-config", "/api/model",
-            "/api/operator", "/operator", "/files", "/healthz",
-        ))
+        route = self.cache_path
+        no_store = self.command == "POST" or route.startswith((
+            "/api/review", "/api/files", "/api/observation", "/api/stations", "/files", "/healthz",
+        )) or route in LEGACY_REDIRECTS
         response_headers = [
             ("Content-Type", content_type),
             ("Content-Length", str(len(body))),
@@ -145,8 +140,6 @@ class Routes:
         try:
             route = self.route
             query = {k: v[-1] for k, v in parse_qs(self.query_string, keep_blank_values=True).items()}
-            if handle_operator_access(self, route, query):
-                return
             if route == "/healthz":
                 try:
                     check_ready()
@@ -156,16 +149,29 @@ class Routes:
                     self.send_json({"status": "ok"})
             elif route == "/api":
                 self.send_json(API)
+            elif route in LEGACY_REDIRECTS:
+                encoded = quote(self.query_string, safe="!$&'()*+,-./:;=?@_%~[]")
+                location = LEGACY_REDIRECTS[route]
+                if encoded:
+                    location += ("&" if "?" in location else "?") + encoded
+                self.respond(b"", "text/plain; charset=utf-8", HTTPStatus.SEE_OTHER,
+                             headers={"Location": location})
             elif route == "/api/stations":
                 self.send_json(station_list())
             elif route == "/api/observations":
                 from observations import chart_data
                 self.send_json(chart_data(query))
+            elif route in ("/api/observations/latest-five", "/api/observations/latest-five.csv"):
+                from recent_observations import export_recent_csv, latest_five
+                table = latest_five(query)
+                if route.endswith(".csv"):
+                    name, body = export_recent_csv(table)
+                    self.respond(body, "text/csv; charset=utf-8", filename=name)
+                else:
+                    self.send_json(table)
             elif route == "/api/observation-coverage":
                 from observations import coverage_overview
                 self.send_json(coverage_overview(query))
-            elif route == "/api/map-config":
-                self.send_json({"browserKey": os.environ.get("YANDEX_MAPS_BROWSER_KEY", "").strip()})
             elif route in ("/api/files", "/api/files/item", "/api/files/preview", "/api/files/original", "/api/files/csv", "/api/files/excel"):
                 import observation_store as store
                 if route == "/api/files":
@@ -216,11 +222,6 @@ class Routes:
             elif route == "/review-example.xlsx":
                 self.respond((ROOT / "results/review/review-example.xlsx").read_bytes(), XLSX_TYPE,
                              filename="review-example.xlsx")
-            elif route == "/api/model/catalog":
-                from station_model import model_catalog
-                self.send_json(model_catalog())
-            elif route == "/api/model":
-                self.send_json(predict(query))
             elif route in WEB_FILES:
                 path = WEB / WEB_FILES[route]
                 if route in ("/", "/index.html") and ("station" in query or query.get("view") == "compare") and "stations" not in query:
@@ -228,7 +229,8 @@ class Routes:
                 if not path.is_file():
                     self.send_json({"error":"Файл интерфейса отсутствует. Данные доступны по /api."}, 404)
                     return
-                kind = mimetypes.guess_type(path)[0] or "application/octet-stream"
+                kind = "image/webp" if path.suffix == ".webp" else mimetypes.guess_type(path)[0]
+                kind = kind or "application/octet-stream"
                 self.respond(path.read_bytes(), kind + "; charset=utf-8" if kind.startswith("text/") else kind)
             elif route == "/method":
                 self.respond((ROOT/"docs"/"МЕТОДИКА.md").read_bytes(), "text/plain; charset=utf-8")
@@ -248,12 +250,14 @@ class Routes:
         try:
             route = self.route
             query = {k: v[-1] for k, v in parse_qs(self.query_string, keep_blank_values=True).items()}
-            if handle_operator_access(self, route, query):
-                return
             file_upload = route in ("/api/files/upload", "/api/files/corrected")
             action = route in FILE_ACTIONS or route == "/api/stations"
             if route not in ("/api/import", "/api/review") and not file_upload and not action:
                 self.send_json({"error": "Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
+                return
+            if not allow_browser_write(self.headers, local_port=self.local_port,
+                                       request_scheme=self.request_scheme, public_origin=self.public_origin):
+                self.send_json({"error": "Отправьте запрос со страницы этого Метеоархива."}, HTTPStatus.FORBIDDEN)
                 return
             source_format = CONTENT_FORMATS.get(self.headers.get_content_type())
             is_review = route == "/api/review"
@@ -334,6 +338,8 @@ class Routes:
 
 
 class Handler(Routes, BaseHTTPRequestHandler):
+    request_scheme = "http"
+
     @property
     def cache_path(self):
         try:
@@ -350,8 +356,8 @@ class Handler(Routes, BaseHTTPRequestHandler):
         return urlsplit(self.path).query
 
     @property
-    def operator_auth(self):
-        return getattr(self.server, "operator_auth", None)
+    def public_origin(self):
+        return getattr(self.server, "public_origin", None)
 
     @property
     def local_port(self):
@@ -375,13 +381,13 @@ def main():
     args = parser.parse_args()
     ready()
     try:
-        server = OperatorHTTPServer(("127.0.0.1", args.port), Handler, ROOT)
+        origin = configured_origin()
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     except (OSError, ValueError) as error:
         sys.exit(f"Не удалось запустить сервер на порту {args.port}: {error}")
     with server:
+        server.public_origin = origin
         print(f"API метеожурнала — http://127.0.0.1:{server.server_port}/api", flush=True)
-        if server.operator_auth.password_file is not None:
-            print(f"Пароль локального оператора: cat {shell_quote(str(server.operator_auth.password_file))}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

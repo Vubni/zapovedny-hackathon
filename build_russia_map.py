@@ -7,14 +7,16 @@ import argparse
 from collections import defaultdict
 import json
 from pathlib import Path
+import re
 
 from shapefile import Reader
 from shapely import line_merge, make_valid, prepare, union_all
-from shapely.geometry import LineString, MultiLineString, box, shape
+from shapely.geometry import LineString, MultiLineString, Point, Polygon, box, shape
 
 
-EXTENTS = [(-2, 35, 180, 85), (-180, 43, -145, 85)]
+EXTENTS = [(18, 40, 180, 84), (-180, 40, -167, 84)]
 WINDOWS = tuple(box(*region) for region in EXTENTS)
+RESERVE_EXTENT = (32.10, 56.10, 33.75, 56.95)
 ROOT = Path(__file__).resolve().parent
 
 # These cities must appear early enough to anchor the country view, including the Far East.
@@ -74,10 +76,10 @@ def label(name, point, scale, kind=None):
     return row + [kind] if kind else row
 
 
-def packed(points, scale=None):
+def packed(points, scale=None, precision=3):
     rounded = []
     for x, y in points:
-        point = (round(x, 3), round(y, 3))
+        point = (round(x, precision), round(y, precision))
         if not rounded or point != rounded[-1]:
             rounded.append(point)
     points = rounded
@@ -126,28 +128,28 @@ def lines(source, layer, fields, style, tolerance, area=None):
     rows = []
     for scale, features in sorted(ranks.items()):
         for line in geometry_parts(line_merge(MultiLineString(features)), "LineString"):
-            item = packed(line.simplify(tolerance).coords, scale)
-            if item:
-                rows.append(item)
+            for part in regional_pieces(line.simplify(tolerance), "LineString", area):
+                item = packed(part.coords, scale)
+                if item:
+                    rows.append(item)
     return rows
 
 
-def land(source):
+def land(country):
     result = []
-    for row in source_rows(source, "land", ["scalerank"]):
-        for polygon in clipped_pieces(shape(row.shape.__geo_interface__), "Polygon"):
-            if polygon.area < .001:
-                continue
-            polygon = polygon.simplify(.018, preserve_topology=True)
-            west, south, east, north = polygon.bounds
-            for x in range(int(west // 12) * 12, int(east // 12) * 12 + 1, 12):
-                for y in range(int(south // 12) * 12, int(north // 12) * 12 + 1, 12):
-                    tile = box(x, y, x + 12, y + 12)
-                    for part in geometry_parts(polygon.intersection(tile), "Polygon"):
-                        for ring in (part.exterior, *part.interiors):
-                            item = packed(ring.coords)
-                            if item and len(item[4]) >= 6:
-                                result.append(item)
+    for polygon in clipped_pieces(country, "Polygon"):
+        if polygon.area < .001:
+            continue
+        polygon = polygon.simplify(.008, preserve_topology=True)
+        west, south, east, north = polygon.bounds
+        for x in range(int(west // 12) * 12, int(east // 12) * 12 + 1, 12):
+            for y in range(int(south // 12) * 12, int(north // 12) * 12 + 1, 12):
+                tile = box(x, y, x + 12, y + 12)
+                for part in geometry_parts(polygon.intersection(tile), "Polygon"):
+                    for ring in (part.exterior, *part.interiors):
+                        item = packed(ring.coords)
+                        if item and len(item[4]) >= 6:
+                            result.append(item)
     return result
 
 
@@ -156,10 +158,10 @@ def lakes(source, area):
     for row in source_rows(source, "lakes", ["scalerank", "name_ru"]):
         name, rank = row.record["name_ru"], row.record["scalerank"]
         scale = 2 if name in KEY_LAKES or rank <= 2 else 6 if rank <= 4 else 15
-        for polygon in regional_pieces(shape(row.shape.__geo_interface__), "Polygon", area):
+        geometry = shape(row.shape.__geo_interface__).simplify(.008, preserve_topology=True)
+        for polygon in regional_pieces(geometry, "Polygon", area):
             if polygon.area < .0005:
                 continue
-            polygon = polygon.simplify(.008, preserve_topology=True)
             for ring in (polygon.exterior, *polygon.interiors):
                 item = packed(ring.coords, scale)
                 if item and len(item[4]) >= 6:
@@ -184,33 +186,37 @@ def rivers(source, area):
                 continue
             rank = record["scalerank"]
             scale = 2 if name in KEY_RIVERS or rank <= 3 else 7 if rank <= 6 else 15 if rank <= 9 else 32
-            item = packed(line.simplify(.012).coords, scale)
-            if item:
-                result.append(item)
-            if name and (name not in candidates or line.length > candidates[name][0]):
-                candidates[name] = line.length, label(name, line.interpolate(.5, normalized=True),
-                                                       scale + 2, "river")
+            for part in regional_pieces(line.simplify(.012), "LineString", area):
+                item = packed(part.coords, scale)
+                if item:
+                    result.append(item)
+                if name and (name not in candidates or part.length > candidates[name][0]):
+                    candidates[name] = part.length, label(name, part.interpolate(.5, normalized=True),
+                                                           scale + 2, "river")
     return result, [entry for _, entry in candidates.values()]
 
 
-def seas(source):
+def seas(source, waters):
     candidates = {}
     for row in source_rows(source, "geography_marine_polys", ["name_ru", "featurecla", "scalerank"]):
         name, kind, rank = row.record["name_ru"], row.record["featurecla"], row.record["scalerank"]
         if not name or kind == "ocean" or (rank > 5 and name not in KEY_WATERS):
             continue
-        for polygon in clipped_pieces(shape(row.shape.__geo_interface__), "Polygon"):
+        for polygon in regional_pieces(shape(row.shape.__geo_interface__), "Polygon", waters):
             if name not in candidates or polygon.area > candidates[name][0]:
                 scale = 2 if name in KEY_WATERS else 9
                 candidates[name] = polygon.area, label(name, polygon.representative_point(), scale, "sea")
     return [entry for _, entry in candidates.values()]
 
 
-def places(source):
+def places(source, country):
     ranked = []
     fields = ["NAME", "NAME_RU", "ADM0_A3", "SCALERANK", "POP_MAX", "FEATURECLA"]
     for row in source_rows(source, "populated_places", fields):
         record = row.record
+        lon, lat = row.shape.points[0]
+        if record["ADM0_A3"] != "RUS" or not country.covers(Point(lon, lat)):
+            continue
         name = record["NAME_RU"] or record["NAME"]
         rank, feature, population = record["SCALERANK"], record["FEATURECLA"], record["POP_MAX"]
         if name in ANCHORS:
@@ -221,9 +227,6 @@ def places(source):
             scale = 9
         else:
             scale = 18 if rank <= 6 or population >= 35000 else 42
-        if record["ADM0_A3"] != "RUS" and feature != "Admin-0 capital":
-            scale = max(13, scale)
-        lon, lat = row.shape.points[0]
         ranked.append([scale, -population, [name, round(lon, 4), round(lat, 4), scale]])
     return [item for _, _, item in sorted(ranked)]
 
@@ -241,42 +244,85 @@ def road_scale(record):
     return 26 if zoom <= 7.1 else 48
 
 
-def neighboring_area(source):
-    polygons = [shape(row.shape.__geo_interface__)
-                for row in source_rows(source, "admin_0_countries", ["ADM0_A3"])
-                if row.record["ADM0_A3"] == "RUS"]
+def russia_country(countries):
+    with Reader(str(countries)) as dataset:
+        polygons = [make_valid(shape(row.shape.__geo_interface__))
+                    for row in dataset.iterShapeRecords(fields=["ADM0_A3"])
+                    if row.record["ADM0_A3"] == "RUS"]
     if not polygons:
         raise ValueError("В слое Natural Earth не найдена территория России")
-    country = union_all([make_valid(polygon) for polygon in polygons]).simplify(.12, preserve_topology=True)
-    area = country.buffer(3.5, quad_segs=6)
-    prepare(area)
-    return area
+    country = union_all(polygons)
+    prepare(country)
+    return country
+
+
+def common_border(record):
+    return 0 if "RUS" in (record["ADM0_A3_L"], record["ADM0_A3_R"]) else None
 
 
 def generate(source):
-    area = neighboring_area(source)
-    packed_lakes, lake_names = lakes(source, area)
-    packed_rivers, river_names = rivers(source, area)
+    country = russia_country(source / "ne_10m_admin_0_countries.shp")
+    # The separate coastline and border datasets can differ from the country mask by small amounts.
+    edge = country.buffer(.02, quad_segs=3)
+    waters = country.simplify(.04, preserve_topology=True).buffer(2, quad_segs=6).difference(country)
+    prepare(edge)
+    prepare(waters)
+    packed_lakes, lake_names = lakes(source, country)
+    packed_rivers, river_names = rivers(source, country)
     return {
         "russiaExtent": EXTENTS,
-        "russiaLand": land(source),
-        "russiaCoastlines": lines(source, "coastline", ["scalerank"], lambda row: 0, .018, area),
-        "russiaBorders": lines(source, "admin_0_boundary_lines_land", ["FEATURECLA"], lambda row: 0, .018, area),
+        "russiaLand": land(country),
+        "russiaCoastlines": lines(source, "coastline", ["scalerank"], lambda row: 0, .012, edge),
+        "russiaBorders": lines(source, "admin_0_boundary_lines_land", ["ADM0_A3_L", "ADM0_A3_R"],
+                               common_border, .012, edge),
         "russiaBoundaries": lines(source, "admin_1_states_provinces_lines", ["ADM0_A3"],
-                                lambda row: 3 if row["ADM0_A3"] == "RUS" else None, .022, area),
+                                lambda row: 3 if row["ADM0_A3"] == "RUS" else None, .018, country),
         "russiaLakes": packed_lakes,
         "russiaRivers": packed_rivers,
-        "russiaRoads": lines(source, "roads", ["type", "min_zoom"], road_scale, .018, area),
-        "russiaPlaces": places(source),
-        "russiaWaterLabels": sorted(lake_names + river_names + seas(source),
+        "russiaRoads": lines(source, "roads", ["type", "min_zoom"], road_scale, .018, country),
+        "russiaPlaces": places(source, country),
+        "russiaWaterLabels": sorted(lake_names + river_names + seas(source, waters),
                                     key=lambda row: (row[3], row[4], row[0])),
     }
 
 
-def write_module(layers, output):
+def clip_local_overlay(path, country):
+    reserve = box(*RESERVE_EXTENT)
+    if not country.covers(reserve):
+        raise ValueError("Обзорное окно заповедника выходит за географическую маску")
+    text = path.read_text(encoding="utf-8")
+    source = {name: [json.loads(row.strip().removesuffix(",")) for row in body.splitlines()]
+              for name, body in re.findall(r"^export const (\w+) = \[\n(.*?)^\];", text, re.S | re.M)}
+    result = {}
+    for name in ("land", "lakes", "rivers", "roads"):
+        rows = []
+        closed = name in {"land", "lakes"}
+        for west, south, east, north, coordinates in source[name]:
+            if not intersects((west, south, east, north), RESERVE_EXTENT):
+                continue
+            points = tuple(zip(coordinates[::2], coordinates[1::2]))
+            if closed:
+                parts = geometry_parts(make_valid(Polygon(points)).intersection(reserve), "Polygon")
+                features = (ring.coords for part in parts for ring in (part.exterior, *part.interiors))
+            else:
+                parts = geometry_parts(LineString(points).intersection(reserve), "LineString")
+                features = (part.coords for part in parts)
+            for feature in features:
+                row = packed(feature, precision=5)
+                if row and (not closed or len(row[4]) >= 6):
+                    rows.append(row)
+        result[name] = rows
+    result["places"] = [row for row in source["places"] if reserve.covers(Point(row[1], row[2]))]
+    return result
+
+
+def write_module(layers, output, *, local=False):
     with output.open("w", encoding="utf-8") as module:
-        module.write("// Generated by build_russia_map.py from Natural Earth 1:10m (public domain).\n")
+        module.write("// Generated by build_russia_map.py from Natural Earth (public domain).\n")
         module.write("// https://www.naturalearthdata.com/about/terms-of-use/\n")
+        if local:
+            module.write("// Local settlements: GeoNames (CC BY 4.0), clipped to the reserve imagery extent.\n")
+            module.write("// https://www.geonames.org/export/ · https://creativecommons.org/licenses/by/4.0/\n")
         module.write("// Shape: [west, south, east, north, [lon, lat, ...], optional minScale].\n")
         module.write("// Label: [name, lon, lat, minScale, optional kind].\n")
         for name, rows in layers.items():
@@ -290,9 +336,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--output", type=Path, default=ROOT / "web" / "russia-map-data.js")
+    parser.add_argument("--clip-local-overlay", type=Path, help="Clip the existing reserve overlay module in place")
     args = parser.parse_args()
     layers = generate(args.source)
     write_module(layers, args.output)
+    if args.clip_local_overlay:
+        country = russia_country(args.source / "ne_10m_admin_0_countries.shp")
+        overlay = clip_local_overlay(args.clip_local_overlay, country)
+        write_module(overlay, args.clip_local_overlay, local=True)
     print(", ".join(f"{name}: {len(rows)}" for name, rows in layers.items()))
 
 

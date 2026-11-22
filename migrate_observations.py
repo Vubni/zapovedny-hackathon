@@ -197,8 +197,10 @@ def _copy_stations(src, dest, tables, counts):
     for row in _rows(src, "registered_stations", station_order=True):
         _types(row, "registered_stations")
         item = _json(row["passport"], dict, "registered_stations.passport")
-        if (item.get("id") != row["id"] or row["id"] in known or not isinstance(item.get("profile"), str)
-                or item["profile"] not in STATIONS or not isinstance(item.get("label"), str)
+        profile = item.get("profile")
+        if (item.get("id") != row["id"] or row["id"] in known
+                or ("profile" in item and (not isinstance(profile, str) or profile not in STATIONS))
+                or not isinstance(item.get("label"), str)
                 or item["label"].casefold() != row["name_key"] or not isinstance(item.get("params"), list)):
             raise MigrationError("Паспорт станции не согласуется с каталогом SQLite.")
         known.add(row["id"])

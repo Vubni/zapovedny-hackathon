@@ -11,8 +11,6 @@
 !results
 !results/weather.sqlite
 !results/build.json
-!results/model
-!results/model/temperature.json
 !results/examples
 !results/examples/kr1-station-2024-04-01.json
 !results/review

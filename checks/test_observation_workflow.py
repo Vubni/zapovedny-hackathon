@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 from queue import Empty, Queue
-import secrets
 from statistics import fmean
 import subprocess
 import sys
@@ -31,10 +30,10 @@ PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
 
 SERVER = """
-from admin_auth import OperatorHTTPServer
-from server import Handler, ROOT
+from http.server import ThreadingHTTPServer
+from server import Handler
 
-with OperatorHTTPServer(("127.0.0.1", 0), Handler, ROOT) as http:
+with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as http:
     print(http.server_port, flush=True)
     http.serve_forever()
 """
@@ -96,9 +95,7 @@ class ObservationWorkflowTest(unittest.TestCase):
     @contextmanager
     def http_server(self):
         temporary = Path(self.temp.name)
-        password = secrets.token_urlsafe(32)
-        env = dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(temporary / "observations.sqlite3"),
-                   METEO_ADMIN_PASSWORD=password, METEO_ADMIN_ORIGIN="")
+        env = dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=str(temporary / "observations.sqlite3"))
         with (temporary / "server.log").open("w+", encoding="utf-8") as log:
             with subprocess.Popen(
                 [sys.executable, "-c", SERVER], cwd=ROOT, env=env,
@@ -115,14 +112,6 @@ class ObservationWorkflowTest(unittest.TestCase):
                         log.seek(0)
                         self.fail(f"Temporary HTTP server did not start:\n{log.read()}")
                     self.url = f"http://127.0.0.1:{address}"
-                    login = Request(self.url + "/api/operator/login", data=json.dumps({"password": password}).encode(),
-                                    headers={"Content-Type": "application/json"})
-                    with urlopen(login, timeout=10) as response:
-                        self.assertEqual(response.status, 200)
-                        cookie = response.headers["Set-Cookie"]
-                        self.assertIn("HttpOnly", cookie)
-                        self.assertIn("SameSite=Strict", cookie)
-                        self.cookie = cookie.split(";", 1)[0]
                     yield
                 finally:
                     if process.poll() is None:
@@ -133,16 +122,13 @@ class ObservationWorkflowTest(unittest.TestCase):
                             process.kill()
                             process.wait()
 
-    def fetch(self, path, *, query=None, payload=None, body=None, mime=None, status=200,
-              authenticated=True, origin=None):
+    def fetch(self, path, *, query=None, payload=None, body=None, mime=None, status=200, origin=None):
         if query:
             path += "?" + urlencode(query)
         if payload is not None:
             body, mime = json.dumps(payload).encode(), "application/json"
         headers = {"Content-Type": mime} if mime else {}
-        if authenticated:
-            headers["Cookie"] = self.cookie
-        if origin:
+        if origin is not None:
             headers["Origin"] = origin
         request = Request(self.url + path, data=body, headers=headers)
         try:
@@ -158,26 +144,36 @@ class ObservationWorkflowTest(unittest.TestCase):
                 return json.loads(contents)
             return contents
 
-    def test_operator_access_keeps_public_reading_and_revokes_sessions(self):
+    def test_files_write_same_origin_without_sign_in(self):
         with self.http_server():
-            self.assertTrue(self.fetch("/api/stations", authenticated=False)["stations"])
-            self.assertEqual(self.fetch("/api/operator/session", authenticated=False), {"authenticated": False})
-            self.assertEqual(self.fetch("/api/operator/session"), {"authenticated": True})
-            self.fetch("/api/operator/logout", status=405)
-            self.fetch("/api/operator/login", status=405, authenticated=False)
-            for route in ("", "/item", "/preview", "/original", "/csv", "/excel"):
-                self.fetch("/api/files" + route, authenticated=False, status=401)
-            for route in ("/upload", "/corrected", "/preview", "/confirm", "/discard"):
-                self.fetch("/api/files" + route, body=b"", authenticated=False, status=401)
-            self.fetch("/api/stations", payload={}, authenticated=False, status=401)
+            self.assertTrue(self.fetch("/api/stations")["stations"])
+            self.fetch("/files")
+            self.fetch("/api/files")
+            self.fetch("/api/operator/session", status=404)
             self.fetch("/api/stations", payload={}, origin="https://elsewhere.invalid", status=403)
-            self.fetch("/api/review", query={"file_id": "0" * 32}, body=b"", authenticated=False, status=401)
+            options = {"filename": "public.csv", "station": "kr1"}
+            source = b"datetime,t_air\n2024-04-01 12:00,8\n"
+            self.fetch("/api/files/upload", query=options, body=source, mime=CSV_TYPE,
+                       origin="https://elsewhere.invalid", status=403)
+            upload = self.fetch("/api/files/upload", query=options, body=source, mime=CSV_TYPE,
+                                origin=self.url, status=201)
+            self.assertEqual(self.fetch("/api/files/original", query={"id": upload["id"]}), source)
             report = self.fetch("/api/review", query={"station": "kr1", "param": "t_air"},
-                                body=b"", authenticated=False)
+                                body=b"")
             self.assertNotIn(".", report["token"])
-            self.fetch("/api/review", query={"token": report["token"]}, authenticated=False)
-            self.assertEqual(self.fetch("/api/operator/logout", body=b""), {"authenticated": False})
-            self.fetch("/api/files", status=401)
+            self.fetch("/api/review", query={"token": report["token"]})
+
+    def test_from_observations_creates_one_public_working_file(self):
+        with self.http_server():
+            selection = {"station": "kr1", "param": "pressure_hpa", "start": "2024-04-01", "end": "2024-04-01"}
+            created = self.fetch("/api/files/from-observations", payload=selection, origin=self.url)
+            existing = self.fetch("/api/files/from-observations", payload=selection)
+            self.assertEqual(created["id"], existing["id"])
+            self.assertEqual(created["status"], "preview")
+            report = self.fetch("/api/review", query={"file_id": created["id"], "param": "pressure_hpa"}, body=b"")
+            self.assertEqual((report["station"], report["start"], report["end"]),
+                             ("kr1", selection["start"], selection["end"]))
+            self.assertEqual(len(report["rows"]), created["rows"])
 
     def upload(self, name, station, data, mime=CSV_TYPE):
         return self.fetch("/api/files/upload", query={"filename": name, "station": station},
@@ -225,7 +221,7 @@ class ObservationWorkflowTest(unittest.TestCase):
                        status=400)
             self.fetch("/api/stations", payload=dict(passport, id="out-of-range", label="Вне диапазона",
                                                       latitude=-90.01), status=400)
-            restored = [item for item in self.fetch("/api/stations", authenticated=False)["stations"]
+            restored = [item for item in self.fetch("/api/stations")["stations"]
                         if item["label"] == passport["label"]]
             self.assertEqual(len(restored), 1)
             station = restored[0]
@@ -251,7 +247,7 @@ class ObservationWorkflowTest(unittest.TestCase):
             self.confirm(second)
             expected[second_day] = 11.375
             self.assertEqual(self.values(station["id"], first_day, second_day), {station["id"]: expected})
-            confirmed = next(item for item in self.fetch("/api/stations", authenticated=False)["stations"]
+            confirmed = next(item for item in self.fetch("/api/stations")["stations"]
                              if item["id"] == station["id"])
             self.assertEqual((confirmed["start"], confirmed["end"]), (first_day, second_day))
             self.assertEqual((confirmed["latitude"], confirmed["longitude"]), (0, -71.123456789))
@@ -347,8 +343,8 @@ class ObservationWorkflowTest(unittest.TestCase):
                              (located["id"], 20, len(csv_rows)))
             self.assertEqual([row["value"] for row in audit["rows"]], [temp for _, temp, _ in csv_rows])
             self.assertTrue(audit["token"])
-            for route in ("/api/review", "/api/review.xlsx", "/api/review-original.xlsx"):
-                self.fetch(route, query={"token": audit["token"]}, authenticated=False, status=401)
+            self.assertNotIn(".", audit["token"])
+            self.assertEqual(self.fetch("/api/review", query={"token": audit["token"]})["rows"], audit["rows"])
             book = self.fetch("/api/review.xlsx", query={"token": audit["token"]})
             with ZipFile(BytesIO(book)) as archive:
                 sheet = ET.fromstring(archive.read("xl/worksheets/sheet2.xml"))

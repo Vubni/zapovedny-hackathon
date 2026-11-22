@@ -10,6 +10,8 @@ from threading import Barrier
 from unittest.mock import patch
 from uuid import uuid4
 
+from analytics import PARAMS
+from import_station import preview_import
 from observations_db import connection
 from station_catalog import COLORS, catalog, register_station, station_list
 
@@ -21,11 +23,16 @@ class StationCatalogContract:
                          {"kr1": "clearing", "kr2": "field", "ame60": "unknown"})
         self.assertEqual(len({item["color"] for item in archive.values()}), 3)
         self.assertEqual({item["location_precision"] for item in archive.values()}, {"area"})
+        self.assertEqual({(item["latitude"], item["longitude"]) for item in archive.values()},
+                         {(56.464310, 32.970290)})
+        self.assertEqual({(item["location_label"], item["location_reference"]) for item in archive.values()},
+                         {("Красное", "Точка сбора 26.07.2019")})
 
         station = register_station({"id": "test-forest", "label": "Лесной кордон", "terrain": "forest",
                                     "latitude": 56.31, "longitude": 32.94})["station"]
         self.assertEqual(station["terrain"], "forest")
         self.assertEqual(station["location_precision"], "exact")
+        self.assertNotIn("profile", station)
         self.assertEqual(next(item for item in catalog() if item["id"] == station["id"]), station)
 
     def test_default_legacy_and_invalid_terrain(self):
@@ -40,6 +47,38 @@ class StationCatalogContract:
         old = next(item for item in catalog() if item["id"] == station["id"])
         self.assertEqual(old["terrain"], "unknown")
         self.assertEqual(old["location_precision"], "unknown")
+        self.assertIsNone(old["latitude"])
+        self.assertIsNone(old["longitude"])
+
+    def test_parameter_options_and_profile_free_station_preview(self):
+        self.assertEqual([option["id"] for option in station_list()["param_options"]], list(PARAMS))
+        payload = {"id": "mixed-post", "label": "Пост с давлением и почвой", "latitude": 0,
+                   "longitude": -71.123456789, "params": ["pressure_hpa", "soil_10", "soil_10"],
+                   "minimum_slots": 1}
+        for changes in ({"params": []}, {"params": ["unsupported"]}):
+            with self.assertRaisesRegex(ValueError, "поддерживаемый показатель"):
+                register_station(dict(payload, **changes))
+        with self.assertRaisesRegex(ValueError, "обе координаты"):
+            register_station(dict(payload, longitude=None))
+
+        station = register_station(payload)["station"]
+        self.assertNotIn("profile", station)
+        self.assertEqual((station["latitude"], station["longitude"], station["location_precision"]),
+                         (0, -71.123456789, "exact"))
+        self.assertEqual([option["id"] for option in station["params"]], ["pressure_hpa", "soil_10"])
+        raw = b"datetime,qc_flag,pressure_hpa,soil_10\n2025-01-01 00:00,,1011.2,4.5\n"
+        query = {"station": station["id"], "param": "soil_10", "year": "2025"}
+        preview = preview_import(raw, "csv", query)
+        self.assertEqual((preview["expected_slots"], preview["minimum_slots"]), (24, 1))
+        self.assertEqual(preview["rows"][0]["mean"], 4.5)
+        with self.assertRaisesRegex(ValueError, "не измеряет"):
+            preview_import(raw, "csv", dict(query, param="t_air"))
+
+        legacy = register_station({"id": "legacy-ame", "label": "Старый паспорт АМЕ", "profile": "ame60"})["station"]
+        self.assertEqual((legacy["profile"], legacy["slot_minutes"], legacy["minimum_slots"]), ("ame60", 1, 72))
+        legacy_preview = preview_import(b"datetime,qc_flag,soil_10\n2025-01-01 00:00,,4.5\n", "csv",
+                                        dict(query, station=legacy["id"]))
+        self.assertEqual((legacy_preview["expected_slots"], legacy_preview["minimum_slots"]), (96, 72))
 
     def test_concurrent_id_and_casefolded_label_uniqueness(self):
         entries = [

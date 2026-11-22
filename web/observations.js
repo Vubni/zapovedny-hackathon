@@ -3,6 +3,8 @@ import { renderChartCard, download, periodFilename } from "/observation-chart.js
 import { pickStations, mountStationOverview } from "/station-map.js";
 import { mountCoverageOverview } from "/coverage-overview.js";
 import { mountObservationIndicators } from "/observation-indicators.js";
+import { createChartArchive } from "/chart-archive.js";
+import { mountRecentDays } from "/recent-days.js";
 
 const chartGroups = [
   ["Температура воздуха", [
@@ -82,20 +84,14 @@ function isDate(value) {
     Number.isFinite(asDay(value)) && asDate(asDay(value)) === value;
 }
 
+const sortIntervals = rows => [...rows].sort((a, b) => a.start.localeCompare(b.start));
+const overlapIndex = ordered => ordered.findIndex((row, index) => index > 0 && row.start <= ordered[index - 1].end);
+
 function normalizeIntervals(rows) {
-  if (!Array.isArray(rows) || !rows.length || rows.some(row =>
+  if (!Array.isArray(rows) || !rows.length || rows.length > maxDateIntervals || rows.some(row =>
     !isDate(row?.start) || !isDate(row?.end) || row.start > row.end)) return null;
-  const ordered = rows.map(({ start, end }) => ({ start, end })).sort((a, b) => a.start.localeCompare(b.start));
-  const merged = [];
-  for (const interval of ordered) {
-    const previous = merged.at(-1);
-    if (previous && asDay(interval.start) <= asDay(previous.end) + 1) {
-      if (interval.end > previous.end) previous.end = interval.end;
-    } else {
-      merged.push(interval);
-    }
-  }
-  return merged.length <= maxDateIntervals ? merged : null;
+  const ordered = sortIntervals(rows);
+  return overlapIndex(ordered) === -1 ? ordered.map(({ start, end }) => ({ start, end })) : null;
 }
 
 function parseIntervals(value) {
@@ -143,6 +139,8 @@ function restoreLocalState() {
   }
 }
 
+let invalidSharedIntervals = false;
+
 function restoreState() {
   const saved = restoreLocalState();
   const query = new URLSearchParams(location.search);
@@ -155,6 +153,7 @@ function restoreState() {
   const givenIntervals = query.get("intervals");
   const intervals = givenIntervals !== null ? parseIntervals(givenIntervals)
     : query.has("start") || query.has("end") ? normalizeIntervals([{ start, end }]) : saved.intervals;
+  invalidSharedIntervals = givenIntervals !== null && !intervals;
   return {
     selected: selected === null ? saved.selected : [...new Set(selected.split(",").filter(Boolean))],
     ...periodSelection(intervals || saved.intervals),
@@ -203,6 +202,7 @@ let renderTimer;
 let addressTimer;
 const cards = new Map();
 const get = id => document.getElementById(id);
+const refreshRecentDays = mountRecentDays(get("recent-days"), () => ({stations, selected: state.selected}));
 const dateRows = get("observation-date-rows");
 const addDateInterval = get("add-date-interval");
 let notifiedDateKey;
@@ -250,7 +250,7 @@ function updateBulkExport() {
   exportAll.setAttribute("aria-busy", String(exporting));
   if (exportDialog.open) {
     if (!ready) exportDialog.close();
-    else get("chart-export-count").textContent = `Графиков в ZIP-архиве: ${opened.length}. Выберите формат изображений.`;
+    else get("chart-export-count").textContent = `В ZIP попадут выбранные графики (${opened.length}) и общий PDF. Выберите формат изображений.`;
   }
 }
 
@@ -276,11 +276,10 @@ exportDialog.addEventListener("click", async event => {
   const name = `Метеоархив_${periodFilename(state.intervals)}_${format}.zip`;
   try {
     // Each card captures its legend and zoom before asynchronous raster conversion starts.
-    const files = await Promise.all(opened.map(card => card.instance.exportFile(format, { includeEmpty: true })));
-    const { createChartArchive } = await import("/chart-archive.js");
+    const files = await Promise.all(opened.map(card => card.instance.exportFile(format, { includeEmpty: true, includePdfPage: true })));
     const archive = await createChartArchive(files);
     download(archive, name);
-    exportMessage.textContent = `Скачивание началось. Файлов в архиве: ${files.length}.`;
+    exportMessage.textContent = "Скачивание началось. В архиве общий PDF и все выбранные графики.";
   } catch {
     exportMessage.textContent = "Не удалось собрать архив графиков. Попробуйте скачать его ещё раз.";
   } finally {
@@ -350,11 +349,13 @@ async function loadStationCatalog() {
   const data = await requestJson("/api/stations");
   if (!Array.isArray(data.stations)) throw new Error("Некорректный список станций");
   stations = data.stations;
+  refreshRecentDays();
   if (isDate(data.start) && isDate(data.end) && data.start <= data.end) {
     bounds = { start: data.start, end: data.end };
     applyDateBounds();
   }
   get("all-dates").disabled = !bounds;
+  addDateInterval.disabled = !bounds || dateRows.children.length >= maxDateIntervals;
   archiveRange.hidden = !bounds;
   renderStations();
   syncHandles();
@@ -385,11 +386,11 @@ function renderMode() {
   grainInput.value = state.grain;
 }
 
-function syncHandles() {
+function syncHandles(activeIndex) {
   const rows = readDateRows();
   const hasDraft = rows.length !== state.intervals.length || (rows.length > 1 &&
     rows.some((row, index) => row.start !== state.intervals[index].start || row.end !== state.intervals[index].end));
-  timeline.update(bounds, state.intervals, hasDraft);
+  timeline.update(bounds, state.intervals, hasDraft, activeIndex);
 }
 
 function applyDateBounds() {
@@ -400,7 +401,7 @@ function applyDateBounds() {
   }
 }
 
-function renderDateRows(intervals) {
+function renderDateRows(intervals, activeIndex) {
   const multiple = intervals.length > 1;
   dateRows.innerHTML = intervals.map(({ start, end }, index) => {
     const ordinal = index + 1;
@@ -419,9 +420,9 @@ function renderDateRows(intervals) {
     </fieldset>`;
   }).join("");
   applyDateBounds();
-  addDateInterval.disabled = intervals.length >= maxDateIntervals;
+  addDateInterval.disabled = !bounds || intervals.length >= maxDateIntervals;
   get("date-instructions").hidden = !multiple;
-  syncHandles();
+  syncHandles(activeIndex);
 }
 
 function readDateRows() {
@@ -439,13 +440,13 @@ function setDateError(message, invalid = []) {
   }
 }
 
-function commitIntervals(intervals, { immediate = true, redraw = false, retry = false } = {}) {
+function commitIntervals(intervals, { immediate = true, redraw = false, retry = false, activeIndex } = {}) {
   if (encodeIntervals(intervals) !== encodeIntervals(state.intervals)) {
     Object.assign(state, periodSelection(intervals));
     saveState({ deferAddress: !immediate });
   }
-  if (redraw) renderDateRows(state.intervals);
-  else syncHandles();
+  if (redraw) renderDateRows(state.intervals, activeIndex);
+  else syncHandles(activeIndex);
   clearTimeout(renderTimer);
   if (immediate) {
     saveAddress();
@@ -455,40 +456,75 @@ function commitIntervals(intervals, { immediate = true, redraw = false, retry = 
   }
 }
 
-function dateChange({ immediate = false } = {}) {
-  setStatus(get("date-result"), "");
-  const rows = readDateRows();
-  if (rows.length > 1 && !immediate) syncHandles();
+function validateDateRows(rows, reportMissing) {
   for (const [index, { start, end, startInput, endInput }] of rows.entries()) {
     const fields = [startInput, endInput];
     const prefix = rows.length > 1 ? `Интервал ${index + 1}. ` : "";
     const missing = fields.filter(field => !isDate(field.value));
     if (missing.length) {
-      if (immediate || rows.length === 1) setDateError(`${prefix}Введите обе даты.`, missing);
-      return;
+      if (reportMissing || rows.length === 1) setDateError(`${prefix}Введите обе даты.`, missing);
+      else setDateError("");
+      return false;
     }
     if (start > end) {
       setDateError(`${prefix}Дата начала должна быть раньше даты окончания или совпадать с ней.`, fields);
-      return;
+      return false;
     }
     const outside = bounds ? fields.filter(field => field.value < bounds.start || field.value > bounds.end) : [];
     if (outside.length) {
       setDateError(`${prefix}Выберите даты от ${dateLabel(bounds.start)} до ${dateLabel(bounds.end)}.`, outside);
-      return;
+      return false;
     }
   }
+  const ordered = sortIntervals(rows);
+  const overlap = overlapIndex(ordered);
+  if (overlap !== -1) {
+    const conflicting = [ordered[overlap - 1], ordered[overlap]];
+    const numbers = conflicting.map(row => rows.indexOf(row) + 1).sort((a, b) => a - b);
+    setDateError(`Интервалы ${numbers.join(" и ")} пересекаются. Укажите даты без общих дней.`,
+      conflicting.flatMap(row => [row.startInput, row.endInput]));
+    return false;
+  }
   setDateError("");
+  return true;
+}
+
+function dateChange({ immediate = false, activeIndex = timeline.activeIndex } = {}) {
+  setStatus(get("date-result"), "");
+  const rows = readDateRows();
+  if (rows.length > 1 && !immediate) syncHandles();
+  if (!validateDateRows(rows, immediate)) return;
   if (!immediate && rows.length > 1) return;
   const intervals = normalizeIntervals(rows);
   const redraw = encodeIntervals(rows) !== encodeIntervals(intervals);
-  commitIntervals(intervals, { immediate, redraw, retry: immediate });
-  if (intervals.length < rows.length) setStatus(get("date-result"), "Смежные и пересекающиеся интервалы объединены.");
+  const chosen = rows[activeIndex];
+  const nextActive = intervals.findIndex(interval => interval.start === chosen?.start && interval.end === chosen.end);
+  commitIntervals(intervals, { immediate, redraw, retry: immediate, activeIndex: nextActive });
+}
+
+function nextAvailableInterval(intervals, active) {
+  const gaps = [];
+  let first = asDay(bounds.start);
+  const last = asDay(bounds.end);
+  for (const interval of intervals) {
+    const end = asDay(interval.start) - 1;
+    if (first <= end) gaps.push({ start: first, end });
+    first = asDay(interval.end) + 1;
+  }
+  if (first <= last) gaps.push({ start: first, end: last });
+  const forward = gaps.find(gap => gap.start > asDay(active.end));
+  const gap = forward || gaps.at(-1);
+  if (!gap) return null;
+  const length = asDay(active.end) - asDay(active.start);
+  return forward
+    ? { start: asDate(gap.start), end: asDate(Math.min(gap.end, gap.start + length)) }
+    : { start: asDate(Math.max(gap.start, gap.end - length)), end: asDate(gap.end) };
 }
 
 function replaceDates(start, end) {
   setDateError("");
   setStatus(get("date-result"), "");
-  commitIntervals([{ start, end }], { redraw: true });
+  commitIntervals([{ start, end }], { redraw: true, activeIndex: 0 });
 }
 
 function editTimeline(index, start, end, final) {
@@ -497,10 +533,10 @@ function editTimeline(index, start, end, final) {
   row.startInput.value = start;
   row.endInput.value = end;
   setDateError("");
+  setStatus(get("date-result"), "");
   if (!final) return;
   const next = state.intervals.map((interval, i) => i === index ? {start, end} : interval);
-  const normalized = normalizeIntervals(next);
-  commitIntervals(normalized, {redraw: normalized.length !== next.length});
+  commitIntervals(next, { activeIndex: index });
 }
 
 function drawCatalog() {
@@ -665,8 +701,11 @@ function renderSummary(card) {
   } else if (stats.length === 1 && card.id === "air") {
     const [{ series, stats: values }] = stats;
     const unit = series.unit || data.unit;
-    details = `<span class="big">${escape(formatValue(values.average, unit))}</span><p class="muted">${escape(series.label)}</p>
-      <div class="between small"><span class="muted">Диапазон</span><strong>${escape(numberFormat.format(values.min))} … ${escape(formatValue(values.max, unit))}</strong></div>`;
+    const measured = series.role === "mean" && data.statistics?.find(stat =>
+      stat.station === series.station && stat.parameter === series.parameter && stat.interval_start === series.interval_start);
+    const years = Number.isInteger(measured?.years) ? ` · лет в расчёте — ${measured.years}` : "";
+    details = `<span class="big">${escape(formatValue(measured?.mean ?? values.average, unit))}</span><p class="muted">${escape(series.label)}${years}</p>
+      <div class="between small"><span class="muted">${measured ? "Измерения за пригодные сутки" : "Диапазон на графике"}</span><strong>${escape(numberFormat.format(measured?.min ?? values.min))} … ${escape(formatValue(measured?.max ?? values.max, unit))}</strong></div>`;
   } else {
     details = `<div class="observation-summary-values">${stats.map(({ series, stats }) => {
       const unit = series.unit || data.unit;
@@ -729,19 +768,28 @@ get("dashboard-dates").addEventListener("submit", event => {
 dateRows.addEventListener("input", () => dateChange());
 addDateInterval.addEventListener("click", () => {
   const rows = readDateRows();
-  if (rows.length >= maxDateIntervals) return;
-  setDateError("");
+  if (!bounds || rows.length >= maxDateIntervals || !validateDateRows(rows, true)) return;
   setStatus(get("date-result"), "");
-  renderDateRows([...rows, { start: "", end: "" }]);
-  dateRows.lastElementChild.querySelector("input").focus();
+  const active = rows[timeline.activeIndex] || rows[0];
+  const interval = nextAvailableInterval(normalizeIntervals(rows), active);
+  if (!interval) {
+    setStatus(get("date-result"), "Все даты архива уже выбраны. Сократите один из интервалов, чтобы добавить ещё один.");
+    return;
+  }
+  const intervals = normalizeIntervals([...rows, interval]);
+  const activeIndex = intervals.findIndex(item => item.start === interval.start && item.end === interval.end);
+  commitIntervals(intervals, { redraw: true, activeIndex });
+  dateRows.children[activeIndex].querySelector("input").focus();
 });
 dateRows.addEventListener("click", event => {
   const remove = event.target.closest("[data-remove-date]");
   if (!remove || dateRows.children.length < 2) return;
   const index = Number(remove.dataset.removeDate);
+  const selected = timeline.activeIndex;
   setDateError("");
   renderDateRows(readDateRows().filter((_, position) => position !== index));
-  dateChange({ immediate: true });
+  const activeIndex = Math.min(selected > index ? selected - 1 : selected, dateRows.children.length - 1);
+  dateChange({ immediate: true, activeIndex });
   dateRows.children[Math.min(index, dateRows.children.length - 1)].querySelector("input").focus();
 });
 
@@ -774,6 +822,7 @@ catalog.addEventListener("click", event => {
 
 async function start() {
   renderDateRows(state.intervals);
+  if (invalidSharedIntervals) setDateError("В ссылке указаны неверные или пересекающиеся интервалы. Показан сохранённый выбор.");
   drawCatalog();
   updateCatalog();
   renderMode();

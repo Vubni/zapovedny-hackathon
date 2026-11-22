@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 
 from analytics import PARAMS, bounds
 from build_data import (
-    SCHEMA, STATIONS, Observations, daily_record, export_csv, monthly_record, read_csv,
+    SCHEMA, STATIONS, Observations, Station, daily_record, export_csv, monthly_record, read_csv,
     read_records, sha256, validate_headers, write_year,
 )
 
@@ -26,6 +26,20 @@ EXPORTS = {
 }
 CONTENT_FORMATS = {"text/csv": "csv", "application/json": "json"}
 MAX_UPLOAD = 5 * 1024 * 1024
+
+
+def import_passport(station_id):
+    if isinstance(station_id, str) and station_id in STATIONS:
+        return STATIONS[station_id], 96 if station_id == "ame60" else 24
+    from station_catalog import catalog
+    for passport in catalog():
+        if passport["id"] == station_id:
+            size = passport["slot_minutes"]
+            station = Station(range(1, 10000), tuple(item["id"] for item in passport["params"]),
+                              station_id, size, passport["minimum_slots"])
+            expected = 96 if size == 1 and passport.get("profile") == "ame60" else 1440 // size
+            return station, expected
+    raise ValueError("Выберите станцию из списка")
 
 
 class JSONObject(list):
@@ -94,9 +108,8 @@ def preview_date(value, fallback, year):
     return parsed
 
 
-def preview_row(station_id, param, grain, members):
+def preview_row(station_id, station, param, grain, members):
     start, end = members[0].day, members[-1].day
-    station = STATIONS[station_id]
     row = {
         "period": start, "start": start, "end": end, "days": len(members),
         "n": sum(day.n for day in members), "flagged": sum(day.flagged for day in members),
@@ -106,7 +119,7 @@ def preview_row(station_id, param, grain, members):
     }
     if grain == "day":
         day = members[0]
-        unit = "сроков" if station_id == "ame60" else "часов"
+        unit = "сроков" if station.slot_minutes == 1 else "часов"
         row.update(
             slots=day.slots,
             station_slots=day.station_slots,
@@ -155,9 +168,7 @@ def preview_csv(station_id, param, unit, rows):
 
 def preview_import(body, source_format, query):
     station_id = query.get("station")
-    station = STATIONS.get(station_id)
-    if station is None:
-        raise ValueError("Выберите станцию из списка")
+    station, expected_slots = import_passport(station_id)
     param = query.get("param")
     if param not in station.params:
         raise ValueError("Станция не измеряет выбранный параметр")
@@ -186,13 +197,13 @@ def preview_import(body, source_format, query):
         for when in dates
     )
     groups = groupby(daily, lambda day: day.day if grain == "day" else day.day[:7])
-    rows = [preview_row(station_id, param, grain, list(group)) for _, group in groups]
+    rows = [preview_row(station_id, station, param, grain, list(group)) for _, group in groups]
     label, unit = PARAMS[param]
     return {
         "station": station_id, "year": year, "param": param, "label": label, "unit": unit, "grain": grain,
         "start": start.isoformat(), "end": end.isoformat(),
         "source_start": source_start, "source_end": source_end, **counts,
-        "minimum_slots": station.minimum_slots, "expected_slots": 96 if station_id == "ame60" else 24,
+        "minimum_slots": station.minimum_slots, "expected_slots": expected_slots,
         "rows": rows, "valid_periods": sum(row["valid"] for row in rows),
         "valid_days": sum(row["valid_days"] for row in rows),
         "flagged": sum(row["flagged"] for row in rows),
@@ -240,7 +251,7 @@ def publish(report, output, replace):
 
 
 def import_station(source, output, station_id, year, replace=False):
-    station = STATIONS[station_id]
+    station, _ = import_passport(station_id)
     if not 1 <= year <= 9999:
         raise ValueError("Укажите календарный год от 1 до 9999")
 
@@ -285,7 +296,7 @@ def import_station(source, output, station_id, year, replace=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--station", required=True, choices=STATIONS, help="станция из схемы архива")
+    parser.add_argument("--station", required=True, help="код станции из каталога")
     parser.add_argument("--year", required=True, type=int, help="календарный год всех наблюдений")
     parser.add_argument("--input", required=True, type=Path, help="исходный CSV или JSON")
     parser.add_argument("--output-dir", required=True, type=Path, help="отдельная папка отчёта")

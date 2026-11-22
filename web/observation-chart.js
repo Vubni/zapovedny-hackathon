@@ -8,6 +8,7 @@ const speedPalette = ['#b4d5bc', '#5d9a75', '#2b7650', '#426583', '#735579', '#9
 const imageFormats = new Map([['svg', 'SVG'], ['png', 'PNG'], ['jpeg', 'JPEG / JPG']]);
 const compass = ['С', 'ССВ', 'СВ', 'ВСВ', 'В', 'ВЮВ', 'ЮВ', 'ЮЮВ', 'Ю', 'ЮЮЗ', 'ЮЗ', 'ЗЮЗ', 'З', 'ЗСЗ', 'СЗ', 'ССЗ'];
 const grainLabels = { day: 'По суткам', decade: 'По декадам', month: 'По месяцам', year: 'По годам' };
+const reportModeLabels = { modern: 'Современный вид', togu: 'По пособию ТОГУ', semenov: 'По Семёнову' };
 const neutral = { ink: '#162820', mute: '#53645a', line: '#dce5db', grid: '#e5ebe3', median: '#c8d6c8', lime: '#d7e950' };
 const number = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 });
 const date = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -447,8 +448,8 @@ function roseBounds(groups) {
   return bounds;
 }
 
-function roseLayout(groups, width, big) {
-  const fit = Math.max(1, Math.min(groups.length, Math.floor(width / 214)));
+function roseLayout(groups, width, big, maxColumns = Infinity) {
+  const fit = Math.max(1, Math.min(groups.length, Math.floor(width / 214), maxColumns));
   let columns = fit;
   for (let candidate = fit; candidate > 1; candidate--) {
     if (groups.length % candidate === 0) {
@@ -499,14 +500,17 @@ function roseMarks(root, group, polar, radius, mode) {
   }
 }
 
-function radialPlot(root, model, groups, layout, origin = 0, onSector) {
+function radialPlot(root, model, groups, layout, origin = 0, onSector, report) {
   const { size, columns, rowHeight } = layout;
-  const bounds = roseBounds(groups);
+  const bounds = report?.bounds || roseBounds(groups);
   for (const [index, group] of groups.entries()) {
     const cx = index % columns * size + size / 2;
     const top = origin + Math.floor(index / columns) * rowHeight;
-    const cy = top + rowHeight / 2 + 14;
-    const maxR = Math.min(size / 2 - 35, rowHeight / 2 - 50);
+    const titles = report ? report.wrap(group.stationLabel, size - 20, 13, 800) : [group.stationLabel];
+    const subtitles = report ? report.wrap(group.subtitle, size - 20, 11) : [group.subtitle];
+    const extra = Math.max(0, titles.length + subtitles.length - 2) * 14;
+    const cy = top + rowHeight / 2 + 14 + extra / 2;
+    const maxR = Math.min(size / 2 - 35, rowHeight / 2 - 50 - extra / 2);
     const step = stepSize((bounds.get(group.unit) || 4) / 4);
     const max = Math.ceil((bounds.get(group.unit) || step * 4) / step) * step;
     const radius = value => coord(Math.max(0, value) * maxR / max);
@@ -515,18 +519,22 @@ function radialPlot(root, model, groups, layout, origin = 0, onSector) {
       return [coord(cx + radius(v) * Math.cos(angle)), coord(cy + radius(v) * Math.sin(angle))];
     };
     const centered = { 'text-anchor': 'middle', fill: neutral.ink };
-    root.append(plotText(cx, top + 16, group.stationLabel, { ...centered, 'font-size': 13, 'font-weight': 800 }));
-    if (group.subtitle) root.append(plotText(cx, top + 33, group.subtitle, { 'text-anchor': 'middle' }));
+    titles.forEach((text, index) => root.append(plotText(cx, top + 16 + index * 14, text,
+      { ...centered, 'font-size': 13, 'font-weight': 800 })));
+    if (group.subtitle) subtitles.forEach((text, index) => root.append(plotText(cx, top + 19 + (titles.length + index) * 14,
+      text, { 'text-anchor': 'middle' })));
     if (!group.hasValues) {
       root.append(plotText(cx, cy, 'Нет данных', { 'text-anchor': 'middle' }));
       continue;
     }
     const ringLabels = [];
+    const showCalm = group.unit === '%' && Number.isFinite(group.calm);
     for (let i = 1; i <= Math.round(max / step); i++) {
       const value = i * step;
       const r = radius(value);
       root.append(svg('circle', { cx, cy, r, fill: 'none', stroke: neutral.grid }));
-      ringLabels.push(plotText(cx + 5, cy - r + 10, number.format(value), { 'font-size': 9, 'paint-order': 'stroke', stroke: '#fff', 'stroke-width': 2.5 }));
+      if (!report || !showCalm || r >= 28) ringLabels.push(plotText(cx + 5, cy - r + 10, number.format(value),
+        { 'font-size': 9, 'paint-order': 'stroke', stroke: '#fff', 'stroke-width': 2.5 }));
     }
     for (const [i, name] of compass.entries()) {
       const [x, y] = polar(i, max);
@@ -536,7 +544,7 @@ function radialPlot(root, model, groups, layout, origin = 0, onSector) {
     }
     roseMarks(root, group, polar, radius, model.mode);
     root.append(...ringLabels);
-    if (group.unit === '%' && Number.isFinite(group.calm)) {
+    if (showCalm) {
       root.append(svg('circle', { cx, cy, r: 16, fill: '#fff', stroke: neutral.line }));
       const calm = plotText(cx, cy + 3.5, `${number.format(Math.round(group.calm * 10) / 10)}%`, { ...centered, 'font-size': 9.5 });
       calm.append(svg('title', {}, `Доля штиля: ${number.format(group.calm)}%`));
@@ -640,6 +648,14 @@ function renderLegend(model, hidden, onToggle) {
   return legend;
 }
 
+function legendMark(model, item, x, y) {
+  if (dashed(item, model.mode)) {
+    return svg('path', { d: `M${x} ${y - 4}h16`, stroke: item.color, 'stroke-width': 2, 'stroke-dasharray': '5 3' });
+  }
+  if (item.speedClass) return svg('rect', { x, y: y - 9, width: 10, height: 10, rx: 2, fill: item.color });
+  return svg('circle', { cx: x + 5, cy: y - 4, r: 4, fill: item.color });
+}
+
 function exportLegend(model, series, width, start) {
   const nodes = [];
   let x = 26;
@@ -652,17 +668,16 @@ function exportLegend(model, series, width, start) {
   for (const item of chartLegendEntries(model, series)) {
     const textWidth = item.label.length * 7 + 38;
     ensureRoom(textWidth);
-    if (dashed(item, model.mode)) {
-      nodes.push(svg('path', { d: `M${x} ${y - 4}h16`, stroke: item.color, 'stroke-width': 2, 'stroke-dasharray': '5 3' }));
-    } else if (item.speedClass) {
-      nodes.push(svg('rect', { x, y: y - 9, width: 10, height: 10, rx: 2, fill: item.color }));
-    } else {
-      nodes.push(svg('circle', { cx: x + 5, cy: y - 4, r: 4, fill: item.color }));
-    }
+    nodes.push(legendMark(model, item, x, y));
     nodes.push(plotText(x + (dashed(item, model.mode) ? 21 : 16), y, item.label, { 'font-size': 12 }));
     x += textWidth;
   }
   return { nodes, bottom: y + 24 };
+}
+
+function svgFile(root, width, height, title) {
+  const source = new XMLSerializer().serializeToString(root);
+  return { width, height, title, blob: new Blob([source], { type: 'image/svg+xml;charset=utf-8' }) };
 }
 
 function exportImage(model, series, domain, measuredWidth, periods, empty) {
@@ -684,8 +699,130 @@ function exportImage(model, series, domain, measuredWidth, periods, empty) {
   } else if (rose) radialPlot(root, model, groups, layout, top);
   else rectangularPlot(root, model, series, domain, width, layout.height, top);
   root.append(...nodes);
-  const source = new XMLSerializer().serializeToString(root);
-  return { width, height: bottom, blob: new Blob([source], { type: 'image/svg+xml;charset=utf-8' }) };
+  return svgFile(root, width, bottom);
+}
+
+function reportTextLayout() {
+  const context = html('canvas').getContext('2d');
+  const measure = (text, size, weight = 700) => {
+    context.font = `${weight} ${size}px Arial, sans-serif`;
+    return context.measureText(text).width;
+  };
+  const wrap = (text, width, size, weight) => {
+    if (!text) return [];
+    const lines = [];
+    let line = '';
+    for (const word of text.trim().split(/\s+/)) {
+      if (line && measure(`${line} ${word}`, size, weight) > width) {
+        lines.push(line);
+        line = '';
+      }
+      if (measure(word, size, weight) > width) {
+        for (const character of word) {
+          if (line && measure(line + character, size, weight) > width) {
+            lines.push(line);
+            line = '';
+          }
+          line += character;
+        }
+      } else line = line ? `${line} ${word}` : word;
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+  return { measure, wrap };
+}
+
+function reportLegendRows(model, series, width, layout) {
+  const rows = [];
+  let row = [];
+  let offset = 0;
+  for (const item of chartLegendEntries(model, series)) {
+    const lines = layout.wrap(item.label, width - 26, 12);
+    const size = Math.max(...lines.map(line => layout.measure(line, 12)), 0) + 38;
+    if (row.length && offset + size > width) {
+      rows.push(row);
+      row = [];
+      offset = 0;
+    }
+    row.push({ item, lines, offset });
+    offset += size;
+  }
+  if (row.length) rows.push(row);
+  return rows;
+}
+
+function reportGraphics(model, series, domain, periods, empty) {
+  const width = 1000;
+  const height = 680;
+  const margin = 24;
+  const contentWidth = width - 2 * margin;
+  const text = reportTextLayout();
+  const pages = [];
+  const titleLines = text.wrap(model.title, contentWidth, 25, 800);
+  let root;
+  let cursor;
+  const nextPage = () => {
+    root = graphic(width, height, model.title);
+    root.setAttribute('font-family', 'Arial, sans-serif');
+    root.append(svg('rect', { width, height, fill: '#fff' }));
+    titleLines.forEach((line, index) => root.append(plotText(margin, 32 + 27 * index, line,
+      { fill: neutral.ink, 'font-size': 25, 'font-weight': 800 })));
+    pages.push(root);
+    cursor = 46 + (titleLines.length - 1) * 27;
+  };
+  const add = (size, paint) => {
+    if (cursor + size > height - 12) nextPage();
+    paint(root, cursor);
+    cursor += size;
+  };
+
+  nextPage();
+  const captions = [[model.subtitle, reportModeLabels[model.mode]].filter(Boolean).join(' · '), periods.join(' · ')].filter(Boolean);
+  for (const caption of captions) {
+    for (const line of text.wrap(caption, contentWidth, 13)) {
+      add(17, (page, y) => page.append(plotText(margin, y + 13, line, { 'font-size': 13 })));
+    }
+  }
+  add(14, (page, y) => page.append(svg('path', { d: `M${margin} ${y + 4}H${width - margin}`, stroke: neutral.line })));
+
+  if (empty) {
+    add(48, (page, y) => page.append(plotText(margin, y + 30, empty.message,
+      { fill: neutral.ink, 'font-size': 17 })));
+    for (const line of text.wrap(empty.detail, contentWidth, 13)) {
+      add(17, (page, y) => page.append(plotText(margin, y + 13, line, { 'font-size': 13 })));
+    }
+  } else if (isRose(model)) {
+    const groups = roseGroups(model, series);
+    const layout = roseLayout(groups, width, true, 4);
+    const roseText = { bounds: roseBounds(groups), wrap: text.wrap };
+    for (let row = 0; row < groups.length; row += layout.columns) {
+      const groupRow = groups.slice(row, row + layout.columns);
+      add(layout.rowHeight, (page, y) => radialPlot(page, model, groupRow, layout, y, undefined, roseText));
+    }
+  } else {
+    add(372, (page, y) => rectangularPlot(page, model, series, domain, width, 365, y));
+  }
+
+  let legendPage;
+  for (const row of reportLegendRows(model, series, contentWidth, text)) {
+    const lineCount = Math.max(...row.map(entry => entry.lines.length), 1);
+    const rowHeight = lineCount * 16 + 7;
+    const headingHeight = 18;
+    if (cursor + rowHeight + (legendPage === root ? 0 : headingHeight) > height - 12) nextPage();
+    if (legendPage !== root) {
+      add(headingHeight, (page, y) => page.append(plotText(margin, y + 12, 'Легенда', { fill: neutral.ink })));
+      legendPage = root;
+    }
+    add(rowHeight, (page, y) => {
+      for (const { item, lines, offset } of row) {
+        const x = margin + offset;
+        page.append(legendMark(model, item, x, y + 13));
+        lines.forEach((line, index) => page.append(plotText(x + 22, y + 13 + index * 16, line, { 'font-size': 12 })));
+      }
+    });
+  }
+  return pages.map((page, index) => svgFile(page, width, height, index === 0 ? model.title : undefined));
 }
 
 export function download(blob, filename) {
@@ -699,7 +836,13 @@ export function download(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-async function rasterize({ blob, width, height }, type) {
+function rasterDimensions({ width, height }) {
+  const scale = Math.min(2, 4096 / Math.max(width, height));
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+async function rasterize(graphic, type) {
+  const { blob } = graphic;
   const url = URL.createObjectURL(blob);
   try {
     const image = new Image();
@@ -708,10 +851,10 @@ async function rasterize({ blob, width, height }, type) {
       image.onerror = reject;
       image.src = url;
     });
-    const scale = Math.min(2, 4096 / Math.max(width, height));
+    const { width, height } = rasterDimensions(graphic);
     const canvas = html('canvas');
-    canvas.width = Math.round(width * scale);
-    canvas.height = Math.round(height * scale);
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     return await new Promise((resolve, reject) => {
@@ -747,6 +890,8 @@ function chartCsv(model, series, domain) {
   if (model.axis === 'hour') fields[0] = 'Час';
   if (model.axis === 'direction') fields[0] = 'Направление';
   if (multiple) fields.push('Начало выбранного интервала', 'Конец выбранного интервала');
+  const hasBaseline = series.some(item => item.role === 'anomaly');
+  if (hasBaseline) fields.push('Среднее за выбранный период', 'Лет в среднем');
   const stationLabels = new Map((model.coverage || []).map(row => [row.station, row.label]));
   const rows = [fields];
   for (const item of series) {
@@ -754,6 +899,7 @@ function chartCsv(model, series, domain) {
       const values = [point.x, point.x_end, stationLabels.get(item.station) || item.station_label || item.station || item.label,
         item.parameter_label || item.parameter || model.title, item.label, item.unit, point.y];
       if (multiple) values.push(item.interval_start, item.interval_end);
+      if (hasBaseline) values.push(point.baseline, point.years);
       rows.push(values);
     }
   }
@@ -762,7 +908,8 @@ function chartCsv(model, series, domain) {
 }
 
 function tooltipRow(item, key, label = item.label) {
-  const value = item.byKey.get(key)?.y;
+  const point = item.byKey.get(key);
+  const value = point?.y;
   const row = html('div', 'hrow obs-chart__tooltip-row');
   const name = html('span');
   const swatch = html('i', 'swatch');
@@ -770,6 +917,9 @@ function tooltipRow(item, key, label = item.label) {
   name.append(swatch, html('span', '', label));
   const text = value == null ? 'Нет данных' : `${number.format(value)}${item.unit ? ` ${item.unit}` : ''}`;
   row.append(name, html('b', '', text));
+  if (item.role === 'anomaly' && Number.isFinite(point?.baseline)) {
+    row.append(html('small', '', `Среднее ${number.format(point.baseline)} ${item.unit} · лет в расчёте — ${point.years}`));
+  }
   return row;
 }
 
@@ -963,7 +1113,7 @@ function exportPeriods(state, domain) {
   return dates ? [span(dates)] : [];
 }
 
-async function exportChartFile(state, format, { includeEmpty = false } = {}) {
+async function exportChartFile(state, format, { includeEmpty = false, includePdfPage = false } = {}) {
   if (!imageFormats.has(format)) throw new TypeError(`Неизвестный формат графика: ${format}`);
   if (cards.get(state.container) !== state) throw new Error('Карточка графика закрыта.');
   const { model, lastWidth } = state;
@@ -973,12 +1123,21 @@ async function exportChartFile(state, format, { includeEmpty = false } = {}) {
   if (empty && !includeEmpty) throw new Error('В видимой области графика нет данных.');
 
   // Rasterize the same SVG even if the card is updated while the image loads.
-  const graphic = exportImage(model, series, domain, lastWidth, exportPeriods(state, domain), empty);
+  const periods = exportPeriods(state, domain);
+  const graphic = exportImage(model, series, domain, lastWidth, periods, empty);
   const name = filename(model, format);
-  if (format === 'svg') return { blob: graphic.blob, filename: name };
-  const image = rasterQueue.then(() => rasterize(graphic, `image/${format}`));
-  rasterQueue = image.then(() => undefined, () => undefined);
-  return { blob: await image, filename: name };
+  if (format === 'svg' && !includePdfPage) return { blob: graphic.blob, filename: name };
+  const report = includePdfPage ? reportGraphics(model, series, domain, periods, empty) : [];
+  const files = rasterQueue.then(async () => {
+    const blob = format === 'svg' ? graphic.blob : await rasterize(graphic, `image/${format}`);
+    const pdfPages = [];
+    for (const page of report) {
+      pdfPages.push({ ...rasterDimensions(page), title: page.title, blob: await rasterize(page, 'image/jpeg') });
+    }
+    return includePdfPage ? { blob, filename: name, pdfPages } : { blob, filename: name };
+  });
+  rasterQueue = files.then(() => undefined, () => undefined);
+  return files;
 }
 
 function draw(state) {

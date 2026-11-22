@@ -1,0 +1,737 @@
+{
+  "verified_at_utc": "2026-11-22T13:13:45+00:00",
+  "station": {
+    "label": "Тестовая точка · Тверская область",
+    "latitude": 57.147,
+    "longitude": 34.682,
+    "location_precision": "exact"
+  },
+  "check_setup": "Temporary catalog and local measured-series test fixture, draft from confirmed observations. Provider inputs are live HTTP responses.",
+  "observation_selection": {
+    "kind": "observations",
+    "station": "live-tver-point",
+    "param": "t_air",
+    "start": "2025-05-17",
+    "end": "2025-05-17",
+    "measurements": 4,
+    "empty": 2,
+    "sources": {
+      "confirmed": 6
+    }
+  },
+  "external_only": {
+    "stats": {
+      "marked": 0,
+      "filled": 0,
+      "references": 1,
+      "parameters": {
+        "t_air": {
+          "marked": 0,
+          "kept": 4,
+          "missing": 2,
+          "filled": 0,
+          "references": 1
+        }
+      }
+    },
+    "provider_summary": {
+      "status": "reference",
+      "timezone": "Europe/Moscow",
+      "parameter": "t_air",
+      "unit": "°C",
+      "reason": null,
+      "requested_coordinates": {
+        "latitude": 57.147,
+        "longitude": 34.682
+      },
+      "location": {
+        "precision": "exact"
+      },
+      "target_start": "2025-05-17",
+      "target_end": "2025-05-17",
+      "min_sources": 2,
+      "requested_sources": [
+        "era5",
+        "merra2"
+      ],
+      "grid_minutes": 60,
+      "subhour": "skip",
+      "estimated_count": 0,
+      "unavailable_count": 1,
+      "reason_counts": {
+        "subhourly": 1
+      },
+      "synthetic_count": 0,
+      "sources": [
+        {
+          "id": "era5",
+          "name": "Open-Meteo",
+          "model": "ERA5",
+          "description": "ERA5, мгновенные снимки на границах часа",
+          "kind": "reanalysis",
+          "url": "https://archive-api.open-meteo.com/v1/archive?latitude=57.147&longitude=34.682&start_date=2025-05-16&end_date=2025-05-17&hourly=temperature_2m&timezone=GMT&models=era5",
+          "mode": "network",
+          "start_utc": "2025-05-16",
+          "end_utc": "2025-05-17",
+          "timezone": "UTC",
+          "variable_units": {
+            "temperature_2m": "°C"
+          },
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "retrieved_at": "2026-11-22T13:13:45+00:00",
+          "status": "available",
+          "coordinates": {
+            "latitude": 57.25,
+            "longitude": 34.75,
+            "elevation_m": 203.0
+          },
+          "count": 21
+        },
+        {
+          "id": "merra2",
+          "name": "NASA POWER",
+          "model": "MERRA-2",
+          "description": "NASA POWER, среднее за час",
+          "kind": "reanalysis",
+          "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M&community=SB&longitude=34.682&latitude=57.147&start=20250516&end=20250517&format=JSON&time-standard=UTC",
+          "mode": "network",
+          "start_utc": "2025-05-16",
+          "end_utc": "2025-05-17",
+          "timezone": "UTC",
+          "variable_units": {
+            "T2M": "C"
+          },
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "retrieved_at": "2026-11-22T13:13:45+00:00",
+          "provider_products": [
+            "MERRA-2"
+          ],
+          "status": "available",
+          "coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682,
+            "elevation_m": 232.06
+          },
+          "count": 21
+        }
+      ],
+      "reference_count": 1,
+      "validation_reference_count": 0,
+      "validation_pair_count": 0,
+      "adjusted_count": 0
+    }
+  },
+  "combined_examples": [
+    {
+      "time": "2025-05-17 10:00",
+      "value": null,
+      "estimate": {
+        "value": 11.0,
+        "local_value": 11.0,
+        "method": "model",
+        "source": "Модель станции · интерполяция по исходным наблюдениям",
+        "confidence": {
+          "kind": "uncalibrated_interpolation",
+          "unit": "°C"
+        },
+        "provenance": {
+          "kind": "station_model",
+          "method": "station_bracket_interpolation",
+          "unit": "°C",
+          "anchors": [
+            {
+              "time": "2025-05-17 09:30",
+              "value": 10.0
+            },
+            {
+              "time": "2025-05-17 10:30",
+              "value": 12.0
+            }
+          ],
+          "bias": 0,
+          "training_n": 0,
+          "training_end": null,
+          "validation": {
+            "kind": "uncalibrated_interpolation",
+            "unit": "°C"
+          },
+          "verification": {
+            "decision": "local_departure",
+            "delta": 0.0,
+            "local_value": 11.0,
+            "external_value": 15.01,
+            "weight": 0.0,
+            "source_spread": 1.879999999999999,
+            "limits": {
+              "source_spread": 2.0,
+              "local_departure": 2.0,
+              "max_delta": 0.5
+            },
+            "calibration": null
+          }
+        },
+        "enters_working_graphs": true
+      },
+      "external_reference": {
+        "value": 15.01,
+        "source": "ERA5 + MERRA-2 · среднее за час",
+        "provenance": {
+          "source_count": 2,
+          "unit": "°C",
+          "sources": [
+            {
+              "id": "era5",
+              "name": "Open-Meteo",
+              "model": "ERA5",
+              "url": "https://archive-api.open-meteo.com/v1/archive?latitude=57.147&longitude=34.682&start_date=2025-05-16&end_date=2025-05-17&hourly=temperature_2m&timezone=GMT&models=era5",
+              "coordinates": {
+                "latitude": 57.25,
+                "longitude": 34.75,
+                "elevation_m": 203.0
+              },
+              "retrieved_at": "2026-11-22T13:13:45+00:00",
+              "variable": "temperature_2m",
+              "source_unit": "°C",
+              "description": "ERA5, мгновенные снимки на границах часа",
+              "unit": "°C",
+              "samples": [
+                {
+                  "time_utc": "2025-05-17T07:00:00+00:00",
+                  "value": 13.6
+                },
+                {
+                  "time_utc": "2025-05-17T08:00:00+00:00",
+                  "value": 18.3
+                }
+              ],
+              "value": 15.95
+            },
+            {
+              "id": "merra2",
+              "name": "NASA POWER",
+              "model": "MERRA-2",
+              "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M&community=SB&longitude=34.682&latitude=57.147&start=20250516&end=20250517&format=JSON&time-standard=UTC",
+              "coordinates": {
+                "latitude": 57.147,
+                "longitude": 34.682,
+                "elevation_m": 232.06
+              },
+              "retrieved_at": "2026-11-22T13:13:45+00:00",
+              "variable": "T2M",
+              "source_unit": "C",
+              "description": "NASA POWER, среднее за час",
+              "unit": "°C",
+              "samples": [
+                {
+                  "time_utc": "2025-05-17T07:00:00+00:00",
+                  "value": 14.07
+                }
+              ],
+              "value": 14.07
+            }
+          ],
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "location": {
+            "precision": "exact"
+          },
+          "pressure_reference": null,
+          "known_after_utc": "2025-05-17T08:00:00+00:00",
+          "kind": "hourly_reanalysis",
+          "start_utc": "2025-05-17T07:00:00+00:00",
+          "end_utc": "2025-05-17T08:00:00+00:00",
+          "method": "arithmetic_mean_of_model_hour_means"
+        },
+        "usable": true,
+        "confidence": {
+          "kind": "source_disagreement",
+          "spread": 1.88,
+          "source_count": 2,
+          "unit": "°C"
+        }
+      },
+      "verification": {
+        "decision": "local_departure",
+        "delta": 0.0,
+        "local_value": 11.0,
+        "external_value": 15.01,
+        "weight": 0.0,
+        "source_spread": 1.879999999999999,
+        "limits": {
+          "source_spread": 2.0,
+          "local_departure": 2.0,
+          "max_delta": 0.5
+        },
+        "calibration": null
+      }
+    },
+    {
+      "time": "2025-05-17 11:30",
+      "value": null,
+      "estimate": {
+        "value": 14.0,
+        "local_value": 14.0,
+        "method": "model",
+        "source": "Модель станции · интерполяция по исходным наблюдениям",
+        "confidence": {
+          "kind": "uncalibrated_interpolation",
+          "unit": "°C"
+        },
+        "provenance": {
+          "kind": "station_model",
+          "method": "station_bracket_interpolation",
+          "unit": "°C",
+          "anchors": [
+            {
+              "time": "2025-05-17 11:00",
+              "value": 13.0
+            },
+            {
+              "time": "2025-05-17 12:00",
+              "value": 15.0
+            }
+          ],
+          "bias": 0,
+          "training_n": 0,
+          "training_end": null,
+          "validation": {
+            "kind": "uncalibrated_interpolation",
+            "unit": "°C"
+          },
+          "verification": {
+            "decision": "external_unavailable",
+            "delta": 0.0,
+            "local_value": 14.0,
+            "external_value": null,
+            "weight": 0.0,
+            "source_spread": null,
+            "limits": {
+              "source_spread": 2.0,
+              "local_departure": 2.0,
+              "max_delta": 0.5
+            },
+            "calibration": null
+          }
+        },
+        "enters_working_graphs": true
+      },
+      "external_reference": null,
+      "verification": {
+        "decision": "external_unavailable",
+        "delta": 0.0,
+        "local_value": 14.0,
+        "external_value": null,
+        "weight": 0.0,
+        "source_spread": null,
+        "limits": {
+          "source_spread": 2.0,
+          "local_departure": 2.0,
+          "max_delta": 0.5
+        },
+        "calibration": null
+      }
+    }
+  ],
+  "review_target": {
+    "time": "2025-05-17 10:00",
+    "value": null,
+    "local_estimate": 11.0,
+    "estimate": 11.0,
+    "external_reference": {
+      "value": 15.01,
+      "source": "ERA5 + MERRA-2 · среднее за час",
+      "provenance": {
+        "source_count": 2,
+        "unit": "°C",
+        "sources": [
+          {
+            "id": "era5",
+            "name": "Open-Meteo",
+            "model": "ERA5",
+            "url": "https://archive-api.open-meteo.com/v1/archive?latitude=57.147&longitude=34.682&start_date=2025-05-16&end_date=2025-05-17&hourly=temperature_2m&timezone=GMT&models=era5",
+            "coordinates": {
+              "latitude": 57.25,
+              "longitude": 34.75,
+              "elevation_m": 203.0
+            },
+            "retrieved_at": "2026-11-22T13:13:45+00:00",
+            "variable": "temperature_2m",
+            "source_unit": "°C",
+            "description": "ERA5, мгновенные снимки на границах часа",
+            "unit": "°C",
+            "samples": [
+              {
+                "time_utc": "2025-05-17T07:00:00+00:00",
+                "value": 13.6
+              },
+              {
+                "time_utc": "2025-05-17T08:00:00+00:00",
+                "value": 18.3
+              }
+            ],
+            "value": 15.95
+          },
+          {
+            "id": "merra2",
+            "name": "NASA POWER",
+            "model": "MERRA-2",
+            "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M&community=SB&longitude=34.682&latitude=57.147&start=20250516&end=20250517&format=JSON&time-standard=UTC",
+            "coordinates": {
+              "latitude": 57.147,
+              "longitude": 34.682,
+              "elevation_m": 232.06
+            },
+            "retrieved_at": "2026-11-22T13:13:45+00:00",
+            "variable": "T2M",
+            "source_unit": "C",
+            "description": "NASA POWER, среднее за час",
+            "unit": "°C",
+            "samples": [
+              {
+                "time_utc": "2025-05-17T07:00:00+00:00",
+                "value": 14.07
+              }
+            ],
+            "value": 14.07
+          }
+        ],
+        "requested_coordinates": {
+          "latitude": 57.147,
+          "longitude": 34.682
+        },
+        "location": {
+          "precision": "exact"
+        },
+        "pressure_reference": null,
+        "known_after_utc": "2025-05-17T08:00:00+00:00",
+        "kind": "hourly_reanalysis",
+        "start_utc": "2025-05-17T07:00:00+00:00",
+        "end_utc": "2025-05-17T08:00:00+00:00",
+        "method": "arithmetic_mean_of_model_hour_means"
+      },
+      "usable": true,
+      "confidence": {
+        "kind": "source_disagreement",
+        "spread": 1.88,
+        "source_count": 2,
+        "unit": "°C"
+      }
+    },
+    "verification": {
+      "decision": "local_departure",
+      "delta": 0.0,
+      "local_value": 11.0,
+      "external_value": 15.01,
+      "weight": 0.0,
+      "source_spread": 1.879999999999999,
+      "limits": {
+        "source_spread": 2.0,
+        "local_departure": 2.0,
+        "max_delta": 0.5
+      },
+      "calibration": null
+    }
+  },
+  "registered_humidity": {
+    "summary": {
+      "status": "estimated",
+      "timezone": "UTC",
+      "parameter": "rh",
+      "unit": "%",
+      "reason": null,
+      "requested_coordinates": {
+        "latitude": 57.147,
+        "longitude": 34.682
+      },
+      "location": {},
+      "target_start": "2025-05-17",
+      "target_end": "2025-05-17",
+      "min_sources": 2,
+      "requested_sources": [
+        "era5",
+        "merra2"
+      ],
+      "grid_minutes": 60,
+      "subhour": "skip",
+      "estimated_count": 24,
+      "unavailable_count": 0,
+      "reason_counts": {},
+      "synthetic_count": 24,
+      "sources": [
+        {
+          "id": "era5",
+          "name": "Open-Meteo",
+          "model": "ERA5",
+          "description": "ERA5, мгновенные снимки на границах часа",
+          "kind": "reanalysis",
+          "url": "https://archive-api.open-meteo.com/v1/archive?latitude=57.147&longitude=34.682&start_date=2025-05-17&end_date=2025-05-18&hourly=relative_humidity_2m&timezone=GMT&models=era5",
+          "mode": "network",
+          "start_utc": "2025-05-17",
+          "end_utc": "2025-05-18",
+          "timezone": "UTC",
+          "variable_units": {
+            "relative_humidity_2m": "%"
+          },
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "retrieved_at": "2026-11-22T13:13:46+00:00",
+          "status": "available",
+          "coordinates": {
+            "latitude": 57.25,
+            "longitude": 34.75,
+            "elevation_m": 203.0
+          },
+          "count": 24
+        },
+        {
+          "id": "merra2",
+          "name": "NASA POWER",
+          "model": "MERRA-2",
+          "description": "NASA POWER, среднее за час",
+          "kind": "reanalysis",
+          "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=RH2M&community=SB&longitude=34.682&latitude=57.147&start=20250517&end=20250517&format=JSON&time-standard=UTC",
+          "mode": "network",
+          "start_utc": "2025-05-17",
+          "end_utc": "2025-05-17",
+          "timezone": "UTC",
+          "variable_units": {
+            "RH2M": "%"
+          },
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "retrieved_at": "2026-11-22T13:13:46+00:00",
+          "provider_products": [
+            "MERRA-2"
+          ],
+          "status": "available",
+          "coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682,
+            "elevation_m": 232.06
+          },
+          "count": 24
+        }
+      ]
+    }
+  },
+  "registered_pressure_unconfirmed": {
+    "summary": {
+      "status": "unavailable",
+      "timezone": "UTC",
+      "parameter": "pressure_hpa",
+      "unit": "hPa",
+      "reason": "unknown_pressure_reference",
+      "requested_coordinates": {
+        "latitude": 57.147,
+        "longitude": 34.682
+      },
+      "location": {},
+      "target_start": "2025-05-17",
+      "target_end": "2025-05-17",
+      "min_sources": 2,
+      "requested_sources": [
+        "era5",
+        "merra2"
+      ],
+      "grid_minutes": 60,
+      "subhour": "skip",
+      "estimated_count": 0,
+      "unavailable_count": 24,
+      "reason_counts": {
+        "unknown_pressure_reference": 24
+      },
+      "synthetic_count": 24,
+      "sources": []
+    }
+  },
+  "registered_pressure_confirmed": {
+    "pressure_reference": "surface",
+    "summary": {
+      "status": "estimated",
+      "timezone": "UTC",
+      "parameter": "pressure_hpa",
+      "unit": "hPa",
+      "reason": null,
+      "requested_coordinates": {
+        "latitude": 57.147,
+        "longitude": 34.682
+      },
+      "location": {},
+      "target_start": "2025-05-17",
+      "target_end": "2025-05-17",
+      "min_sources": 2,
+      "requested_sources": [
+        "era5",
+        "merra2"
+      ],
+      "grid_minutes": 60,
+      "subhour": "skip",
+      "estimated_count": 24,
+      "unavailable_count": 0,
+      "reason_counts": {},
+      "synthetic_count": 24,
+      "sources": [
+        {
+          "id": "era5",
+          "name": "Open-Meteo",
+          "model": "ERA5",
+          "description": "ERA5, мгновенные снимки на границах часа",
+          "kind": "reanalysis",
+          "url": "https://archive-api.open-meteo.com/v1/archive?latitude=57.147&longitude=34.682&start_date=2025-05-17&end_date=2025-05-18&hourly=surface_pressure&timezone=GMT&models=era5",
+          "mode": "network",
+          "start_utc": "2025-05-17",
+          "end_utc": "2025-05-18",
+          "timezone": "UTC",
+          "variable_units": {
+            "surface_pressure": "hPa"
+          },
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "retrieved_at": "2026-11-22T13:13:47+00:00",
+          "status": "available",
+          "coordinates": {
+            "latitude": 57.25,
+            "longitude": 34.75,
+            "elevation_m": 203.0
+          },
+          "count": 24
+        },
+        {
+          "id": "merra2",
+          "name": "NASA POWER",
+          "model": "MERRA-2",
+          "description": "NASA POWER, среднее за час",
+          "kind": "reanalysis",
+          "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=PS&community=SB&longitude=34.682&latitude=57.147&start=20250517&end=20250517&format=JSON&time-standard=UTC",
+          "mode": "network",
+          "start_utc": "2025-05-17",
+          "end_utc": "2025-05-17",
+          "timezone": "UTC",
+          "variable_units": {
+            "PS": "kPa"
+          },
+          "requested_coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682
+          },
+          "retrieved_at": "2026-11-22T13:13:47+00:00",
+          "provider_products": [
+            "MERRA-2"
+          ],
+          "status": "available",
+          "coordinates": {
+            "latitude": 57.147,
+            "longitude": 34.682,
+            "elevation_m": 232.06
+          },
+          "count": 24
+        }
+      ]
+    }
+  },
+  "recent_geos_it": {
+    "status": "estimated",
+    "timezone": "UTC",
+    "parameter": "t_air",
+    "unit": "°C",
+    "reason": null,
+    "requested_coordinates": {
+      "latitude": 57.147,
+      "longitude": 34.682
+    },
+    "location": {},
+    "target_start": "2026-11-10",
+    "target_end": "2026-11-10",
+    "min_sources": 2,
+    "requested_sources": [
+      "era5",
+      "merra2"
+    ],
+    "grid_minutes": 60,
+    "subhour": "skip",
+    "estimated_count": 24,
+    "unavailable_count": 0,
+    "reason_counts": {},
+    "synthetic_count": 24,
+    "sources": [
+      {
+        "id": "era5",
+        "name": "Open-Meteo",
+        "model": "ERA5",
+        "description": "ERA5, мгновенные снимки на границах часа",
+        "kind": "reanalysis",
+        "url": "https://archive-api.open-meteo.com/v1/archive?latitude=57.147&longitude=34.682&start_date=2026-11-10&end_date=2026-11-11&hourly=temperature_2m&timezone=GMT&models=era5",
+        "mode": "network",
+        "start_utc": "2026-11-10",
+        "end_utc": "2026-11-11",
+        "timezone": "UTC",
+        "variable_units": {
+          "temperature_2m": "°C"
+        },
+        "requested_coordinates": {
+          "latitude": 57.147,
+          "longitude": 34.682
+        },
+        "retrieved_at": "2026-11-22T13:13:47+00:00",
+        "status": "available",
+        "coordinates": {
+          "latitude": 57.25,
+          "longitude": 34.75,
+          "elevation_m": 203.0
+        },
+        "count": 24
+      },
+      {
+        "id": "merra2",
+        "name": "NASA POWER",
+        "model": "GEOS-IT",
+        "description": "NASA POWER, среднее за час",
+        "kind": "reanalysis",
+        "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M&community=SB&longitude=34.682&latitude=57.147&start=20261110&end=20261110&format=JSON&time-standard=UTC",
+        "mode": "network",
+        "start_utc": "2026-11-10",
+        "end_utc": "2026-11-10",
+        "timezone": "UTC",
+        "variable_units": {
+          "T2M": "C"
+        },
+        "requested_coordinates": {
+          "latitude": 57.147,
+          "longitude": 34.682
+        },
+        "retrieved_at": "2026-11-22T13:13:48+00:00",
+        "provider_products": [
+          "GEOS-IT"
+        ],
+        "status": "available",
+        "coordinates": {
+          "latitude": 57.147,
+          "longitude": 34.682,
+          "elevation_m": 232.06
+        },
+        "count": 24
+      }
+    ]
+  },
+  "archive_reference": {
+    "latitude": 56.46431,
+    "longitude": 32.97029,
+    "location_label": "Красное",
+    "location_precision": "area",
+    "location_reference": "Точка сбора 26.07.2019"
+  }
+}

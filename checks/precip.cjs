@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '..');
 const base = 'http://127.0.0.1:' + (process.env.METEO_TEST_PORT || '8765');
 const api = 'https://api.open-meteo.com/**';
 const viewportWidths = [1120, 390, 320];
+const forecastPoint = {latitude: 56.464310, longitude: 32.970290, cell: 18};
 const moscow = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
 });
@@ -34,11 +35,17 @@ async function check() {
   try {
     const page = await browser.newPage({viewport: {width: viewportWidths[0], height: 950}});
     const errors = [];
+    const externalHosts = new Set();
     page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => {
+      const url = new URL(request.url());
+      if (url.origin !== base) externalHosts.add(url.hostname);
+    });
     const status = page.locator('#precip-status');
     const refresh = page.locator('#precip-refresh');
     const slots = page.locator('#precip-map-points button');
     const shadedCells = page.locator('#precip-map-shading rect');
+    const relief = page.locator('#precip-map-relief[data-loaded="true"]');
     const hour = page.locator('#precip-hour');
     const interval = page.locator('#precip-period');
     const waitForForecast = () => page.waitForFunction(() => !document.querySelector('#precip-refresh').disabled);
@@ -46,6 +53,7 @@ async function check() {
     if (process.env.METEO_LIVE_PRECIP === '1') {
       await page.goto(base + '/precip');
       await waitForForecast();
+      await relief.waitFor({state: 'attached'});
       const message = await status.textContent();
       assert.match(message, /^Прогноз получен/);
       assert.equal(await slots.count(), 25);
@@ -67,6 +75,7 @@ async function check() {
 
       await page.goto(base + '/precip');
       await waitForForecast();
+      await relief.waitFor({state: 'attached'});
       const message = await status.textContent();
       const live = scenario === 'fresh' || scenario === 'missing';
       assert.match(message, live ? /^Прогноз получен/ : /сохранённый прогноз/);
@@ -82,14 +91,25 @@ async function check() {
       assert.ok(await page.locator('#precip-map-places text').count() > 4);
       assert.match(await page.locator('#precip-map-boundary').getAttribute('d'), /^M.*Z/);
       assert.equal(await page.locator('#precip-map-marker').count(), 1);
-      const [markerX, markerY] = await page.locator('#precip-map-marker').evaluate(marker => {
-        const cell = document.querySelectorAll('#precip-map-shading rect')[12];
+      assert.equal(await slots.nth(forecastPoint.cell).getAttribute('aria-pressed'), 'true');
+      const [markerX, markerY] = await page.locator('#precip-map-marker').evaluate((marker, index) => {
+        const cell = document.querySelectorAll('#precip-map-shading rect')[index];
         return [
           (marker.cx.baseVal.value - cell.x.baseVal.value) / cell.width.baseVal.value,
           (marker.cy.baseVal.value - cell.y.baseVal.value) / cell.height.baseVal.value,
         ];
+      }, forecastPoint.cell);
+      assert.ok(Math.abs(markerX - (forecastPoint.longitude - (33 - 0.0625)) / 0.125) < 0.001);
+      assert.ok(Math.abs(markerY - (56.4375 + 0.03125 - forecastPoint.latitude) / 0.0625) < 0.001);
+      const [imageX, imageY] = await relief.evaluate(image => {
+        const marker = document.querySelector('#precip-map-marker');
+        return [
+          (marker.cx.baseVal.value - image.x.baseVal.value) / image.width.baseVal.value,
+          (marker.cy.baseVal.value - image.y.baseVal.value) / image.height.baseVal.value,
+        ];
       });
-      assert.ok(Math.abs(markerX - 0.46) < 0.001 && Math.abs(markerY - 0.18) < 0.001);
+      assert.ok(Math.abs(imageX - (forecastPoint.longitude - 32.1) / (33.75 - 32.1)) < 0.0001);
+      assert.ok(Math.abs(imageY - (56.95 - forecastPoint.latitude) / (56.95 - 56.1)) < 0.0001);
       assert.equal(await page.locator('#precip-prev').isDisabled(), true);
       assert.equal(await interval.textContent(), intervalText(times[0]));
 
@@ -111,12 +131,16 @@ async function check() {
           return mm < 0.2 ? '1' : mm < 1 ? '2' : mm < 3 ? '3' : '4';
         }));
       await slots.last().click();
+      assert.equal(await page.locator('#precip-map-selection').getAttribute('x'), await shadedCells.last().getAttribute('x'));
       const {latitude, longitude} = saved.response.at(-1);
       assert.equal(await page.locator('#precip-node').textContent(),
         `Узел модели ${number.format(latitude)}° с. ш., ${number.format(longitude)}° в. д.`);
       const overview = Number(await shadedCells.last().getAttribute('width'));
+      const imageOverview = Number(await relief.getAttribute('width'));
       await page.getByRole('button', {name: 'Увеличить карту'}).click();
-      assert.ok(Number(await shadedCells.last().getAttribute('width')) > overview);
+      const cellScale = Number(await shadedCells.last().getAttribute('width')) / overview;
+      const imageScale = Number(await relief.getAttribute('width')) / imageOverview;
+      assert.ok(cellScale > 1 && Math.abs(cellScale - imageScale) < 0.0001);
       await slots.last().focus();
       await slots.last().press('ArrowLeft');
       assert.equal(await slots.nth(23).getAttribute('aria-pressed'), 'true');
@@ -143,7 +167,22 @@ async function check() {
         Number(document.querySelector('#precip-map-drawing').getAttribute('viewBox').split(' ')[2]) ===
         document.querySelector('#precip-map').clientWidth);
       assert.equal(await slots.filter({visible: true}).count(), 25);
+      await slots.nth(12).click();
+      assert.equal(await slots.nth(12).getAttribute('aria-pressed'), 'true');
+      const imageWidth = Number(await relief.getAttribute('width'));
+      await page.getByRole('button', {name: 'Увеличить карту'}).click();
+      assert.ok(Number(await relief.getAttribute('width')) > imageWidth);
+      await page.getByRole('button', {name: 'Вся область'}).click();
+      assert.equal(Number(await relief.getAttribute('width')), imageWidth);
     }
+    assert.equal(await page.locator('a[href="/model"]').count(), 0);
+    const response = await page.goto(base + '/model');
+    assert.equal(response.status(), 200);
+    assert.equal(new URL(page.url()).pathname, '/forecast');
+    await page.locator('#forecast-data').waitFor({state: 'visible'});
+    assert.deepEqual([...externalHosts], ['api.open-meteo.com']);
+    evidence.localBasemap = '/reserve-imagery.webp';
+    evidence.externalHosts = [...externalHosts];
     assert.deepEqual(errors, []);
 
     const report = path.join(root, 'results/browser/precip.json');

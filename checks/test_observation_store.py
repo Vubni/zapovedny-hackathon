@@ -16,6 +16,7 @@ import observation_store as store
 from review_excel import BAD, GOOD
 from review_upload import read_upload
 from station_catalog import catalog, register_station
+from checks.fixture_weather import april_response
 
 
 def csv(*lines, fields="datetime,t_air,rh"):
@@ -30,6 +31,9 @@ class ObservationStoreTests(unittest.TestCase):
         patcher = patch.dict(os.environ, METEO_DATABASE_URL="", METEO_OBSERVATION_DB=database)
         patcher.start()
         self.addCleanup(patcher.stop)
+        offline = patch("external_fill.urlopen", side_effect=april_response)
+        offline.start()
+        self.addCleanup(offline.stop)
 
     def upload(self, body, name="weather.csv", station="kr1"):
         return store.upload_file({"filename": name, "station": station}, body, "application/octet-stream")
@@ -340,16 +344,17 @@ class ObservationStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "часовой пояс"):
             self.review(file, fill="external")
         report, request = self.review(file, fill="external", timezone="Europe/Moscow")
-        self.assert_timeline_fills(report, {"2024-04-15": {"t_air": 1, "rh": 1}})
+        self.assert_timeline_fills(report, {"2024-04-15": {}})
+        self.assertEqual(report["timeline"][0]["reference_parameters"], {"t_air": 1, "rh": 1})
         self.assertEqual(report["timeline"][0]["parameters"], {"rh": 1})
         self.assertEqual(store.get_file(request)["timeline"], report["timeline"])
         point = report["points"]["t_air"][1]
-        self.assertIsNotNone(point["estimate"])
-        self.assertEqual(point["estimate"]["confidence"]["source_count"], 2)
-        self.assertIn("ERA5", point["estimate"]["source"])
+        self.assertIsNone(point["estimate"])
+        self.assertEqual(point["external_reference"]["confidence"]["source_count"], 2)
+        self.assertIn("ERA5", point["external_reference"]["source"])
         store.confirm_file(request)
         self.assertNotIn("t_air", self.rows()[1])
-        self.assertTrue(self.rows()[1]["estimates"]["t_air"]["enters_working_graphs"])
+        self.assertEqual(self.rows()[1]["estimates"], {})
 
     def test_corrected_csv_preserves_original_parent_and_confirmation_boundary(self):
         original = csv("2024-04-01 00:00,7.123456789012345,61", "2024-04-02 01:00,8,66")
@@ -397,7 +402,7 @@ class ObservationStoreTests(unittest.TestCase):
 
     def test_correction_replaces_only_its_automatic_estimate(self):
         file = self.upload(csv("2024-04-15 14:00,8,65", "2024-04-15 15:00,-100,", "2024-04-15 16:00,8,65"))
-        parent, request = self.review(file, fill="external", timezone="Europe/Moscow")
+        parent, request = self.review(file, fill_external="1", fill_model="1", timezone="Europe/Moscow")
         self.assertEqual(parent["stats"]["filled"], 2)
         _, working = store.draft_csv(request)
         self.assertIn(b"2024-04-15 15:00;;", working)

@@ -2,6 +2,11 @@ const main = document.querySelector(".files-main");
 const picker = document.getElementById("fileInput");
 const correctedPicker = document.getElementById("correctedCsvInput");
 const dialog = document.getElementById("files-dialog");
+const uploadTypes = {
+  csv: "text/csv",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  json: "application/json",
+};
 const numberFormats = [0, 1, 2].map((digits) => new Intl.NumberFormat("ru-RU", {
   minimumFractionDigits: digits, maximumFractionDigits: digits,
 }));
@@ -32,17 +37,22 @@ const filterText = {
   spike: ["Скачок с возвратом", "Значение резко меняется на один замер, а в следующем возвращается к прежнему уровню."],
   stuck: ["Датчик повторяет одно значение", "Отмечает одинаковые показания, которые держатся заданное число часов или дольше."],
 };
+const entry = new URLSearchParams(location.search);
 const state = {
   files: new Map(),
   editors: new Map(),
   stations: [],
+  paramOptions: [],
+  sourceMode: entry.get("source") === "upload" ? "upload" : "observations",
+  selection: { station: entry.get("station") || "kr1", param: entry.get("param") || "t_air",
+    start: entry.get("start") || "", end: entry.get("end") || "" },
+  selectionBusy: false,
   uploadStation: "kr1",
-  newStation: { label: "", latitude: "", longitude: "", profile: "kr1" },
+  newStation: { label: "", latitude: "", longitude: "", params: ["t_air"] },
   filters: [],
   transfers: [],
   loading: true,
   uploading: false,
-  exampleLoading: false,
   editor: null,
   message: "",
   error: false,
@@ -67,6 +77,12 @@ function countLabel(value, one = "выброс", few = "выброса", many = 
 function stamp(value) {
   const text = String(value).replace(" ", "T");
   return Date.parse(text.length === 10 || /(?:Z|[+-]\d\d:\d\d)$/.test(text) ? text : text + "Z");
+}
+
+function isDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = stamp(value);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
 function spanLabel(start, end) {
@@ -137,6 +153,26 @@ function stationOptions() {
 
 function saveStations(catalog) {
   state.stations = catalog.stations.filter(({ label }) => !/^поляна и поле$/i.test(label.trim()));
+  state.paramOptions = catalog.param_options ?? [...new Map(state.stations.flatMap(({ params }) =>
+    params.map((parameter) => [parameter.id, parameter]))).values()];
+}
+
+async function refreshStationCatalog() {
+  try {
+    saveStations(await jsonRequest("/api/stations"));
+    normalizeSelection();
+  } catch {
+    // The confirmed file operation has already been saved.
+  }
+}
+
+function stationLocation(id) {
+  const station = state.stations.find((item) => item.id === id);
+  if (!station || !Number.isFinite(station.latitude) || !Number.isFinite(station.longitude)) return "Координаты станции не указаны.";
+  const coordinate = (value) => String(value).replace(".", ",").replace("-", "−") + "°";
+  const location = `${coordinate(station.latitude)}, ${coordinate(station.longitude)}`;
+  return station.location_precision === "area"
+    ? `Ориентир «Красное» · ${location} · для архивных наблюдений` : `Координаты станции · ${location}`;
 }
 
 function filesUrl(endpoint = "", params = {}) {
@@ -164,9 +200,15 @@ function fileSize(bytes) {
 }
 
 function sourceButton(file, iconOnly = false) {
+  const format = fileFormat(file.filename);
   return iconOnly
     ? iconButton(`Открыть исходник · ${file.filename}`, "source", file.id, "file")
-    : button(`Исходный ${file.filename.toLowerCase().endsWith(".xlsx") ? "XLSX" : "CSV"}`, "source", { id: file.id });
+    : button(format ? `Исходный ${format}` : "Исходный файл", "source", { id: file.id });
+}
+
+function fileFormat(filename) {
+  const extension = /\.([a-z0-9]+)$/i.exec(filename)?.[1].toLowerCase();
+  return Object.hasOwn(uploadTypes, extension) ? extension.toUpperCase() : "";
 }
 
 function queueItem(file) {
@@ -213,22 +255,25 @@ function filesPage() {
   const history = all.filter((file) => file.version).sort((first, last) =>
     (last.start ?? "").localeCompare(first.start ?? "") || (last.created_at ?? "").localeCompare(first.created_at ?? ""));
   const queueLength = queue.length + state.transfers.length;
-  return `${heading("Файлы и импорт", "Загрузка наблюдений, проверка и учёт в общих графиках",
-    `<div class="row heading-actions">${link("Расширенный аудит", "/review")}${link("Доступ оператора", "/operator")}</div>`)}
+  return `${heading("Файлы и импорт", "Проверка наблюдений, заполнение пропусков и учёт в общих графиках")}
     <div class="split">
-      ${card(`${cardTitle("Загрузить новые файлы", "Выберите один или несколько CSV или XLSX. Обработка выполняется по одному файлу.")}
-        ${uploadStationFields()}
-        <div class="upload" id="dropzone">
-          <span class="upload-icon">${icon("upload", 24)}</span><h3>Перетащите CSV или XLSX сюда</h3>
-          ${button("Выбрать файлы", "browse", { type: "accent", disabled: state.loading })}
+      ${card(`${cardTitle("Наблюдения для обработки")}
+        <div class="source-mode" role="group" aria-label="Источник наблюдений">
+          ${[["observations", "Архив и сохранённые данные"], ["upload", "Загрузить файлы"]].map(([mode, label]) =>
+            `<button class="pill lime" type="button" data-file-action="source-mode" data-file-id="${mode}"
+              aria-pressed="${state.sourceMode === mode}">${label}</button>`).join("")}
         </div>
+        ${state.sourceMode === "observations" ? observationSelection() : `
+          ${uploadStationFields()}
+          <div class="upload" id="dropzone">
+            <span class="upload-icon">${icon("upload", 24)}</span><h3>Перетащите CSV, XLSX или JSON сюда</h3>
+            ${button("Выбрать файлы", "browse", { type: "accent", disabled: state.loading })}
+          </div>`}
         <div class="file-feedback" aria-live="polite" ${state.message ? "" : "hidden"}>${state.message ? note(state.message, state.error) : ""}</div>
         ${state.error && state.loading ? button("Повторить загрузку списка", "reload") : ""}`)}
       ${card(`${cardTitle("Очередь обработки", "", tag(fmt(queueLength), "neutral"))}
         ${queueLength ? queue.map(queueItem).join("") + state.transfers.map(transferItem).join("") :
-        `<div class="queue-empty">${icon("file", 25)}<p>${state.loading ? "Загрузка списка файлов…" : "Загруженные файлы появятся здесь."}</p>
-          ${button("Попробовать на примере", "example", { disabled: state.loading || state.uploading || state.exampleLoading })}
-        </div>`}`, "file-queue")}
+        `<div class="queue-empty">${icon("file", 25)}<p>${state.loading ? "Загрузка списка файлов…" : "Здесь появятся подготовленные наборы и загруженные файлы."}</p></div>`}`, "file-queue")}
     </div>
     ${card(`${cardTitle("История загрузок", "Исходники остаются в архиве при повторной обработке и исключении из графиков.")}
       <div class="table-scroll" tabindex="0" role="region" aria-label="История загрузок">
@@ -237,17 +282,45 @@ function filesPage() {
       </div>`)}`;
 }
 
+function observationSelection() {
+  const { station, param, start, end } = state.selection;
+  const passport = state.stations.find(({ id }) => id === station);
+  const busy = state.loading || state.selectionBusy;
+  const available = Boolean(passport?.start && passport?.end);
+  const dateLimits = available ? `min="${escapeHtml(passport.start)}" max="${escapeHtml(passport.end)}"` : "";
+  return `<form id="observation-selection" class="file-options">
+    <div class="new-station-fields">
+      ${selectField("Станция", "observation-station", stationOptions(), station, busy)}
+      ${selectField("Показатель", "observation-param",
+        (passport?.params ?? []).map(({ id, label }) => [id, label]), param, busy)}
+    </div>
+    ${passport ? `<p class="caption">${escapeHtml(stationLocation(station))}</p>` : ""}
+    <div class="new-station-fields">
+      ${inputField("Дата с", "observation-start", start, `type="date" required ${dateLimits} ${busy || !available ? "disabled" : ""}`)}
+      ${inputField("Дата по", "observation-end", end, `type="date" required ${dateLimits} ${busy || !available ? "disabled" : ""}`)}
+    </div>
+    ${!busy && !available ? '<p class="caption">У выбранной станции ещё нет наблюдений.</p>' : ""}
+    <div><button class="btn primary" type="submit" ${busy || !available || !param ? "disabled" : ""}>
+      ${state.selectionBusy ? "Подготавливаем данные…" : "Подготовить данные"}</button></div>
+  </form>`;
+}
+
 function uploadStationFields() {
-  const { label, latitude, longitude, profile } = state.newStation;
+  const { label, latitude, longitude, params } = state.newStation;
   return `<div id="upload-station-fields" class="file-options">
     ${selectField("Станция для загрузки", "upload-station", [...stationOptions(), ["new", "Новая метеостанция…"]],
       state.uploadStation, state.loading)}
     ${state.uploadStation === "new" ? `<div class="new-station-fields">
       ${inputField("Название новой станции", "upload-station-label", label, 'required maxlength="100" data-new-station="label"')}
-      ${selectField("Профиль прибора", "upload-station-profile", [["kr1", "Сокол М1"], ["ame60", "АМЕ-60"]], profile)}
       ${inputField("Точная широта", "upload-station-latitude", latitude, 'required inputmode="decimal" placeholder="56,5234" data-new-station="latitude"')}
       ${inputField("Точная долгота", "upload-station-longitude", longitude, 'required inputmode="decimal" placeholder="32,8765" data-new-station="longitude"')}
-    </div>` : ""}
+      <fieldset class="station-param-fields">
+        <legend>Измеряемые показатели</legend>
+        ${state.paramOptions.map(({ id, label: name }) => `<label>
+          <input type="checkbox" data-station-param="${escapeHtml(id)}" ${params.includes(id) ? "checked" : ""}>
+          <span>${escapeHtml(name)}</span></label>`).join("")}
+      </fieldset>
+    </div>` : `<p class="caption">${escapeHtml(stationLocation(state.uploadStation))}</p>`}
   </div>`;
 }
 
@@ -271,9 +344,18 @@ function fillSelection(settings) {
   };
 }
 
+function fillScope(settings) {
+  return {
+    fill_start: settings.fill_start ?? "",
+    fill_end: settings.fill_end ?? "",
+    fill_params: Array.isArray(settings.fill_params) ? settings.fill_params : (settings.fill_params || "").split(",").filter(Boolean),
+  };
+}
+
 function settingsPayload(settings) {
   const { station, filters, timezone, subhour, pressure_reference, sources, conflict_policy } = settings;
   const { fill_external, fill_model } = fillSelection(settings);
+  const { fill_start, fill_end, fill_params } = fillScope(settings);
   const ranges = Object.fromEntries(Object.entries(effectiveRanges(settings)).sort(([a], [b]) => a.localeCompare(b))
     .map(([id, values]) => [id, values.map((value) => value === "" ? null : Number(value))]));
   const thresholds = Object.fromEntries(Object.entries(effectiveThresholds(settings)).sort(([a], [b]) => a.localeCompare(b))
@@ -290,6 +372,7 @@ function settingsPayload(settings) {
     fill_external: fill_external ? "1" : "0", fill_model: fill_model ? "1" : "0",
     pressure_max: ranges.pressure_hpa?.[1] === 1550 ? "1550" : "1050",
     conflict_policy: filters.includes("conflicts") ? conflict_policy : "all",
+    ...(fill_external || fill_model ? { fill_start, fill_end, fill_params: [...fill_params].sort().join(",") } : {}),
     ...(fill_external ? { timezone, subhour, pressure_reference: pressure_reference ?? "", sources: [...sources].sort().join(",") } : {}),
   };
 }
@@ -304,6 +387,7 @@ function settingsFor(file) {
     station: settings.station ?? file.station,
     filters: settings.filters ?? [],
     ...fillSelection(settings),
+    ...fillScope(settings),
     ranges: effectiveRanges(settings),
     thresholds: effectiveThresholds(settings),
     timezone: settings.timezone ?? "",
@@ -329,20 +413,33 @@ function processingStatus(editor) {
   return "";
 }
 
-function fillSettings(settings, busy) {
+function fillSettings(settings, busy, file) {
+  const chosen = settings.fill_params.join(",");
+  const available = (file.params ?? []).map(({ id, label }) => [id, label]);
+  if (settings.fill_params.length > 1) available.unshift([chosen, `Выбранные показатели (${settings.fill_params.length})`]);
+  const bounded = `type="date" min="${escapeHtml(file.start)}" max="${escapeHtml(file.end)}" ${busy ? "disabled" : ""}`;
   return `<div class="method-list">
     <label class="method">
-      <input type="checkbox" id="file-fill-external" data-fill="fill_external" ${settings.fill_external ? "checked" : ""} ${busy ? "disabled" : ""}>
-      <span><strong>Внешние метеосервисы</strong><span>Оценки из ERA5 и MERRA-2.</span></span>
+      <input type="checkbox" id="file-fill-model" data-fill="fill_model" ${settings.fill_model ? "checked" : ""} ${busy ? "disabled" : ""}>
+      <span><strong>Восстановить по данным станции</strong><span>Оценка по соседним пригодным наблюдениям.</span></span>
     </label>
     <label class="method">
-      <input type="checkbox" id="file-fill-model" data-fill="fill_model" ${settings.fill_model ? "checked" : ""} ${busy ? "disabled" : ""}>
-      <span><strong>Локальная модель заполнения</strong><span>Использует соседние пригодные измерения из файла.</span></span>
+      <input type="checkbox" id="file-fill-external" data-fill="fill_external" ${settings.fill_external ? "checked" : ""} ${busy ? "disabled" : ""}>
+      <span><strong>Сверить с метеосервисами</strong><span>Данные ERA5 и NASA POWER по координатам станции. Период до 31 суток.</span></span>
     </label>
   </div>
   <p class="caption">${settings.fill_external && settings.fill_model
-    ? "Сначала метеосервисы, затем локальная модель для оставшихся пропусков."
-    : !settings.fill_external && !settings.fill_model ? "Пропуски останутся в данных." : ""}</p>
+    ? "В основе остаётся оценка станции. Два согласующихся метеосервиса могут немного её скорректировать."
+    : settings.fill_external ? "Метеосервисы дадут справочные значения. Пропуски останутся в данных."
+    : !settings.fill_model ? "Пропуски останутся в данных." : ""}</p>
+  ${settings.fill_external || settings.fill_model ? `<div class="file-options">
+    ${selectField("Показатель для заполнения", "fill-param", [["", "Все доступные показатели"], ...available], chosen, busy)}
+    <div class="new-station-fields">
+      ${inputField("Заполнение с", "fill-start", settings.fill_start, `${bounded} data-fill-date="fill_start"`)}
+      ${inputField("Заполнение по", "fill-end", settings.fill_end, `${bounded} data-fill-date="fill_end"`)}
+    </div>
+    <p class="caption">Если обе даты пусты, используется весь период набора.</p>
+  </div>` : ""}
   ${settings.fill_external ? `<div class="file-options">
     ${selectField("Часовой пояс исходного файла", "file-timezone",
       [["", "Выберите часовой пояс"], ["Europe/Moscow", "Москва (UTC+3)"], ["UTC", "UTC"]], settings.timezone, busy)}
@@ -385,17 +482,21 @@ function methodThresholds(params, editor) {
 
 function editorPage(editor) {
   const file = state.files.get(editor.id);
+  const fromObservations = file.provenance?.kind === "observations";
   const { settings, busy } = editor;
+  const station = state.stations.find(({ id }) => id === settings.station);
+  const unsupported = station && file.params?.filter(({ id }) => !station.params.some((parameter) => parameter.id === id));
   const hasPressure = file.params?.some(({ id }) => id === "pressure_hpa");
   const pressureUpper = String(settings.ranges.pressure_hpa?.[1] ?? "1050");
   const pressurePreset = ["1050", "1550"].includes(pressureUpper) ? pressureUpper : "manual";
   const checked = checkedPreview(editor);
   const active = editor.done ? "В общих графиках" : editor.preview ? "Проверка результата" : "Настройка фильтрации";
-  return `${heading("Обработка файла", "", button("К файлам", "list", { glyph: "back" }))}
+  return `${heading("Обработка наблюдений", "", button("К файлам", "list", { glyph: "back" }))}
     ${card(`<div class="between file-context"><div class="row"><span class="file-symbol">${icon("file", 19)}</span>
-        <div><h2>${escapeHtml(file.filename)}</h2><p class="muted">${spanLabel(file.start, file.end)} · ${countLabel(file.rows, "строка", "строки", "строк")}</p></div>
+        <div><h2>${escapeHtml(file.filename)}</h2><p class="muted">${spanLabel(file.start, file.end)} · ${countLabel(file.rows, "строка", "строки", "строк")}</p>
+          ${fromObservations ? '<p class="muted">Наблюдения из архива и подтверждённых наборов.</p>' : ""}</div>
       </div><div class="row">${tag(active, editor.done ? "" : "neutral")}${sourceButton(file)}
-        ${link("Аудит исходника", `/review?${new URLSearchParams({ file: file.id })}`)}</div></div>`)}
+        ${button("Excel с ручными решениями", "full-excel", { id: file.id, disabled: Boolean(busy) })}</div></div>`)}
     ${editor.done ? card(`<div class="file-success"><span class="upload-icon">${icon("check", 24)}</span>
       <div><h2>Данные добавлены в общие графики</h2><p class="muted">Исходный файл сохранён в истории загрузок.</p></div>
       ${link("К общим графикам", "/", { type: "primary", glyph: "arrow" })}${button("К очереди", "list")}</div>`) :
@@ -418,9 +519,11 @@ function editorPage(editor) {
         ${settings.filters.includes("conflicts") ? `<div class="file-options">${selectField("Записи с одинаковым временем", "file-conflicts",
           [["all", "Исключить конфликтные сроки"], ["best", "Выбрать наиболее надёжную запись"]], settings.conflict_policy, busy)}</div>` : ""}`)}
       ${card(`${cardTitle("Заполнение пропусков", "Выберите источник данных или ИИ-модель.")}
-        ${fillSettings(settings, busy)}
+        ${fillSettings(settings, busy, file)}
         <hr class="rule section-rule">
-        ${selectField("Метеостанция", "file-station", stationOptions(), settings.station, busy)}`)}
+        ${selectField("Метеостанция", "file-station", stationOptions(), settings.station, busy || fromObservations)}
+        <p class="caption">${escapeHtml(stationLocation(settings.station))}</p>
+        ${!checked && unsupported?.length ? `<p class="caption">У выбранной станции нет следующих показателей файла: ${escapeHtml(unsupported.map(({ label }) => label.toLocaleLowerCase("ru-RU")).join(", "))}.</p>` : ""}`)}
     </div>
     <div class="between processing-bar"><span class="muted small" id="processing-status" role="status">${processingStatus(editor)}</span>
       ${button("Отфильтровать", "filter", { type: "primary", glyph: "filter", disabled: Boolean(busy) })}</div>
@@ -450,8 +553,9 @@ function table(headers, rows) {
 
 const timelineLayers = {
   marked: { label: "Исходные выбросы", color: "#ab4d32" },
-  filled: { label: "Замены и заполнения", color: "#227790" },
+  filled: { label: "Восстановлено", color: "#227790" },
   manual: { label: "Ручные правки", color: "#735579" },
+  reference: { label: "Сверка с метеосервисами", color: "#53665d" },
 };
 
 function previewEvents(parameters, points) {
@@ -459,6 +563,7 @@ function previewEvents(parameters, points) {
   for (const parameter of parameters) {
     const filledTimes = new Set();
     const manualTimes = new Set();
+    const referenceTimes = new Set();
     for (const point of points[parameter.id] ?? []) {
       if (point.marked) events.push({ ...point, parameter, kind: "marked" });
       if (point.estimate && !filledTimes.has(point.time)) {
@@ -469,9 +574,42 @@ function previewEvents(parameters, points) {
         manualTimes.add(point.time);
         events.push({ ...point, parameter, kind: "manual" });
       }
+      if (point.external_reference && !referenceTimes.has(point.time)) {
+        referenceTimes.add(point.time);
+        events.push({ ...point, parameter, kind: "reference" });
+      }
     }
   }
   return events;
+}
+
+function referenceText(reference, unit) {
+  if (!reference) return "—";
+  const sources = reference.provenance?.sources ?? [];
+  const entries = sources.filter(({ value }) => Number.isFinite(value)).map(({ name, model, value }) =>
+    `${name && model ? `${name} (${model})` : name ?? model ?? "Метеосервис"} ${fmt(value, 2)} ${unit}`);
+  return entries.length ? entries.join(" · ") : `${fmt(reference.value, 2)} ${unit}`;
+}
+
+function verificationText(verification, unit) {
+  const reasons = {
+    already_equal: "Сверка подтвердила оценку станции.",
+    no_local_estimate: "Для восстановления нужны пригодные данные самой станции.",
+    external_unavailable: "Нет двух сопоставимых внешних источников.",
+    providers_disagree: "Метеосервисы расходятся между собой.",
+    local_departure: "Внешние оценки слишком далеко от показаний станции.",
+    unsupported_parameter: "Метеосервисы недоступны для этого показателя.",
+    fewer_than_two_sources: "Для поправки нужны два независимых источника.",
+    outside_parameter_range: "Справочное значение за допустимыми границами.",
+    insufficient_local_validation: "Для поправки пока недостаточно проверенных наблюдений станции.",
+    within_local_precision: "Разница укладывается в точность локальной оценки.",
+    unvalidated_correction: "Прошлые наблюдения не подтвердили пользу поправки. Сохранена оценка станции.",
+  };
+  if (verification?.decision === "adjusted") {
+    const sign = verification.delta > 0 ? "+" : "";
+    return `Поправка ${sign}${fmt(verification.delta, 2)} ${unit} по двум согласующимся источникам.`;
+  }
+  return reasons[verification?.decision] ?? "";
 }
 
 function eventTable(events, total) {
@@ -479,18 +617,24 @@ function eventTable(events, total) {
     return `<p class="caption">${total ? "Подробности отмеченных сроков доступны в XLSX." : "В выбранном диапазоне нет отмеченных событий."}</p>`;
   }
   const rows = events.slice().sort((first, last) => first.time.localeCompare(last.time)).slice(0, 30);
-  return `${table(["Дата и время", "Параметр", "До изменения", "Результат", "Причина или способ"],
-    rows.map(({ time, parameter, value, estimate, reasons, kind, previous_value, manual_value }) => {
+  return `${table(["Дата и время", "Параметр", "Датчик", "Оценка станции", "Метеосервисы", "Итог", "Причина"],
+    rows.map(({ time, parameter, value, estimate, external_reference, verification, reasons, kind, manual, previous_value, manual_value }) => {
       const reading = (number) => Number.isFinite(number) ? `${fmt(number, 2)} ${parameter.unit}` : "—";
+      const raw = [time, parameter.label, reading(value)];
       if (kind === "manual") {
-        return [time, parameter.label, reading(previous_value),
-          manual_value == null ? "Очищено" : reading(manual_value), "Исправлено в загруженном CSV"];
+        return [...raw, "—", "—", manual_value == null ? "Очищено" : reading(manual_value),
+          ["Исправлено в загруженном CSV", Number.isFinite(previous_value) ? `Было ${reading(previous_value)}` : ""].filter(Boolean).join(" · ")];
       }
-      const method = { model: "Локальная модель", external: "Внешние погодные источники", manual: "Ручная правка" }[estimate?.method];
+      if (kind === "marked") return [...raw, "—", "—", "К удалению", reasons?.join(" ") || "Отмечено проверкой"];
+      const local = estimate?.local_value ?? (estimate?.method === "model" ? estimate.value : null);
+      const reference = external_reference ?? (estimate?.method === "external" ? estimate : null);
+      const result = manual ? (manual_value == null ? "Очищено" : reading(manual_value)) :
+        estimate ? reading(estimate.value) : "Пропуск";
       return [
-        time, parameter.label, reading(value), kind === "marked" ? "К удалению" : reading(estimate.value),
-        kind === "marked" ? (reasons?.join(" ") || "Отмечено проверкой") :
-          [method, estimate.source, reasons?.join(" ")].filter(Boolean).join(" · "),
+        ...raw, reading(local), referenceText(reference, parameter.unit), result,
+        [kind === "reference" ? "Справочная сверка" : estimate?.source,
+          verificationText(verification ?? estimate?.provenance?.verification, parameter.unit),
+          reasons?.join(" ")].filter(Boolean).join(" · "),
       ];
     }))}
     ${rows.length < total ? `<p class="caption">Показано ${fmt(rows.length)} из ${fmt(total)} событий. Полные результаты доступны в XLSX.</p>` : ""}`;
@@ -516,15 +660,17 @@ function previewCard(editor, checked, file) {
   const { params, points, stats } = preview;
   const chosen = parameters.size ? params.filter(({ id }) => parameters.has(id)) : params;
   const selected = parameters.size === 1 ? chosen[0] : null;
-  const layers = Object.keys(timelineLayers).filter((kind) => kind !== "manual" || preview.manual?.changed);
-  const enabled = layers.filter((kind) => !hiddenLayers.has(kind));
   const events = previewEvents(chosen, points);
-  const totals = { marked: 0, filled: 0, manual: 0 };
+  const totals = { marked: 0, filled: 0, manual: 0, reference: 0 };
   for (const { id } of chosen) {
     totals.marked += stats.parameters[id]?.marked ?? 0;
     totals.filled += stats.parameters[id]?.filled ?? 0;
     totals.manual += preview.manual?.parameters?.[id] ?? 0;
+    totals.reference += preview.external?.[id]?.reference_count ?? 0;
   }
+  const layers = Object.keys(timelineLayers).filter((kind) =>
+    (kind !== "manual" || preview.manual?.changed) && (kind !== "reference" || totals.reference));
+  const enabled = layers.filter((kind) => !hiddenLayers.has(kind));
   const timeline = timelineData(preview, file, chosen, events, totals);
   const focus = focusEvent ? timeline.groups.get(focusEvent.bucket)?.[focusEvent.kind] : null;
   const visible = events.filter(({ kind, time }) => focus
@@ -541,7 +687,8 @@ function previewCard(editor, checked, file) {
       tag(file.confirmed ? "Текущая версия остаётся в графиках" : "В общую базу не добавлено", "neutral"))}
     <div class="outlier-top"><div><span class="eyebrow">${parameters.size ? "Выбранные параметры" : "Всего"}</span>
       <div class="outlier-number">${countLabel(totals.marked)}</div></div>
-      <div class="metric selected-count"><span class="small">Заменено или заполнено</span><strong>${fmt(totals.filled)}</strong></div>
+      <div class="metric selected-count"><span class="small">Восстановлено</span><strong>${fmt(totals.filled)}</strong></div>
+      ${totals.reference ? `<div class="metric selected-count"><span class="small">Справочная сверка</span><strong>${fmt(totals.reference)}</strong></div>` : ""}
       ${preview.manual?.changed ? `<div class="metric selected-count"><span class="small">Ручные правки</span><strong>${fmt(totals.manual)}</strong></div>` : ""}
     </div>
     <div class="outlier-tabs" role="group" aria-label="Параметры шкалы">
@@ -583,8 +730,10 @@ function previewCard(editor, checked, file) {
 function eventsOnDate(preview, parameters, enabled, date, visibleCount) {
   if (preview.timeline_days > 1) return visibleCount;
   const day = preview.timeline.find(({ time }) => time === date);
-  if (!day || (enabled.includes("filled") && day.filled && !day.filled_parameters)) return visibleCount;
-  const fields = { marked: day.parameters, filled: day.filled_parameters, manual: day.manual_parameters };
+  if (!day || (enabled.includes("filled") && day.filled && !day.filled_parameters)
+      || (enabled.includes("reference") && !day.reference_parameters)) return visibleCount;
+  const fields = { marked: day.parameters, filled: day.filled_parameters, manual: day.manual_parameters,
+    reference: day.reference_parameters };
   return enabled.reduce((total, kind) =>
     total + parameters.reduce((count, { id }) => count + (fields[kind]?.[id] ?? 0), 0), 0);
 }
@@ -622,8 +771,9 @@ function timelineData(preview, file, parameters, events, totals) {
   const end = stamp(file.end.slice(0, 10));
   const days = Math.round((end - start) / DAY) + 1;
   const filledEvents = events.filter(({ kind }) => kind === "filled");
+  const referenceEvents = events.filter(({ kind }) => kind === "reference");
   const completeFills = filledEvents.length === totals.filled;
-  const hourly = days <= 2 && completeFills && events.length === totals.filled + totals.marked + totals.manual;
+  const hourly = days <= 2 && completeFills && events.length === totals.filled + totals.marked + totals.manual + totals.reference;
   const periodDays = preview.timeline_days ?? 1;
   const months = days > 95 && periodDays === 1;
   const monthNumber = (time) => Number(time.slice(0, 4)) * 12 + Number(time.slice(5, 7)) - 1;
@@ -660,7 +810,7 @@ function timelineData(preview, file, parameters, events, totals) {
   function add(time, kind, parameter, count) {
     const index = indexFor(time);
     if (!count || index < 0 || index >= size) return;
-    if (!groups.has(index)) groups.set(index, { marked: {}, filled: {}, manual: {} });
+    if (!groups.has(index)) groups.set(index, { marked: {}, filled: {}, manual: {}, reference: {} });
     const counts = groups.get(index)[kind];
     counts[parameter] = (counts[parameter] ?? 0) + count;
   }
@@ -669,12 +819,16 @@ function timelineData(preview, file, parameters, events, totals) {
     for (const event of events) add(event.time, event.kind, event.parameter.id, 1);
   } else {
     const oldFill = preview.timeline.some((row) => row.filled && !row.filled_parameters);
+    const hasReferenceCounts = preview.timeline.some((row) => Object.hasOwn(row, "reference_parameters"));
     for (const row of preview.timeline) {
       for (const [id, count] of Object.entries(row.parameters)) {
         if (selected.has(id)) add(row.time, "marked", id, count);
       }
       for (const [id, count] of Object.entries(row.manual_parameters ?? {})) {
         if (selected.has(id)) add(row.time, "manual", id, count);
+      }
+      for (const [id, count] of Object.entries(row.reference_parameters ?? {})) {
+        if (selected.has(id)) add(row.time, "reference", id, count);
       }
       if (!oldFill) {
         for (const [id, count] of Object.entries(row.filled_parameters ?? {})) {
@@ -686,6 +840,9 @@ function timelineData(preview, file, parameters, events, totals) {
     }
     if (oldFill && completeFills) {
       for (const event of filledEvents) add(event.time, "filled", event.parameter.id, 1);
+    }
+    if (!hasReferenceCounts) {
+      for (const event of referenceEvents) add(event.time, "reference", event.parameter.id, 1);
     }
     incomplete = oldFill && !completeFills && !all && totals.filled > 0;
   }
@@ -706,9 +863,9 @@ function outlierTimeline(timeline, parameters, enabled, focus) {
       const counts = group[kind];
       const total = sumCounts(counts);
       if (!total) continue;
-      const first = kind === "marked" ? 0 : -lower;
-      const last = kind === "marked" ? total : first - total;
-      if (kind !== "marked") lower += total;
+      const first = kind === "marked" || kind === "reference" ? 0 : -lower;
+      const last = kind === "reference" ? 0 : kind === "marked" ? total : first - total;
+      if (kind !== "marked" && kind !== "reference") lower += total;
       magnitude = Math.max(magnitude, Math.abs(last));
       const breakdown = Object.entries(counts).map(([id, count]) => `${labels.get(id) ?? "Все параметры"} · ${fmt(count)}`).join(", ");
       const label = `${timeline.periodLabel(bucket)} · ${timelineLayers[kind].label} · ${breakdown}`;
@@ -725,8 +882,13 @@ function outlierTimeline(timeline, parameters, enabled, focus) {
     const b = y(last);
     const active = Boolean(focus && bucket >= focus.bucket && bucket <= (focus.endBucket ?? focus.bucket)
       && (!focus.kind || focus.kind === kind));
-    return `<rect class="timeline-event" data-file-action="timeline-event" data-file-id="${kind}:${bucket}" role="button"
-      tabindex="0" aria-label="${escapeHtml(label)}" aria-pressed="${active}" x="${x - barWidth / 2}" width="${barWidth}" y="${Math.min(a, b)}"
+    const attributes = `class="timeline-event" data-file-action="timeline-event" data-file-id="${kind}:${bucket}" role="button"
+      tabindex="0" aria-label="${escapeHtml(label)}" aria-pressed="${active}"`;
+    if (kind === "reference") {
+      return `<circle ${attributes} cx="${x}" cy="${middle}" r="4" fill="var(--paper)" stroke="${timelineLayers.reference.color}" stroke-width="2">
+        <title>${escapeHtml(label)}</title></circle>`;
+    }
+    return `<rect ${attributes} x="${x - barWidth / 2}" width="${barWidth}" y="${Math.min(a, b)}"
       height="${Math.abs(a - b)}" fill="${timelineLayers[kind].color}"><title>${escapeHtml(label)}</title></rect>`;
   }).join("");
   const axis = [];
@@ -740,7 +902,8 @@ function outlierTimeline(timeline, parameters, enabled, focus) {
 function outlierTrace(points, parameter, enabled) {
   const sample = points.map((point) => ({ ...point, stamp: stamp(point.time) }))
     .filter((point) => Number.isFinite(point.stamp)
-      && (Number.isFinite(point.value) || Number.isFinite(point.estimate?.value) || Number.isFinite(point.manual_value)))
+      && (Number.isFinite(point.value) || Number.isFinite(point.estimate?.value)
+        || Number.isFinite(point.manual_value) || Number.isFinite(point.external_reference?.value)))
     .sort((first, last) => first.stamp - last.stamp);
   if (!sample.length) return '<div class="empty-chart"><h3>Нет наблюдений по этому параметру</h3></div>';
 
@@ -749,13 +912,15 @@ function outlierTrace(points, parameter, enabled) {
   const observationColor = "#6b8f79";
   const restoredColor = timelineLayers.filled.color;
   const manualColor = timelineLayers.manual.color;
+  const referenceColor = timelineLayers.reference.color;
   const start = sample[0].stamp;
   const span = sample.at(-1).stamp - start;
   const x = (time) => left + (span ? (time - start) / span : 0.5) * chartWidth;
   let low = Infinity;
   let high = -Infinity;
   for (const point of sample) {
-    for (const value of [point.value, point.estimate?.value, point.manual_value]) {
+    for (const value of [point.value, point.estimate?.value, point.manual_value,
+      enabled.includes("reference") ? point.external_reference?.value : null]) {
       if (Number.isFinite(value)) {
         low = Math.min(low, value);
         high = Math.max(high, value);
@@ -799,6 +964,10 @@ function outlierTrace(points, parameter, enabled) {
       const label = `${point.time} · ${fmt(point.manual_value, 2)} ${parameter.unit} · Исправлено в загруженном CSV`;
       highlighted.push(`<circle cx="${position}" cy="${y(point.manual_value)}" r="4.1" fill="${manualColor}" stroke="#fff" stroke-width="1.2"><title>${escapeHtml(label)}</title></circle>`);
     }
+    if (enabled.includes("reference") && Number.isFinite(point.external_reference?.value)) {
+      const label = `${point.time} · Справочная сверка · ${referenceText(point.external_reference, parameter.unit)}`;
+      highlighted.push(`<circle cx="${position}" cy="${y(point.external_reference.value)}" r="4.1" fill="none" stroke="${referenceColor}" stroke-width="1.5"><title>${escapeHtml(label)}</title></circle>`);
+    }
   }
   const estimates = enabled.includes("filled") && sample.some((point) => Number.isFinite(point.estimate?.value));
   const manual = enabled.includes("manual") && sample.some((point) => point.manual && Number.isFinite(point.manual_value));
@@ -806,6 +975,7 @@ function outlierTrace(points, parameter, enabled) {
     ${chartSvg(`${parameter.label} с выделенными выбросами`, grid, axis.join("") + dots.join("") + highlighted.join(""))}
     <div class="legend">${legendItem("Наблюдения", observationColor)}${enabled.includes("marked") ? legendItem("К удалению", color) : ""}
       ${estimates ? legendItem("Заполненные значения", restoredColor) : ""}
+      ${enabled.includes("reference") ? legendItem("Сверка с метеосервисами", referenceColor) : ""}
       ${manual ? legendItem("Ручные правки", manualColor) : ""}</div>`;
 }
 
@@ -843,11 +1013,66 @@ async function loadList() {
     state.filters = listing.filters.filter(({ id }) => id !== "buddy");
     state.primary = listing.primary;
     state.loading = false;
+    normalizeSelection();
+    const file = entry.get("file");
+    if (file && state.files.has(file) && state.files.get(file).status !== "error") {
+      await openEditor(file);
+      return;
+    }
+    if (file) {
+      state.message = "Сохранённый набор недоступен.";
+      state.error = true;
+    }
   } catch (error) {
     state.message = messageFor(error);
     state.error = true;
   }
   render();
+}
+
+function normalizeSelection() {
+  const selection = state.selection;
+  const passport = state.stations.find(({ id }) => id === selection.station) ?? state.stations[0];
+  if (!passport) return;
+  selection.station = passport.id;
+  if (!passport.params.some(({ id }) => id === selection.param)) selection.param = passport.params[0]?.id ?? "";
+  if (!passport.start || !passport.end) {
+    selection.start = "";
+    selection.end = "";
+    return;
+  }
+  if (!isDate(selection.end) || selection.end < passport.start || selection.end > passport.end) {
+    selection.end = passport.end;
+  }
+  if (!isDate(selection.start) || selection.start < passport.start || selection.start > selection.end) {
+    const recent = new Date(stamp(selection.end) - 30 * DAY).toISOString().slice(0, 10);
+    selection.start = recent > passport.start ? recent : passport.start;
+  }
+}
+
+async function prepareObservations() {
+  if (state.selectionBusy) return;
+  if (state.selection.start > state.selection.end) {
+    state.message = "Дата окончания должна быть не раньше даты начала.";
+    state.error = true;
+    render();
+    document.getElementById("observation-end").focus();
+    return;
+  }
+  state.selectionBusy = true;
+  state.message = "";
+  state.error = false;
+  render();
+  try {
+    const file = saveRecord(await jsonRequest(filesUrl("from-observations"), jsonPost(state.selection)));
+    state.selectionBusy = false;
+    await openEditor(file.id);
+  } catch (error) {
+    state.selectionBusy = false;
+    state.message = messageFor(error);
+    state.error = true;
+    render();
+  }
 }
 
 function coordinateInput(value) {
@@ -860,7 +1085,7 @@ function newPassport() {
     label: state.newStation.label.trim(),
     latitude: coordinateInput(state.newStation.latitude),
     longitude: coordinateInput(state.newStation.longitude),
-    profile: state.newStation.profile,
+    params: state.newStation.params.slice().sort(),
   };
 }
 
@@ -877,12 +1102,18 @@ function validUploadStation() {
     field.setCustomValidity(valid ? "" : message);
     if (!field.reportValidity()) return false;
   }
+  const param = main.querySelector("[data-station-param]");
+  if (param) {
+    param.setCustomValidity(passport.params.length ? "" : "Отметьте хотя бы один измеряемый показатель.");
+    if (!param.reportValidity()) return false;
+  }
   return true;
 }
 
 function samePassport(station, passport) {
   return station.label.toLocaleLowerCase("ru-RU") === passport.label.toLocaleLowerCase("ru-RU")
-    && station.latitude === passport.latitude && station.longitude === passport.longitude && station.profile === passport.profile;
+    && station.latitude === passport.latitude && station.longitude === passport.longitude
+    && station.params.map(({ id }) => id).sort().join(",") === passport.params.join(",");
 }
 
 async function stationForBatch(batch) {
@@ -922,7 +1153,8 @@ async function uploadNext() {
     transfer.status = "loading";
     if (!state.editor) render();
     try {
-      if (!/\.(csv|xlsx)$/i.test(filename)) throw new Error("Поддерживаются форматы CSV и XLSX.");
+      const format = fileFormat(filename);
+      if (!format) throw new Error("Поддерживаются форматы CSV, XLSX и JSON.");
       if (!batch.station && !batch.error) {
         try {
           const station = await stationForBatch(batch);
@@ -933,10 +1165,8 @@ async function uploadNext() {
         }
       }
       if (batch.error) throw batch.error;
-      const contentType = filename.toLowerCase().endsWith(".xlsx")
-        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv";
       const result = await jsonRequest(filesUrl("upload", { filename, station: batch.station }), {
-        method: "POST", headers: { "Content-Type": contentType }, body: file,
+        method: "POST", headers: { "Content-Type": uploadTypes[format.toLowerCase()] }, body: file,
       });
       saveRecord(result);
     } catch (error) {
@@ -946,30 +1176,6 @@ async function uploadNext() {
   }
   state.uploading = false;
   if (!state.editor) render();
-}
-
-function csvCell(value) {
-  return '\"' + String(value ?? "").replaceAll('\"', '\"\"') + '\"';
-}
-
-async function uploadExample() {
-  state.exampleLoading = true;
-  state.message = "Загружаем пример Кр1…";
-  state.error = false;
-  render();
-  try {
-    const rows = await jsonRequest("/api/import/example");
-    const fields = Object.keys(rows[0]);
-    const csv = [fields.join(","), ...rows.map((row) => fields.map((field) => csvCell(row[field])).join(","))].join("\n");
-    state.message = "";
-    appendUploads([new File([csv], "kr1-station-2024-04-01.csv", { type: "text/csv" })], "kr1");
-  } catch (error) {
-    state.message = messageFor(error);
-    state.error = true;
-  } finally {
-    state.exampleLoading = false;
-    if (!state.editor) render();
-  }
 }
 
 async function openEditor(id) {
@@ -1000,6 +1206,7 @@ async function openEditor(id) {
 async function runPreview(editor) {
   if (editor.busy) return;
   if (!validateRanges(editor)) return;
+  if (!validateFillPeriod(editor)) return;
   if (editor.settings.fill_external && !editor.settings.timezone) {
     editor.message = "Укажите часовой пояс исходного файла.";
     render();
@@ -1028,6 +1235,23 @@ async function runPreview(editor) {
       render();
     }
   }
+}
+
+function validateFillPeriod(editor) {
+  const { fill_external, fill_model, fill_start, fill_end } = editor.settings;
+  if (!fill_external && !fill_model) return true;
+  const file = state.files.get(editor.id);
+  const from = fill_start || file.start;
+  const to = fill_end || file.end;
+  let message = "";
+  if (Boolean(fill_start) !== Boolean(fill_end)) message = "Укажите обе даты заполнения или оставьте обе даты пустыми.";
+  else if (from < file.start || to > file.end || to < from) message = "Выберите даты заполнения внутри периода набора.";
+  else if (fill_external && stamp(to) - stamp(from) >= 31 * DAY) message = "Для метеосервисов выберите период заполнения до 31 суток включительно.";
+  if (!message) return true;
+  editor.message = message;
+  render();
+  document.getElementById(fill_start ? "fill-end" : "fill-start")?.focus();
+  return false;
 }
 
 function applyPreview(editor, result) {
@@ -1077,6 +1301,7 @@ async function confirmFile(editor) {
       id: editor.id, revision: editor.preview.revision, ...settingsPayload(editor.settings),
     })));
     notifyDataChange();
+    await refreshStationCatalog();
     editor.done = true;
     state.editors.delete(editor.id);
   } catch (error) {
@@ -1102,15 +1327,82 @@ function openDialog(title, body) {
   dialog.showModal();
 }
 
-async function readCsvSample(url, signal) {
+function showFullExcel(file, editor) {
+  if (!file.params?.length || !validateRanges(editor)) return;
+  const settings = editor.settings;
+  const parameter = settings.fill_params[0] ?? file.params[0].id;
+  const start = settings.fill_start || file.start;
+  const end = settings.fill_end || file.end;
+  const limits = `type="date" required min="${escapeHtml(file.start)}" max="${escapeHtml(file.end)}"`;
+  openDialog("Excel с ручными решениями", `<form class="file-excel">
+    <p class="muted">Книга содержит исходные значения, причины исключения и столбец для ручных решений.</p>
+    <fieldset>
+      ${selectField("Показатель", "excel-param", file.params.map(({ id, label }) => [id, label]), parameter)}
+      <div class="new-station-fields">
+        ${inputField("Дата с", "excel-start", start, limits)}
+        ${inputField("Дата по", "excel-end", end, limits)}
+      </div>
+      <div><button type="submit" class="btn primary">Подготовить Excel</button></div>
+    </fieldset>
+    <p class="muted excel-status" role="status"></p>
+    <div class="row excel-downloads" hidden></div>
+  </form>`);
+  const controller = new AbortController();
+  dialog.addEventListener("close", () => controller.abort(), { once: true });
+  const form = dialog.querySelector(".file-excel");
+  const fieldset = form.querySelector("fieldset");
+  const feedback = form.querySelector(".excel-status");
+  const links = form.querySelector(".excel-downloads");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (fieldset.disabled) return;
+    const param = form.querySelector("#excel-param").value;
+    const first = form.querySelector("#excel-start").value;
+    const last = form.querySelector("#excel-end").value;
+    if (first > last) {
+      feedback.textContent = "Дата окончания должна быть не раньше даты начала.";
+      return;
+    }
+    const payload = settingsPayload(settings);
+    if (settings.fill_params.length && !settings.fill_params.includes(param)) {
+      payload.fill_external = "0";
+      payload.fill_model = "0";
+    }
+    delete payload.fill_start;
+    delete payload.fill_end;
+    delete payload.fill_params;
+    payload.ranges = JSON.stringify(payload.ranges);
+    payload.thresholds = JSON.stringify(payload.thresholds);
+    payload.filters = payload.filters.split(",").filter((id) => id && id !== "buddy").join(",");
+    const query = new URLSearchParams({ ...payload, file_id: file.id, param, start: first, end: last });
+    fieldset.disabled = true;
+    links.hidden = true;
+    feedback.textContent = "Готовим книгу…";
+    try {
+      const report = await jsonRequest(`/api/review?${query}`, { method: "POST", signal: controller.signal });
+      const token = new URLSearchParams({ token: report.token });
+      links.innerHTML = link("Скачать Excel с решениями", `/api/review.xlsx?${token}`, { glyph: "download" }) +
+        (report.original_workbook
+          ? link("Скачать копию исходного XLSX с отметками", `/api/review-original.xlsx?${token}`, { glyph: "download" }) : "");
+      links.hidden = false;
+      feedback.textContent = "Книга готова.";
+    } catch (error) {
+      if (!controller.signal.aborted) feedback.textContent = messageFor(error);
+    } finally {
+      fieldset.disabled = false;
+    }
+  });
+}
+
+async function readTextSample(url, signal, lineLimit) {
   const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error("Не удалось прочитать исходный CSV.");
+  if (!response.ok) throw new Error("Не удалось прочитать исходный файл.");
   const reader = response.body.getReader();
   const bytes = new Uint8Array(8192);
   let offset = 0;
   let lineCount = 0;
   try {
-    while (offset < bytes.length && lineCount < 9) {
+    while (offset < bytes.length && lineCount < lineLimit) {
       const { done, value } = await reader.read();
       if (done) break;
       const piece = value.subarray(0, bytes.length - offset);
@@ -1124,16 +1416,17 @@ async function readCsvSample(url, signal) {
   const sample = bytes.subarray(0, offset);
   let content = new TextDecoder().decode(sample);
   if (content.includes("\uFFFD")) content = new TextDecoder("windows-1251").decode(sample);
-  return content.split(/\r?\n/).slice(0, 9).join("\n");
+  return content.split(/\r?\n/).slice(0, lineLimit).join("\n");
 }
 
 async function showOriginal(file) {
   const url = filesUrl("original", { id: file.id });
-  const excel = file.filename.toLowerCase().endsWith(".xlsx");
+  const format = fileFormat(file.filename);
+  const excel = format === "XLSX";
   openDialog(file.filename, `<div class="raw-dialog">
     <p class="muted raw-status" role="status">${excel ? "Сохранённая исходная книга XLSX." : "Читаем начальные строки исходного файла…"}</p>
     <pre class="raw-sample" hidden></pre>
-    ${link(excel ? "Скачать исходный XLSX" : "Скачать исходный CSV", url, { glyph: "download", filename: file.filename })}
+    ${link(format ? `Скачать исходный ${format}` : "Скачать исходный файл", url, { glyph: "download", filename: file.filename })}
   </div>`);
   if (excel) return;
   const status = dialog.querySelector(".raw-status");
@@ -1141,7 +1434,7 @@ async function showOriginal(file) {
   const request = new AbortController();
   dialog.addEventListener("close", () => request.abort(), { once: true });
   try {
-    sample.textContent = await readCsvSample(url, request.signal);
+    sample.textContent = await readTextSample(url, request.signal, format === "JSON" ? 15 : 9);
     sample.hidden = !sample.textContent;
     status.textContent = sample.textContent ? "Начальные строки исходного файла." : "Исходный файл пуст.";
   } catch (error) {
@@ -1168,6 +1461,7 @@ async function discardFile(id) {
   try {
     saveRecord(await jsonRequest(filesUrl("discard", { id, version: file.version }), { method: "POST" }));
     notifyDataChange();
+    await refreshStationCatalog();
     state.editors.delete(id);
     state.message = "Очищенные данные исключены из графиков. Исходник сохранён.";
     state.error = false;
@@ -1245,14 +1539,27 @@ function updatePreviewPresentation(editor, control) {
 
 main.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.id === "observation-station") {
+    state.selection.station = target.value;
+    normalizeSelection();
+    render();
+    document.getElementById(target.id)?.focus({ preventScroll: true });
+    return;
+  }
+  if (target.id.startsWith("observation-") && Object.hasOwn(state.selection, target.id.slice(12))) {
+    state.selection[target.id.slice(12)] = target.value;
+    return;
+  }
   if (target.id === "upload-station") {
     state.uploadStation = target.value;
     render();
     document.getElementById("upload-station").focus({ preventScroll: true });
     return;
   }
-  if (target.id === "upload-station-profile") {
-    state.newStation.profile = target.value;
+  if (target.dataset.stationParam) {
+    const id = target.dataset.stationParam;
+    state.newStation.params = target.checked ? [...state.newStation.params, id] : state.newStation.params.filter((param) => param !== id);
+    main.querySelector("[data-station-param]")?.setCustomValidity("");
     return;
   }
   const editor = state.editor;
@@ -1268,6 +1575,8 @@ main.addEventListener("change", (event) => {
       const [lower] = editor.settings.ranges.pressure_hpa;
       editor.settings.ranges.pressure_hpa = [lower, Number(target.value)];
     }
+  } else if (target.id === "fill-param") {
+    editor.settings.fill_params = target.value.split(",").filter(Boolean);
   } else if (method) {
     const ids = editor.settings.filters;
     editor.settings.filters = target.checked ? [...ids, method] : ids.filter((id) => id !== method);
@@ -1287,18 +1596,20 @@ main.addEventListener("change", (event) => {
 
 main.addEventListener("input", (event) => {
   const target = event.target;
-  const { newStation, bound, boundIndex, threshold, thresholdParam } = target.dataset;
+  const { newStation, bound, boundIndex, threshold, thresholdParam, fillDate } = target.dataset;
   if (newStation) {
     state.newStation[newStation] = target.value;
     target.setCustomValidity("");
     return;
   }
   const editor = state.editor;
-  if ((!bound && !threshold) || !editor || editor.busy || editor.done) return;
+  if ((!bound && !threshold && !fillDate) || !editor || editor.busy || editor.done) return;
   editor.message = "";
   main.querySelector(".file-editor-feedback")?.remove();
   const checked = checkedPreview(editor);
-  if (threshold) {
+  if (fillDate) {
+    editor.settings[fillDate] = target.value;
+  } else if (threshold) {
     editor.settings.thresholds[threshold][thresholdParam] = target.value;
   } else {
     const values = editor.settings.ranges[bound].slice();
@@ -1319,6 +1630,11 @@ main.addEventListener("toggle", (event) => {
 }, true);
 
 main.addEventListener("submit", (event) => {
+  if (event.target.matches("#observation-selection")) {
+    event.preventDefault();
+    void prepareObservations();
+    return;
+  }
   const editor = state.editor;
   if (!editor?.preview || !event.target.matches(".timeline-date")) return;
   event.preventDefault();
@@ -1338,13 +1654,27 @@ document.addEventListener("click", (event) => {
   switch (action) {
     case "browse": if (validUploadStation()) picker.click(); break;
     case "corrected-browse": correctedPicker.click(); break;
-    case "example": void uploadExample(); break;
+    case "source-mode":
+      state.sourceMode = id;
+      state.message = "";
+      state.error = false;
+      render();
+      main.querySelector('[data-file-action="source-mode"][aria-pressed=true]')?.focus({ preventScroll: true });
+      break;
     case "reload": void loadList(); break;
     case "edit": void openEditor(id); break;
-    case "list": state.editor = null; render({ top: true }); break;
+    case "list":
+      state.editor = null;
+      if (entry.has("file")) {
+        entry.delete("file");
+        history.replaceState(history.state, "", entry.size ? `/files?${entry}` : "/files");
+      }
+      render({ top: true });
+      break;
     case "filter": if (editor) void runPreview(editor); break;
     case "publish": if (editor) void confirmFile(editor); break;
     case "source": if (file) void showOriginal(file); break;
+    case "full-excel": if (file && editor) showFullExcel(file, editor); break;
     case "remove": if (file) showDiscard(file); break;
     case "discard": void discardFile(id); break;
     case "close": dialog.close(); break;
@@ -1375,6 +1705,10 @@ main.addEventListener("keydown", (event) => {
 
 dialog.addEventListener("cancel", (event) => {
   if (dialog.getAttribute("aria-busy") === "true") event.preventDefault();
+});
+
+dialog.addEventListener("close", () => {
+  if (!dialog.open) dialog.replaceChildren();
 });
 
 picker.addEventListener("change", () => {

@@ -15,7 +15,7 @@
             "param": "pressure_hpa",
             "navigation": [
               {
-                "text": "Метеожурнал",
+                "text": "Архивные данные",
                 "color": "rgb(255, 254, 250)",
                 "background": "rgb(32, 86, 59)",
                 "ratio": 8.47387116435255
@@ -99,7 +99,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 145
+            "elapsedMs": 211
           }
         },
         {
@@ -121,27 +121,13 @@
           }
         },
         {
-          "label": "Загрузка нового JSON и отказ с указанием ошибочной строки",
+          "label": "Загрузка JSON и сообщение о неверной дате",
           "status": "passed",
           "observed": {
             "inputRows": 48,
             "accepted": 38,
             "usableHours": 19,
-            "meanHpa": 1005.45,
-            "navigation": [
-              {
-                "text": "Метеожурнал",
-                "color": "rgb(239, 249, 241)",
-                "background": "rgb(32, 86, 59)",
-                "ratio": 7.936929929318184
-              },
-              {
-                "text": "Импорт",
-                "color": "rgb(255, 254, 250)",
-                "background": "rgb(32, 86, 59)",
-                "ratio": 8.47387116435255
-              }
-            ],
+            "meanHpa": 1005.4499999999999,
             "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
           }
         },
@@ -233,19 +219,14 @@
           "status": 200
         },
         {
-          "path": "/api/meta",
+          "path": "/api/files",
           "query": "",
           "status": 200
         },
         {
-          "path": "/api/import",
-          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
+          "path": "/api/stations",
+          "query": "",
           "status": 200
-        },
-        {
-          "path": "/api/import",
-          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
-          "status": 400
         },
         {
           "path": "/api/meta",
@@ -310,7 +291,7 @@
             "param": "pressure_hpa",
             "navigation": [
               {
-                "text": "Метеожурнал",
+                "text": "Архивные данные",
                 "color": "rgb(255, 254, 250)",
                 "background": "rgb(32, 86, 59)",
                 "ratio": 8.47387116435255
@@ -394,7 +375,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 140
+            "elapsedMs": 232
           }
         },
         {
@@ -416,27 +397,13 @@
           }
         },
         {
-          "label": "Загрузка нового JSON и отказ с указанием ошибочной строки",
+          "label": "Загрузка JSON и сообщение о неверной дате",
           "status": "passed",
           "observed": {
             "inputRows": 48,
             "accepted": 38,
             "usableHours": 19,
-            "meanHpa": 1005.45,
-            "navigation": [
-              {
-                "text": "Метеожурнал",
-                "color": "rgb(239, 249, 241)",
-                "background": "rgb(32, 86, 59)",
-                "ratio": 7.936929929318184
-              },
-              {
-                "text": "Импорт",
-                "color": "rgb(255, 254, 250)",
-                "background": "rgb(32, 86, 59)",
-                "ratio": 8.47387116435255
-              }
-            ],
+            "meanHpa": 1005.4499999999999,
             "invalidInput": "Загруженный JSON: элемент 1: некорректный срок '2024-02-30 12:00'"
           }
         },
@@ -528,19 +495,14 @@
           "status": 200
         },
         {
-          "path": "/api/meta",
+          "path": "/api/files",
           "query": "",
           "status": 200
         },
         {
-          "path": "/api/import",
-          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
+          "path": "/api/stations",
+          "query": "",
           "status": 200
-        },
-        {
-          "path": "/api/import",
-          "query": "?station=kr1&param=pressure_hpa&year=2024&grain=day&start=&end=",
-          "status": 400
         },
         {
           "path": "/api/meta",

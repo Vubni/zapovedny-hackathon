@@ -19,18 +19,25 @@ class ObservationIntervalsTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_normalization_merges_overlaps_adjacent_dates_and_repeated_ranges(self):
+    def test_normalization_sorts_and_keeps_adjacent_dates_separate(self):
         selected = query_intervals({
-            "intervals": "2024-03-15:2024-03-16,2024-02-28:2024-03-01,2024-03-02:2024-03-03,"
-                         "2024-02-29:2024-03-02,2024-03-15:2024-03-16",
+            "intervals": "2024-03-15:2024-03-16,2024-02-28:2024-03-01,2024-03-02:2024-03-03",
             "start": "ignored",
         })
-        self.assertEqual(selected, ((date(2024, 2, 28), date(2024, 3, 3)),
+        self.assertEqual(selected, ((date(2024, 2, 28), date(2024, 3, 1)),
+                                    (date(2024, 3, 2), date(2024, 3, 3)),
                                     (date(2024, 3, 15), date(2024, 3, 16))))
         self.assertEqual(query_intervals({"start": "9999-12-31", "end": "9999-12-31"}),
                          ((date.max, date.max),))
         self.assertEqual(query_intervals({"intervals": "9999-12-31:9999-12-31,9999-12-30:9999-12-30"}),
-                         ((date(9999, 12, 30), date.max),))
+                         ((date(9999, 12, 30), date(9999, 12, 30)), (date.max, date.max)))
+
+    def test_rejects_shared_boundary_nested_intervals_and_duplicates(self):
+        for value in ("2024-01-01:2024-01-03,2024-01-03:2024-01-04",
+                      "2024-01-01:2024-01-31,2024-01-02:2024-01-03",
+                      "2024-01-01:2024-01-01,2024-01-01:2024-01-01"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "пересекаться"):
+                query_intervals({"intervals": value})
 
     def test_validation_and_limit(self):
         invalid = ("", " ", None, [], "2024-01-01", "2024-01-01:", "2024-01-01/2024-01-02",
@@ -39,10 +46,10 @@ class ObservationIntervalsTests(unittest.TestCase):
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 query_intervals({"intervals": value})
-        point = "2024-01-01:2024-01-01"
-        self.assertEqual(len(query_intervals({"intervals": ",".join([point] * MAX_INTERVALS)})), 1)
+        points = [f"2024-01-{day:02}:2024-01-{day:02}" for day in range(1, MAX_INTERVALS + 2)]
+        self.assertEqual(len(query_intervals({"intervals": ",".join(points[:-1])})), MAX_INTERVALS)
         with self.assertRaisesRegex(ValueError, str(MAX_INTERVALS)):
-            query_intervals({"intervals": ",".join([point] * (MAX_INTERVALS + 1))})
+            query_intervals({"intervals": ",".join(points)})
 
     def test_legacy_and_normalized_single_interval_contract(self):
         init = {"stations": "kr1", "chart": "wind_rose", "grain": "month"}
@@ -50,12 +57,22 @@ class ObservationIntervalsTests(unittest.TestCase):
         self.assertNotIn("intervals", legacy)
         self.assertTrue(all("interval" not in item for item in legacy["series"]))
         self.assertIn("calm_by_station", legacy)
-        result = chart_data(dict(init, intervals="2025-04-03:2025-04-05,2025-04-01:2025-04-03"))
+        result = chart_data(dict(init, intervals="2025-04-01:2025-04-05"))
         self.assertEqual(result.pop("intervals"), [{
             "id": "2025-04-01:2025-04-05", "start": "2025-04-01", "end": "2025-04-05",
             "days": 5, "label": "01.04.2025 — 05.04.2025",
         }])
         self.assertEqual(result, legacy)
+
+    def test_adjacent_windows_retain_series_coverage_and_statistics(self):
+        result = chart_data({"stations": "kr1", "chart": "air", "grain": "day",
+                             "intervals": "2025-07-04:2025-07-06,2025-07-01:2025-07-03"})
+        self.assertEqual([item["id"] for item in result["intervals"]], [
+            "2025-07-01:2025-07-03", "2025-07-04:2025-07-06",
+        ])
+        self.assertEqual([len(series["points"]) for series in result["series"]], [3, 3])
+        self.assertEqual([row["total_days"] for row in result["coverage"]], [3, 3])
+        self.assertEqual([row["valid_days"] for row in result["statistics"]], [3, 3])
 
     def test_daily_series_coverage_and_stats_skip_middle_dates(self):
         query = {"stations": "kr1", "chart": "air_range", "grain": "day"}

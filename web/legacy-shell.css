@@ -1,62 +1,17 @@
 @import url("/reserve-brand.css");
 @font-face{font-family:Manrope;src:url("/fonts/manrope.ttf") format("truetype"),local("Manrope");font-weight:200 800;font-style:normal;font-display:swap}
-.side[data-archive-nav] {
-  --side: #172c23; --side-text: #e6eee6; --side-mute: #a6bbae; --side-active: #284438; --lime: #d7e950;
-  font: 500 14px/1.5 Manrope, "Avenir Next", Arial, sans-serif;
-}
-.side{position:fixed;inset:0 auto 0 0;width:224px;padding:27px 20px 28px;background:var(--side);color:var(--side-text);display:flex;flex-direction:column;z-index:5}
-.side .brand{display:flex;align-items:center;gap:11px;background:transparent;border:0;color:inherit;padding:0;font-size:17px;font-weight:800;text-align:left}
-.side .logo{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#d2f197;color:var(--side)}
-.nav-label{margin:52px 0 12px;color:var(--side-mute);text-transform:uppercase;font-size:11px;font-weight:800;letter-spacing:.08em}
-.nav{display:grid;gap:5px}
-.nav a{display:flex;width:100%;align-items:center;gap:11px;padding:0 12px;height:44px;background:none;color:inherit;border:0;border-radius:8px;font-size:13px;font-weight:750;text-align:left;white-space:nowrap}
-.nav a svg{color:#d2f197;flex:none}
-.nav a:hover,.nav a[aria-current=page]{background:var(--side-active)}
-.side-footer{margin-top:auto;border-top:1px solid var(--side-active);padding-top:12px;font-size:12px;color:var(--side-mute);display:grid;gap:5px}
-.side-footer strong{color:var(--side-text);font-weight:650}
-
-@media (max-width:1120px) { .side { width:194px; padding-inline:15px; } }
-@media (max-width:900px) {
-  .side { width:66px; padding:18px 10px; }
-  .side .nav-label,.side .side-footer,.side .brand span:last-child,.side .nav span { display:none; }
-  .side .nav { margin-top:27px; }
-  .side .nav a { justify-content:center; padding:0; }
-  .side .brand { margin:0 auto; }
-}
-/* Navigation uses real links so the three workspaces also open in a new tab. */
-.side a { text-decoration: none; }
-.side a:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
-.side .nav a { box-sizing: border-box; }
-.skip-archive { position: fixed; top: 8px; left: 8px; z-index: 30; padding: 8px 14px; transform: translateY(-160%); background: white; color: var(--dark); }
-.skip-archive:focus { transform: none; }
-@media (max-width: 660px) {
-  .side { position: static; width: 100%; padding: 12px 14px 8px; gap: 10px; }
-  .side .brand { margin: 0; font-size: 15px; }
-  .side .brand span:last-child,.side .nav span { display: inline; }
-  .side .logo { width: 30px; height: 30px; }
-  .side .nav { display: flex; margin: 0; gap: 4px; }
-  .side .nav a { width: auto; height: 36px; padding-inline: 9px; gap: 5px; font-size: 12px; }
-  .side .nav a svg { width: 15px; }
- }
-@media (max-width: 350px) { .side .nav a { padding-inline: 6px; font-size: 11px; } }
 
 .legacy-workspace {
   --body: Manrope, "Avenir Next", Arial, sans-serif;
   --serif: var(--body); --ink: #162820; --paper: #fff; --ground: #f4f5ee; --line: #dce5db;
   --forest: #20563b; --green: #2b7650; --green-tint: #e5f0e5; --radius: 16px;
-  padding-left: 224px; font-family: var(--body); background: var(--ground);
+  padding-left: var(--archive-sidebar-offset); font-family: var(--body); background: var(--ground);
 }
 .legacy-workspace > .shell { width: min(calc(100% - 56px), 1420px); }
 .legacy-workspace .page-heading h1 { font-weight: 800; }
-.legacy-workspace .side .brand > span { font: inherit; }
-.legacy-workspace .side .brand > .logo { padding: 0; flex:none; }
-.legacy-workspace .side .nav a { color: var(--side-text); }
 .legacy-workspace .masthead-inner { min-height: 44px; }
-.legacy-workspace .masthead .brand { display: none; }
-.legacy-workspace .masthead:not(.context-tabs) { display: none; }
 .legacy-workspace .button.primary { color: #162820; background: #d7e950; }
 .legacy-workspace .button.primary:hover { background:#cde425; }
-@media (max-width:1120px) { .legacy-workspace { padding-left:194px; } }
-@media (max-width:900px) { .legacy-workspace { padding-left:66px; } .legacy-workspace > .shell { width:calc(100% - 32px); } }
-@media (max-width:660px) { .legacy-workspace { padding-left:0; } .legacy-workspace > .shell { width:calc(100% - 24px); } }
-@media print { .side {display:none;} .legacy-workspace {padding:0;} .legacy-workspace > .shell {width:100%;} }
+@media (max-width:900px) { .legacy-workspace > .shell { width:calc(100% - 32px); } }
+@media (max-width:660px) { .legacy-workspace > .shell { width:calc(100% - 24px); } }
+@media print { .legacy-workspace {padding:0;} .legacy-workspace > .shell {width:100%;} }

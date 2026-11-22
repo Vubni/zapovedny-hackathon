@@ -8,6 +8,7 @@ import unittest
 from collections import OrderedDict
 from concurrent.futures import Future
 from datetime import datetime
+from functools import partial
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
@@ -18,6 +19,7 @@ from review_filter import review
 
 
 QUERY = {"fill": "1", "timezone": "Europe/Moscow"}
+offline_estimates = partial(fill.apply_estimates, allow_snapshot=True)
 
 
 def report(day="2024-04-21", param="t_air", rows=()):
@@ -45,7 +47,7 @@ class ExternalFill(unittest.TestCase):
                 self.assertEqual(info["count_by_parameter"][param], 768)
 
     def test_hourly_offline_estimate_provenance(self):
-        response = fill.apply_estimates(report(), QUERY)
+        response = offline_estimates(report(), QUERY)
         row = response["rows"][11]
         self.assertEqual(row["time"], "2024-04-21 11:00")
         self.assertEqual(row["estimate"], 9.0)
@@ -61,15 +63,15 @@ class ExternalFill(unittest.TestCase):
         self.assertEqual(era["value"], 9.8)
         self.assertEqual(merra["value"], 8.2)
         self.assertEqual(era["coordinates"], {"latitude": 56.5, "longitude": 32.75, "elevation_m": 250.0})
-        utc = fill.apply_estimates(report(), dict(QUERY, timezone="UTC"))
+        utc = offline_estimates(report(), dict(QUERY, timezone="UTC"))
         self.assertEqual(utc["rows"][8]["estimate"], row["estimate"])
 
     def test_registered_minute_exclusion_can_be_interpolated_without_changing_review(self):
         query = dict(QUERY, station="kr1", param="t_air", start="2024-04-15", end="2024-04-15", filters="hampel")
         unfilled = review(query)
         before = copy.deepcopy(unfilled)
-        skip = fill.apply_estimates(copy.deepcopy(unfilled), query)
-        response = fill.apply_estimates(unfilled, dict(query, subhour="interpolate"))
+        skip = offline_estimates(copy.deepcopy(unfilled), query)
+        response = offline_estimates(unfilled, dict(query, subhour="interpolate"))
         self.assertEqual(response["counts"], before["counts"])
         self.assertEqual(response["summaries"], before["summaries"])
         rows = {row["line"]: row for row in response["rows"] if not row["synthetic"]}
@@ -92,30 +94,30 @@ class ExternalFill(unittest.TestCase):
         source = [observation("2024-04-21 00:03", 1), observation("2024-04-21 01:00", 2),
                   observation("2024-04-21 01:00", 3), observation("2024-04-21 02:00", 4, conflict=True),
                   observation("2024-04-21 03:00", 5, keep=True, value=10.0)]
-        result = fill.apply_estimates(report(rows=source), dict(QUERY, subhour="interpolate"))
+        result = offline_estimates(report(rows=source), dict(QUERY, subhour="interpolate"))
         by_line = {row["line"]: row for row in result["rows"] if not row["synthetic"]}
         self.assertNotIn("2024-04-21 00:00", {row["time"] for row in result["rows"]})
         self.assertEqual(result["external"]["synthetic_count"], 20)
         self.assertEqual(by_line[1]["estimate_status"], "estimated")
         self.assertEqual({by_line[line]["estimate_reason"] for line in (2, 3, 4)}, {"duplicate_term"})
         self.assertEqual(by_line[5]["estimate_status"], "not_needed")
-        self.assertEqual(len(fill.apply_estimates(result, QUERY)["rows"]), 25)
+        self.assertEqual(len(offline_estimates(result, QUERY)["rows"]), 25)
 
     def test_units_and_pressure_reference(self):
-        pressure = fill.apply_estimates(report(param="pressure_hpa"), QUERY)
+        pressure = offline_estimates(report(param="pressure_hpa"), QUERY)
         self.assertEqual(pressure["external"]["reason"], "unknown_pressure_reference")
         self.assertTrue(all(row["estimate"] is None for row in pressure["rows"]))
-        pressure = fill.apply_estimates(report(param="pressure_hpa"), dict(QUERY, pressure_reference="surface"))
+        pressure = offline_estimates(report(param="pressure_hpa"), dict(QUERY, pressure_reference="surface"))
         self.assertEqual(pressure["rows"][11]["estimate"], 991.48)
         merra = pressure["rows"][11]["provenance"]["sources"][1]
         self.assertEqual(merra["samples"][0]["value"], 99.25)
         self.assertEqual(merra["source_unit"], "kPa")
         self.assertEqual(merra["value"], 992.5)
-        rh = fill.apply_estimates(report(param="rh"), QUERY)
+        rh = offline_estimates(report(param="rh"), QUERY)
         self.assertEqual(rh["rows"][11]["estimate"], 68.52)
 
     def test_one_source_or_missing_anchor_does_not_produce_estimate(self):
-        response = fill.apply_estimates(report(), dict(QUERY, sources="era5,era5"))
+        response = offline_estimates(report(), dict(QUERY, sources="era5,era5"))
         self.assertEqual(response["external"]["estimated_count"], 0)
         self.assertEqual(response["rows"][0]["provenance"]["source_count"], 1)
         model = fill.MODELS["merra2"]
@@ -195,7 +197,7 @@ class ExternalFill(unittest.TestCase):
             return io.BytesIO(json.dumps(body).encode())
 
         with patch.object(fill, "_CACHE", OrderedDict()), patch.object(fill, "urlopen", side_effect=serve) as opening:
-            reserve = fill.apply_estimates(report(), dict(QUERY, **archive))
+            reserve = offline_estimates(report(), dict(QUERY, **archive))
             first_result = fill.apply_estimates(report(), dict(QUERY, **first))
             second_result = fill.apply_estimates(report(), dict(QUERY, **second))
             replay = fill.apply_estimates(report(), dict(QUERY, **first))

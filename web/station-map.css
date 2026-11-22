@@ -78,7 +78,7 @@
   overflow: hidden;
   border: 1px solid #cad6c4;
   border-radius: 11px;
-  background: #d7e8ea;
+  background: #e3ebe7;
 }
 
 .station-map-viewport canvas {
@@ -97,6 +97,12 @@
   border: 1px solid var(--dark, #20563b);
   background: #2b765028;
   pointer-events: none;
+}
+
+.station-map-viewport[data-map-raster="reserve"] .station-map-frame {
+  border-color: var(--lime, #d7e950);
+  background: #d7e95030;
+  box-shadow: 0 0 0 1px #253a29;
 }
 
 .station-map-modes {
@@ -142,6 +148,7 @@
 }
 
 .station-map-marker-area { width: 43px; height: 43px; outline: 1px dashed #326847; outline-offset: 4px; }
+.station-map-viewport[data-map-raster="reserve"] .station-map-marker-area { outline-color: #fff; }
 .station-map-overview-marker { width: 42px; height: 42px; font-size: 15px; }
 .station-map-marker[aria-pressed="true"] { border-color: var(--lime, #d7e950); --selection-ring: #20563b; }
 .station-map-marker[aria-pressed="mixed"] { border-color: #e5f0e5; --selection-ring: #61896f; }
@@ -204,6 +211,8 @@
   font-size: 11px;
   padding-top: 7px;
 }
+
+.station-map-source [data-reserve-credit] { order: 1; flex: 0 0 100%; }
 
 .station-map-shortcut { color: var(--mute, #53645a); font-size: 11px; margin-top: 3px; }
 .station-map-touch-tip { display: none; }
@@ -315,7 +324,7 @@
 .station-form-params { color: var(--mute, #53645a); font-size: 12px; }
 .station-form-params label { display: flex; align-items: center; gap: 5px; min-height: 24px; }
 .station-form-error { color: #8c332a; font-size: 12px; }
-.station-picker :is([data-save], [data-operator-signin]) { justify-self: start; }
+.station-picker [data-save] { justify-self: start; }
 
 .station-picker-footer {
   flex: none;

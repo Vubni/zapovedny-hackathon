@@ -2,22 +2,28 @@
   "example": {
     "query": {
       "station": "kr1",
-      "param": "pressure_hpa",
+      "param": "rh",
       "start": "2024-04-01",
       "end": "2024-04-30",
-      "filters": "conflicts",
-      "pressure_max": "1050",
-      "fill": "1",
-      "timezone": "UTC",
-      "pressure_reference": "surface"
+      "filters": "conflicts,hampel,spike,stuck",
+      "fill": "both",
+      "fill_model": true,
+      "fill_external": true,
+      "timezone": "Europe/Moscow",
+      "subhour": "interpolate",
+      "latitude": 56.46431,
+      "longitude": 32.97029,
+      "location_precision": "area",
+      "location_label": "Красное"
     },
     "original_rows": 1389,
     "original_fields": 8,
-    "workbook_rows": 1410,
+    "workbook_rows": 1413,
     "working_result": {
-      "Исходное": 117,
-      "Исключено": 1272,
-      "Внешняя оценка": 21
+      "Исходное": 1381,
+      "Оценка модели": 7,
+      "Исключено": 4,
+      "Нет значения": 21
     },
     "sheets": [
       "Управление",
@@ -25,15 +31,29 @@
       "Сутки · снимок",
       "Месяцы · снимок"
     ],
-    "xlsx_bytes": 280656,
-    "elapsed_export_ms": 35.6,
+    "xlsx_bytes": 319707,
+    "elapsed_export_ms": 39.3,
     "recalculated_counts": [
-      117,
-      21,
-      1272,
-      1272
+      1381,
+      7,
+      4,
+      25
     ],
-    "recalculated_formula_errors": 0
+    "recalculated_formula_errors": 0,
+    "external_reference_count": 29,
+    "adjusted_count": 0,
+    "provider_snapshots": [
+      {
+        "filename": "era5-krasnoe-april-2024.json",
+        "sha256": "854a898f5639e7eba217871839d9f472b3a44ee01b720c47407bfd4f004ec5dc",
+        "url": "https://archive-api.open-meteo.com/v1/archive?latitude=56.46431&longitude=32.97029&start_date=2024-03-31&end_date=2024-05-01&hourly=temperature_2m%2Crelative_humidity_2m%2Csurface_pressure&timezone=GMT&models=era5"
+      },
+      {
+        "filename": "merra2-krasnoe-april-2024.json",
+        "sha256": "176533ad2a86bc29d10105d5518f49129e025c406e6fe11859a9f0cc5999f093",
+        "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=T2M%2CRH2M%2CPS&community=SB&longitude=32.97029&latitude=56.46431&start=20240331&end=20240501&format=JSON&time-standard=UTC"
+      }
+    ]
   },
   "leap_year": {
     "query": {
@@ -56,10 +76,10 @@
       "Сутки · снимок",
       "Месяцы · снимок"
     ],
-    "xlsx_bytes": 6788785,
-    "elapsed_export_ms": 766.8
+    "xlsx_bytes": 6965864,
+    "elapsed_export_ms": 869.9
   },
-  "note": "Исходные сроки, номера строк и значения сверены с CSV из ZIP. Годовая книга создана только для проверки. Замеры экспорта выполнены локально.",
+  "note": "Исходные значения сверены с CSV из ZIP. Сверка использует сохранённые ответы ERA5 и NASA POWER для Красного за апрель и проверку на предыдущих сроках. Годовая книга создана только для проверки.",
   "copied_workbook": {
     "verification": "checks.test_review_excel.OriginalWorkbookTest",
     "unchanged_source_sheet_data": true,
@@ -72,13 +92,26 @@
     ],
     "returned_non_numeric_as_text": "=1+1"
   },
-  "minute_provenance": {
-    "time_utc": "2024-04-01T19:02:00+00:00",
-    "estimate": 974.12,
+  "xlsx_max_rows": 60744,
+  "declined_correction": {
+    "source_term": "2024-04-27 20:32",
+    "time_utc": "2024-04-27T17:32:00+00:00",
+    "local_estimate": 82.0,
+    "adjustment": 0.0,
+    "estimate": 82.0,
+    "historical_validation": {
+      "sample_count": 96,
+      "minimum_sample_count": 20,
+      "latest_known_utc": "2024-04-27T14:00:00+00:00",
+      "accepted": false,
+      "local_mae": 0.9032,
+      "adjusted_mae": 1.5491,
+      "local_rmse": 2.3213,
+      "adjusted_rmse": 2.634
+    },
     "models": {
-      "ERA5": 973.4833333333333,
-      "MERRA-2": 974.7533333333334
+      "ERA5": 70.93333333333334,
+      "MERRA-2": 78.36066666666666
     }
-  },
-  "xlsx_max_rows": 60744
+  }
 }
