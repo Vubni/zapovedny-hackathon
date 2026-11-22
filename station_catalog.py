@@ -1,0 +1,113 @@
+"""Station passports for the observation workspace and its interactive map."""
+import json
+import math
+import os
+import re
+import sqlite3
+import uuid
+from contextlib import closing
+from pathlib import Path
+
+from analytics import PARAMS, ROOT, metadata
+from build_data import STATIONS
+
+
+COLORS = ("#2b7650", "#426583", "#735579", "#945320", "#507f76", "#854f64")
+ARCHIVE_COLORS = dict(kr1=COLORS[0], kr2=COLORS[1], ame60=COLORS[2])
+AREA = (56.52, 32.87)
+
+
+def local_db_path():
+    override = os.environ.get("METEO_OBSERVATION_DB")
+    return Path(override) if override else ROOT / ".local" / "observations.sqlite3"
+
+
+def catalog():
+    stations = metadata()["stations"]
+    for item in stations:
+        key = item["id"]
+        passport = STATIONS[key]
+        item.update(profile=key, archive=True, color=ARCHIVE_COLORS[key],
+                    minimum_slots=passport.minimum_slots, slot_minutes=passport.slot_minutes,
+                    latitude=AREA[0], longitude=AREA[1], location_precision="area")
+    db_path = local_db_path()
+    if db_path.exists():
+        with closing(sqlite3.connect(db_path)) as conn:
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='registered_stations'").fetchone():
+                stations.extend(json.loads(body) for (body,) in
+                                conn.execute("SELECT passport FROM registered_stations ORDER BY rowid"))
+        from observation_store import all_date_bounds
+        published = all_date_bounds()
+        for item in stations:
+            bounds = published.get(item["id"])
+            if bounds:
+                item["start"] = min(item["start"] or bounds[0], bounds[0])
+                item["end"] = max(item["end"] or bounds[1], bounds[1])
+    return stations
+
+
+def station_list():
+    stations = catalog()
+    return {"stations": stations, "start": min(item["start"] for item in stations if item["start"]),
+            "end": max(item["end"] for item in stations if item["end"])}
+
+
+def coordinate(value, limit):
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        number = float(value)
+        if math.isfinite(number) and -limit <= number <= limit:
+            return number
+    except (TypeError, ValueError, OverflowError):
+        pass
+    raise ValueError("Проверьте широту (−90…90) и долготу (−180…180).")
+
+
+def register_station(payload):
+    label = payload.get("label")
+    if not isinstance(label, str) or not 1 <= len(label.strip()) <= 100 or not label.isprintable():
+        raise ValueError("Введите название станции длиной до 100 символов.")
+    label = label.strip()
+    profile = payload.get("profile", "kr1")
+    if not isinstance(profile, str) or profile not in STATIONS:
+        raise ValueError("Выберите профиль прибора АМЕ-60 или Сокол М1.")
+    template = STATIONS[profile]
+    params = payload.get("params", list(template.params))
+    if (not isinstance(params, list) or not params or
+            any(not isinstance(p, str) or p not in template.params for p in params)):
+        raise ValueError("Выберите измеряемые показатели из профиля прибора.")
+    key = payload.get("id") or ("station-" + uuid.uuid4().hex[:12])
+    if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,55}", key):
+        raise ValueError("Код станции может содержать латинские строчные буквы, цифры, дефис и подчёркивание.")
+    lat, lon = payload.get("latitude"), payload.get("longitude")
+    lat = None if lat == "" else lat
+    lon = None if lon == "" else lon
+    if (lat is None) != (lon is None):
+        raise ValueError("Введите обе координаты или оставьте оба поля пустыми.")
+    if lat is not None:
+        lat, lon = coordinate(lat, 90), coordinate(lon, 180)
+    step = payload.get("slot_minutes", template.slot_minutes)
+    minimum = payload.get("minimum_slots", template.minimum_slots)
+    if type(step) is not int or step not in (1, 60) or type(minimum) is not int or not 1 <= minimum <= 1440 // step:
+        raise ValueError("Проверьте единицу учёта покрытия и суточный порог в паспорте станции.")
+    if key in STATIONS or label.casefold() in {s["label"].casefold() for s in metadata()["stations"]}:
+        raise ValueError("Станция с таким кодом или названием уже есть.")
+    path = local_db_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with closing(sqlite3.connect(path, timeout=10)) as conn, conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("CREATE TABLE IF NOT EXISTS registered_stations "
+                     "(id TEXT PRIMARY KEY,name_key TEXT UNIQUE NOT NULL,passport TEXT NOT NULL)")
+        count, = conn.execute("SELECT COUNT(*) FROM registered_stations").fetchone()
+        item = dict(id=key, label=label, profile=profile, minimum_slots=minimum, slot_minutes=step,
+                    color=COLORS[(len(STATIONS) + count) % len(COLORS)], latitude=lat, longitude=lon,
+                    location_precision="exact" if lat is not None else "unknown", archive=False,
+                    start=None, end=None, params=[dict(id=p, label=PARAMS[p][0], unit=PARAMS[p][1])
+                                                  for p in dict.fromkeys(params)])
+        try:
+            conn.execute("INSERT INTO registered_stations VALUES (?,?,?)",
+                         (key, label.casefold(), json.dumps(item, ensure_ascii=False)))
+        except sqlite3.IntegrityError:
+            raise ValueError("Станция с таким кодом или названием уже есть.") from None
+    return {"station": item}

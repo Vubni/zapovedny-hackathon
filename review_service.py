@@ -115,13 +115,33 @@ def _page(report, token, offset):
 
 def create_report(query, body, content_type):
     query = dict(query)
+    passport = None
+    if "file_id" in query:
+        from observation_store import review_source
+        from station_catalog import catalog
+        if body:
+            raise ValueError("Выберите сохранённый оригинал или загрузите новый файл.")
+        item, body, content_type = review_source(query["file_id"])
+        if item["error"]:
+            raise ValueError(item["error"])
+        passport = next(station for station in catalog() if station["id"] == item["station"])
+        available = {p["id"] for p in passport["params"]} & {p["id"] for p in item["params"]}
+        if query.get("param", "t_air") not in available:
+            raise ValueError("В файле или паспорте станции нет выбранного показателя.")
+        query.update(station=passport["profile"], filename=item["filename"])
+        if query.get("fill") == "1":
+            if passport["location_precision"] == "unknown":
+                raise ValueError("Для внешней оценки нужны координаты станции.")
+            query.update(latitude=passport["latitude"], longitude=passport["longitude"])
     name = PurePosixPath(query.get("filename", "").replace("\\", "/")).name
     if not body and (name or query.get("source") == "file"):
         raise ValueError("Файл наблюдений пуст.")
     records = read_upload(body, name, content_type) if body else None
     query["source"] = name or ("Загруженный файл" if records else "Архив организаторов")
     _check_period(query, records)
-    report = review(query, records)
+    report = review(query, records, passport=passport)
+    if passport:
+        report.update(station=passport["id"], station_label=passport["label"])
     if query.get("fill") == "1":
         apply_estimates(report, query)
     sheet = getattr(records[0], "sheet_member", None) if records else None

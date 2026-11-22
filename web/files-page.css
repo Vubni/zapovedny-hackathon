@@ -1,0 +1,40 @@
+.files-main a.btn,
+.files-dialog a.btn { text-decoration: none; }
+
+.files-main .file-message { margin-top: 6px; }
+.files-main .file-queue { container-type: inline-size; }
+.files-main .queue-item .row { gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+.files-main .upload .btn { margin-top: 2px; }
+.files-main .history-table { min-width: 660px; }
+.files-main .history-empty { padding: 13px 11px; font-weight: 500; }
+.files-main .file-options { display: grid; gap: 9px; margin-top: 10px; }
+.files-main .file-options .caption { margin: 0; }
+.files-main .field select:disabled,
+.files-main .method input:disabled { cursor: default; }
+.files-main .section-rule { margin: 16px 0; }
+.files-main .processing-bar .btn { margin-left: auto; }
+.files-main .file-context .row { flex-wrap: wrap; }
+.files-main .file-pending { margin-top: 9px; }
+.files-main .preview-warnings { display: grid; gap: 8px; margin-top: 12px; }
+.files-main .outlier-table { min-width: 470px; }
+.files-main .outlier-chart { overflow: auto; }
+.files-main .outlier-chart .graph { min-width: 460px; }
+.files-main .file-context h2,
+.files-dialog h2 { overflow-wrap: anywhere; }
+.files-dialog { border: 1px solid var(--line); color: var(--ink); width: min(650px, calc(100vw - 28px)); }
+.files-dialog::backdrop { background: #172c2379; }
+.files-dialog .dialog-header .icon-btn { flex: none; }
+.files-dialog .dialog-actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+.files-dialog .raw-sample { overflow: auto; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 11px; margin: 0; max-height: 32vh; }
+.files-dialog .raw-sample[hidden] { display: none; }
+
+@container (max-width: 300px) {
+  .files-main .queue-item { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .files-main .queue-item > :is(.btn, .icon-btn) { grid-column: 2; justify-self: start; }
+}
+
+@media (max-width: 730px) {
+  .files-main .heading-line { flex-wrap: wrap; }
+  .files-main .processing-bar { flex-wrap: wrap; }
+  .files-main .outlier-top { flex-wrap: wrap; }
+}

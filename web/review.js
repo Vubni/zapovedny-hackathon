@@ -48,6 +48,7 @@ let stationId = "kr1";
 let report = null;
 let grain = "daily";
 let paging = null;
+let savedSource = null;
 
 function setStatus(element, message, error = false) {
   element.textContent = message;
@@ -55,7 +56,8 @@ function setStatus(element, message, error = false) {
 }
 
 function showParameters(preferred = parameter.value) {
-  const available = stations.find(({ id }) => id === station.value).params;
+  const available = source === "file" && savedSource ? savedSource.params :
+    stations.find(({ id }) => id === station.value).params;
   parameter.replaceChildren(...available.map(({ id, label, unit }) => new Option(label + " · " + unit, id)));
   if (available.some(({ id }) => id === preferred)) {
     parameter.value = preferred;
@@ -86,11 +88,18 @@ function syncDates() {
 
 function syncControls() {
   const isFile = source === "file";
+  const linked = isFile && Boolean(savedSource);
   const isPressure = parameter.value === "pressure_hpa";
   const isBuddy = !isFile && station.value !== "ame60" && parameter.value === "t_air";
   byId("review-file-field").hidden = !isFile;
   fileInput.disabled = !isFile;
-  fileInput.required = isFile;
+  fileInput.required = isFile && !linked;
+  byId("review-saved-file").hidden = !linked;
+  byId("review-saved-station").hidden = !linked;
+  station.hidden = linked;
+  station.disabled = linked;
+  fill.disabled = linked && savedSource.passport.location_precision === "unknown";
+  if (fill.disabled) fill.checked = false;
   byId("review-period-hint").textContent = isFile
     ? "Укажите обе даты или оставьте их пустыми, чтобы взять весь период файла."
     : "Можно выбирать несколько лет. До 60 000 исходных строк в одной детальной книге.";
@@ -317,7 +326,7 @@ function paintSummary() {
 function showReport(data, filename) {
   report = data;
   grain = "daily";
-  const stationLabel = stations.find(({ id }) => id === data.station)?.label ?? data.station;
+  const stationLabel = data.station_label ?? stations.find(({ id }) => id === data.station)?.label ?? data.station;
   const selectedDates = dateRange(data.start, data.end);
   const sourceLabel = filename ? "Файл «" + filename + "»" : "Архив";
   const sourceDates = data.source_start && (data.source_start !== data.start || data.source_end !== data.end)
@@ -396,8 +405,9 @@ function selection() {
     }
   }
   const file = source === "file" ? fileInput.files[0] : null;
+  const linked = source === "file" && savedSource && !file;
   const extension = file?.name.split(".").pop().toLowerCase();
-  if (source === "file" && (!file || !Object.hasOwn(fileTypes, extension))) {
+  if (source === "file" && !linked && (!file || !Object.hasOwn(fileTypes, extension))) {
     validationError("Выберите файл с расширением .csv, .json или .xlsx.", fileInput);
     return null;
   }
@@ -428,9 +438,10 @@ function selection() {
   if (file) {
     query.set("filename", file.name);
   }
+  if (linked) query.set("file_id", savedSource.item.id);
   return {
     query,
-    filename: file?.name,
+    filename: file?.name ?? (linked ? savedSource.item.filename : undefined),
     options: file ? { method: "POST", headers: { "Content-Type": fileTypes[extension] }, body: file } : { method: "POST" },
   };
 }
@@ -542,6 +553,11 @@ form.addEventListener("change", (event) => {
   if (target.name === "source" && target.checked) {
     rememberDates();
     source = target.value;
+    if (source === "file" && savedSource) {
+      stationId = savedSource.passport.profile;
+      station.value = stationId;
+    }
+    showParameters();
     resetExternalConfirmation();
     syncDates();
   }
@@ -553,6 +569,8 @@ form.addEventListener("change", (event) => {
     syncDates();
   }
   if (target === fileInput) {
+    if (fileInput.files.length) savedSource = null;
+    showParameters();
     resetExternalConfirmation();
   }
   syncControls();
@@ -602,8 +620,40 @@ async function init() {
     syncControls();
     fields.disabled = false;
     setStatus(status, "");
-  } catch {
-    setStatus(status, "Не удалось получить список станций. Проверьте локальный сервер и обновите страницу.", true);
+    const id = new URLSearchParams(location.search).get("file");
+    if (id) await openSavedSource(id);
+  } catch (error) {
+    setStatus(status, error instanceof TypeError ? "Не удалось связаться с локальным сервером." : error.message, true);
+  }
+}
+
+async function openSavedSource(id) {
+  fields.disabled = true;
+  try {
+    const [item, catalog] = await Promise.all([
+      fetch("/api/files/item?" + new URLSearchParams({id})).then(r => responseData(r, "Исходный файл недоступен.")),
+      fetch("/api/stations").then(r => responseData(r, "Не удалось получить паспорта станций.")),
+    ]);
+    if (item.error) throw new Error(item.error);
+    const passport = catalog.stations.find(s => s.id === item.station);
+    const available = passport?.params.filter(p => item.params.some(column => column.id === p.id));
+    if (!available?.length) throw new Error("В файле нет показателей из паспорта станции.");
+    savedSource = {item, passport, params: available};
+    source = "file";
+    form.querySelector('[name="source"][value="file"]').checked = true;
+    stationId = passport.profile;
+    station.value = stationId;
+    byId("review-saved-file").textContent = "Открыт сохранённый оригинал «" + item.filename + "».";
+    byId("review-saved-station").textContent = passport.label;
+    const filters = item.settings?.filters ?? [];
+    for (const checkbox of form.querySelectorAll('input[name="filter"]')) checkbox.checked = filters.includes(checkbox.value);
+    pressure.value = String(item.settings?.pressure_max ?? "1050");
+    conflict.value = item.settings?.conflict_policy ?? "all";
+    showParameters();
+    syncDates();
+    syncControls();
+  } finally {
+    fields.disabled = false;
   }
 }
 

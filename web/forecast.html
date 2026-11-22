@@ -3,50 +3,104 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#173e32">
-  <title>Прогноз на 3 дня · Метеожурнал</title>
-  <link rel="stylesheet" href="/style.css">
+  <meta name="theme-color" content="#172c23">
+  <title>Прогноз · Метеоархив</title>
+  <link rel="stylesheet" href="/archive.css">
+  <link rel="stylesheet" href="/weather-pages.css">
+  <script type="module" src="/archive-shell.js"></script>
   <script defer src="/forecast.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#content">К прогнозу</a>
-  <header class="masthead">
-    <div class="shell masthead-inner">
-      <a class="brand" href="/">Урочище «Красное»</a>
-    </div>
-  </header>
-  <main class="shell" id="content">
-    <header class="page-heading">
-      <div>
-        <h1>Прогноз на 3 дня</h1>
-        <p>Район Центрально-Лесного заповедника · московское время</p>
-      </div>
-      <div class="page-actions">
-        <button class="button primary" type="button" id="refresh">Обновить прогноз</button>
-        <a class="button secondary" href="/model">Локальная модель</a>
-        <a class="button secondary" href="/precip">Карта осадков</a>
-        <a class="button secondary" href="/">В метеожурнал</a>
-      </div>
-    </header>
-    <p class="status" id="forecast-status" role="status" aria-live="polite">Запрашиваем данные Open-Meteo…</p>
-    <section id="forecast-data" class="ledger" aria-labelledby="forecast-title" hidden>
-      <div class="ledger-heading">
-        <div>
-          <h2 id="forecast-title">Суточный прогноз</h2>
-          <p id="forecast-period"></p>
+  <a class="skip-archive" href="#content">К прогнозу</a>
+  <aside class="side" data-archive-nav></aside>
+  <main class="weather-page forecast-page" id="content" tabindex="-1">
+    <section class="stack" aria-labelledby="forecast-heading">
+      <header>
+        <div class="breadcrumb"><a href="/">Метеоархив</a><span aria-hidden="true">›</span><strong>Прогноз</strong></div>
+        <div class="heading-line weather-heading">
+          <div>
+            <h1 id="forecast-heading">Прогноз</h1>
+            <p class="sub">Краткосрочный прогноз для района заповедника · московское время</p>
+          </div>
+          <span class="tag" id="forecast-source" hidden></span>
         </div>
+        <div class="weather-actions">
+          <button class="btn primary" type="button" id="refresh" disabled>Обновить прогноз</button>
+          <a class="btn line" href="/model">Локальная модель</a>
+          <a class="btn line" href="/precip">Карта осадков</a>
+        </div>
+      </header>
+
+      <p class="weather-status" id="forecast-status" role="status">Запрашиваем данные Open-Meteo…</p>
+
+      <div id="forecast-data" class="stack" hidden>
+        <section class="card" aria-labelledby="forecast-title">
+          <div class="card-head">
+            <div>
+              <h2 id="forecast-title">Ближайшие дни</h2>
+              <p id="forecast-period"></p>
+            </div>
+          </div>
+          <div class="weather-cards" id="forecast-days"></div>
+          <details class="forecast-details">
+            <summary>Суточные значения</summary>
+            <div class="weather-table" tabindex="0" role="region" aria-label="Суточный прогноз по датам">
+              <table aria-label="Суточный прогноз">
+                <thead><tr>
+                  <th scope="col">Дата</th><th scope="col">Минимум, °C</th><th scope="col">Максимум, °C</th>
+                  <th scope="col">Осадки, мм</th><th scope="col">Макс. ветер, м/с</th>
+                </tr></thead>
+                <tbody id="forecast-rows"></tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+
+        <section class="stack" aria-labelledby="forecast-hourly-title">
+          <div class="between forecast-chart-heading">
+            <h2 id="forecast-hourly-title">Почасовой прогноз</h2>
+            <div class="segment" id="forecast-hours" role="group" aria-label="Период почасового прогноза" hidden>
+              <button class="pill lime" type="button" data-hours="24" aria-pressed="true">24 часа</button>
+              <button class="pill lime" type="button" data-hours="48" aria-pressed="false">48 часов</button>
+            </div>
+          </div>
+          <p class="note" id="forecast-hourly-empty" hidden>Почасовые значения недоступны для этого прогноза.</p>
+          <div class="half" id="forecast-charts" hidden>
+            <figure class="card forecast-chart">
+              <div class="card-head">
+                <div><h3>Температура по часам</h3><p>Урочище «Красное» · <span data-hourly-period></span></p></div>
+                <span class="tag">°C</span>
+              </div>
+              <div class="chart-host" id="forecast-temperature"></div>
+              <figcaption><button class="forecast-legend" type="button" aria-pressed="true" aria-controls="forecast-temperature"><span class="swatch"></span>Температура</button></figcaption>
+            </figure>
+            <figure class="card forecast-chart forecast-wind">
+              <div class="card-head">
+                <div><h3>Скорость ветра</h3><p>Урочище «Красное» · <span data-hourly-period></span></p></div>
+                <span class="tag">м/с</span>
+              </div>
+              <div class="chart-host" id="forecast-wind"></div>
+              <figcaption><button class="forecast-legend" type="button" aria-pressed="true" aria-controls="forecast-wind"><span class="swatch"></span>Скорость ветра</button></figcaption>
+            </figure>
+          </div>
+          <details class="card forecast-hourly-details" id="forecast-hourly-details" hidden>
+            <summary>Почасовые значения</summary>
+            <div class="weather-table" tabindex="0" role="region" aria-label="Почасовой прогноз по датам">
+              <table aria-label="Почасовой прогноз">
+                <thead><tr><th scope="col">Дата и время, МСК</th><th scope="col">Температура, °C</th><th scope="col">Ветер, м/с</th></tr></thead>
+                <tbody id="forecast-hourly-rows"></tbody>
+              </table>
+            </div>
+          </details>
+        </section>
       </div>
-      <div class="table-wrap" tabindex="0" aria-label="Суточный прогноз по датам">
-        <table aria-labelledby="forecast-title">
-          <thead><tr>
-            <th scope="col">Дата</th><th scope="col">Минимум, °C</th><th scope="col">Максимум, °C</th>
-            <th scope="col">Осадки, мм</th><th scope="col">Макс. ветер, м/с</th>
-          </tr></thead>
-          <tbody id="forecast-rows"></tbody>
-        </table>
-      </div>
+
+      <footer class="card forecast-provenance">
+        <p class="note">Прогноз внешней модели для точки 56,52° с. ш., 32,87° в. д. внутри границ заповедника. Измерения метеостанций доступны в журнале наблюдений.</p>
+        <p><a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> · <a href="/forecast-example.json" download>Сохранённый ответ API</a> · <a href="https://www.clgz.ru/node/19196?language=ru">Границы заповедника</a> · <a href="/journal">Журнал наблюдений</a></p>
+      </footer>
+      <noscript><p class="note">Включите JavaScript, чтобы загрузить прогноз.</p></noscript>
     </section>
-    <p class="status">Прогноз внешней модели для точки 56,52° с. ш., 32,87° в. д. внутри опубликованных границ заповедника. Измерения станций хранятся в архиве отдельно. <a href="https://www.clgz.ru/node/19196?language=ru">Границы заповедника</a> · <a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> · <a href="/forecast-example.json" download>Сохранённый ответ API</a></p>
   </main>
 </body>
 </html>

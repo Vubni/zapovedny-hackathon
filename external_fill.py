@@ -22,7 +22,7 @@ TIMEOUT = 6
 FIXTURES = Path(__file__).resolve().parent / "results" / "review" / "external"
 SNAPSHOT_START = date(2024, 4, 1)
 SNAPSHOT_END = date(2024, 4, 30)
-LATITUDE, LONGITUDE = 56.52, 32.87
+ARCHIVE_POINT = (56.52, 32.87)
 HOUR = timedelta(hours=1)
 HALF_HOUR = timedelta(minutes=30)
 DAY = timedelta(days=1)
@@ -43,14 +43,15 @@ class Model:
     snapshot: str
     retrieved_at: str
 
-    def url(self, start, end):
+    def url(self, start, end, point):
+        latitude, longitude = point
         fields = ",".join(field for field, _ in self.variables.values())
         if self.id == "era5":
-            params = dict(latitude=LATITUDE, longitude=LONGITUDE, start_date=start,
+            params = dict(latitude=latitude, longitude=longitude, start_date=start,
                           end_date=end, hourly=fields, timezone="GMT", models="era5")
         else:
             params = {"parameters": fields, "community": "SB",
-                      "longitude": LONGITUDE, "latitude": LATITUDE, "start": start.strftime("%Y%m%d"),
+                      "longitude": longitude, "latitude": latitude, "start": start.strftime("%Y%m%d"),
                       "end": end.strftime("%Y%m%d"), "format": "JSON", "time-standard": "UTC"}
         return self.endpoint + "?" + urlencode(params)
 
@@ -81,12 +82,27 @@ _CACHE_LOCK = Lock()
 _FETCHERS = ThreadPoolExecutor(max_workers=4, thread_name_prefix="reanalysis")
 
 
-def _metadata(model, start, end, snapshot):
+def _request_point(query):
+    if "latitude" not in query and "longitude" not in query:
+        return ARCHIVE_POINT
+    latitude, longitude = query.get("latitude"), query.get("longitude")
+    if (type(latitude) not in (int, float) or type(longitude) not in (int, float)
+            or not -90 <= latitude <= 90 or not -180 <= longitude <= 180):
+        raise ValueError("Для внешних оценок нужны числовые широта от −90 до 90 и долгота от −180 до 180")
+    return float(latitude), float(longitude)
+
+
+def _coordinates(point):
+    latitude, longitude = point
+    return {"latitude": latitude, "longitude": longitude}
+
+
+def _metadata(model, start, end, snapshot, point):
     return {"id": model.id, "name": model.name, "model": model.model,
-            "description": model.description, "kind": "reanalysis", "url": model.url(start, end),
+            "description": model.description, "kind": "reanalysis", "url": model.url(start, end, point),
             "mode": "snapshot" if snapshot else "network", "start_utc": start.isoformat(),
             "end_utc": end.isoformat(), "timezone": "UTC", "variable_units": dict(model.variables.values()),
-            "requested_coordinates": {"latitude": LATITUDE, "longitude": LONGITUDE},
+            "requested_coordinates": _coordinates(point),
             "retrieved_at": model.retrieved_at if snapshot else None}
 
 
@@ -98,7 +114,7 @@ def _number(value, param, unit, fill=None):
     return float(normalized) if lower <= normalized <= upper else None
 
 
-def _parse_model(model, body, start, end):
+def _parse_model(model, body, start, end, point):
     """Keep raw provider numbers keyed by the validated UTC hour."""
     if model.id == "era5":
         if body.get("utc_offset_seconds") != 0 or body.get("timezone") not in {"GMT", "UTC"}:
@@ -122,7 +138,9 @@ def _parse_model(model, body, start, end):
 
     if not all(type(n) in (int, float) and isfinite(n) for n in coordinates.values()):
         raise ValueError("В ответе отсутствуют координаты или высота")
-    if abs(coordinates["latitude"] - LATITUDE) > 1 or abs(coordinates["longitude"] - LONGITUDE) > 1:
+    latitude, longitude = point
+    longitude_distance = abs((coordinates["longitude"] - longitude + 180) % 360 - 180)
+    if abs(coordinates["latitude"] - latitude) > 1 or longitude_distance > 1:
         raise ValueError("Координаты в ответе выходят за ожидаемую область")
     values = {}
     for param, (field, unit) in model.variables.items():
@@ -152,8 +170,8 @@ def _parse_model(model, body, start, end):
     return coordinates, values
 
 
-def _load_model(model, start, end, snapshot):
-    info = _metadata(model, start, end, snapshot)
+def _load_model(model, start, end, snapshot, point):
+    info = _metadata(model, start, end, snapshot, point)
     try:
         if snapshot:
             body = json.loads((FIXTURES / model.snapshot).read_bytes())
@@ -164,7 +182,7 @@ def _load_model(model, start, end, snapshot):
                 raise ValueError("Ответ превышает 512 КиБ")
             body = json.loads(data)
             info["retrieved_at"] = datetime.now(UTC).isoformat(timespec="seconds")
-        coordinates, values = _parse_model(model, body, start, end)
+        coordinates, values = _parse_model(model, body, start, end, point)
     except HTTPError as exc:
         return ModelData(dict(info, status="unavailable", error=f"HTTP {exc.code}"), {})
     except (OSError, HTTPException):
@@ -174,14 +192,14 @@ def _load_model(model, start, end, snapshot):
     return ModelData(dict(info, status="available", coordinates=coordinates), values)
 
 
-def _cached_model(model, start, end, snapshot):
-    key = (model.id, start, end, snapshot)
+def _cached_model(model, start, end, snapshot, point):
+    key = (model.id, start, end, snapshot, point)
     with _CACHE_LOCK:
         entry = _CACHE.get(key)
         if entry and entry[0] > monotonic():
             _CACHE.move_to_end(key)
             return entry[1]
-    data = _load_model(model, start, end, snapshot)
+    data = _load_model(model, start, end, snapshot, point)
     ttl = 6 * 3600 if data.metadata["status"] == "available" else 60
     with _CACHE_LOCK:
         _CACHE[key] = (monotonic() + ttl, data)
@@ -202,7 +220,7 @@ def _source_hours(model, stamp):
     return (start, start + HOUR)
 
 
-def _load_sources(ids, stamps, snapshot):
+def _load_sources(ids, stamps, snapshot, point):
     requests = []
     for model_id in ids:
         model = MODELS[model_id]
@@ -211,7 +229,7 @@ def _load_sources(ids, stamps, snapshot):
         else:
             days = {hour.date() for stamp in stamps for hour in _source_hours(model, stamp)}
             start, end = min(days), max(days)
-        future = _FETCHERS.submit(_cached_model, model, start, end, snapshot)
+        future = _FETCHERS.submit(_cached_model, model, start, end, snapshot, point)
         requests.append((model, start, end, future))
     done, _ = wait([request[3] for request in requests], timeout=TIMEOUT)
     results = []
@@ -220,7 +238,7 @@ def _load_sources(ids, stamps, snapshot):
             results.append(future.result())
         else:
             future.cancel()
-            info = _metadata(model, start, end, snapshot)
+            info = _metadata(model, start, end, snapshot, point)
             results.append(ModelData(dict(info, status="unavailable", error="Истекло время ожидания"), {}))
     return results
 
@@ -260,6 +278,7 @@ def _sample(source, param, stamp):
     else:
         value = fmean(values)
     return {"id": model.id, "name": model.name, "model": model.model, "url": info["url"],
+            "coordinates": dict(info["coordinates"]),
             "retrieved_at": info["retrieved_at"], "variable": field, "source_unit": unit,
             "description": model.description, "unit": UNITS[param], "samples": samples,
             "value": value}
@@ -304,10 +323,11 @@ def _eligible_terms(rows, zone, now, subhour):
     return candidates
 
 
-def _apply_estimate(row, param, stamp, sources):
+def _apply_estimate(row, param, stamp, sources, point):
     available = [sample for source in sources if (sample := _sample(source, param, stamp)) is not None]
     count = len(available)
     provenance = {"source_count": count, "unit": UNITS[param], "sources": available,
+                  "requested_coordinates": _coordinates(point),
                   "pressure_reference": "surface" if param == "pressure_hpa" else None}
     if stamp.minute:
         provenance.update(kind="subhour_reanalysis", time_utc=stamp.isoformat(),
@@ -347,6 +367,7 @@ def apply_estimates(report, query):
     ids = tuple(dict.fromkeys(requested))
     if any(model_id not in MODELS for model_id in ids):
         raise ValueError("Неизвестный источник внешних оценок")
+    point = _request_point(query)
 
     rows = [dict(row, synthetic=False) for row in report["rows"] if not row.get("synthetic")]
     rows.extend(_synthetic_rows(rows, start, end, zone))
@@ -364,19 +385,20 @@ def apply_estimates(report, query):
         reason = None
         if candidates:
             stamps = {stamp for _, stamp in candidates}
-            snapshot = SNAPSHOT_START <= start <= end <= SNAPSHOT_END
-            sources = _load_sources(ids, stamps, snapshot)
+            snapshot = point == ARCHIVE_POINT and SNAPSHOT_START <= start <= end <= SNAPSHOT_END
+            sources = _load_sources(ids, stamps, snapshot, point)
 
     for row, stamp in candidates:
         if reason:
             row["estimate_reason"] = reason
         else:
-            _apply_estimate(row, param, stamp, sources)
+            _apply_estimate(row, param, stamp, sources, point)
     counts = Counter(row["estimate_status"] for row in rows)
     source_counts = Counter(sample["id"] for row in rows for sample in (row["provenance"] or {}).get("sources", []))
     report["rows"] = rows
     report["external"] = {"status": "estimated" if counts["estimated"] else "unavailable",
                           "timezone": zone_name, "parameter": param, "unit": UNITS.get(param), "reason": reason,
+                          "requested_coordinates": _coordinates(point),
                           "min_sources": 2, "requested_sources": list(ids), "grid_minutes": 60, "subhour": subhour,
                           "estimated_count": counts["estimated"], "unavailable_count": counts["unavailable"],
                           "synthetic_count": sum(row["synthetic"] for row in rows),

@@ -109,7 +109,11 @@ footer.temperature-shell, .masthead .brand small { font-size: .8rem; }
 .temperature-reason { color: var(--muted); font-size: .95rem; }
 .temperature-detail .button { flex: none; min-height: 32px; padding: 5px 9px; font-size: .95rem; }
 
+.temperature-data { container-type: inline-size; }
 .temperature-months { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr)); gap: 10px; }
+@container (min-width: 704px) and (max-width: 1057px) {
+  .temperature-months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .temperature-month {
   min-width: 0;
   margin: 0;

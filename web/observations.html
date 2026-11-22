@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Наблюдения · Метеоархив</title>
+  <link rel="stylesheet" href="/archive.css">
+  <link rel="stylesheet" href="/observation-chart.css">
+  <link rel="stylesheet" href="/station-map.css">
+  <link rel="stylesheet" href="/observations.css">
+  <script type="module" src="/archive-shell.js"></script>
+  <script type="module" src="/observations.js"></script>
+</head>
+<body>
+  <aside class="side" data-archive-nav></aside>
+  <main id="main">
+    <section class="observations-page" aria-labelledby="observations-title">
+      <header>
+        <div class="breadcrumb">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          <strong>Урочище Красное</strong><span aria-hidden="true">/</span><span>Центрально-Лесной заповедник</span>
+        </div>
+        <div class="heading-line">
+          <h1 id="observations-title">Наблюдения</h1>
+          <a class="btn" href="/files">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10Zm0 0v7h7M8 14h8m-8 3h8"/></svg>
+            Файлы и импорт
+          </a>
+        </div>
+        <p class="sub">Анализ метеоданных Центрально-Лесного заповедника</p>
+      </header>
+
+      <section class="card dash-toolbar" aria-label="Фильтры наблюдений">
+        <div class="dash-controls">
+          <div class="station-controls">
+            <button class="btn line" id="choose-stations" type="button" aria-haspopup="dialog" disabled>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+              Выбрать станции
+            </button>
+            <ul id="selected-stations" class="station-chips" aria-label="Выбранные станции"></ul>
+            <button type="button" id="clear-stations" class="link-button" hidden>Очистить выбор</button>
+          </div>
+          <form id="dashboard-dates" class="date-controls" novalidate>
+            <div class="field"><label for="dash-start">Дата с</label><input type="date" id="dash-start" required aria-describedby="date-error"></div>
+            <div class="field"><label for="dash-end">Дата по</label><input type="date" id="dash-end" required aria-describedby="date-error"></div>
+            <button type="submit" class="btn line">Показать</button>
+            <button type="button" class="btn line" id="all-dates" disabled>Весь период</button>
+          </form>
+        </div>
+        <p class="inline-status" id="station-error" role="status" hidden></p>
+        <p class="inline-status" id="date-error" role="alert" hidden></p>
+        <div class="navigator archive-range" id="archive-range" role="group" aria-label="Диапазон дат архива" hidden>
+          <div class="nav-track">
+            <span class="window" aria-hidden="true"></span>
+            <input type="range" id="range-start" min="0" max="0" step="1" aria-label="Начало диапазона">
+            <input type="range" id="range-end" min="0" max="0" step="1" aria-label="Конец диапазона">
+          </div>
+          <div class="nav-caption" aria-hidden="true"><span id="archive-start"></span><span id="archive-end"></span></div>
+        </div>
+        <hr class="rule controls-rule">
+        <div class="dash-modes">
+          <span class="mode-title" id="mode-label">Тип графиков</span>
+          <div class="segment" role="group" aria-labelledby="mode-label">
+            <button class="pill lime" type="button" data-mode="modern" aria-pressed="true">Современные</button>
+            <button class="pill lime" type="button" data-mode="togu" aria-pressed="false">По пособию ТОГУ</button>
+            <button class="pill lime" type="button" data-mode="semenov" aria-pressed="false">По Семёнову</button>
+          </div>
+          <label class="grouping">Группировка
+            <select id="observation-grain">
+              <option value="day">По суткам</option>
+              <option value="decade">По декадам</option>
+              <option value="month">По месяцам</option>
+              <option value="year">По годам</option>
+            </select>
+          </label>
+          <a id="mode-source" class="small" href="https://www.belchertownweather.com/graphs/" target="_blank" rel="noreferrer">Belchertown ↗</a>
+        </div>
+      </section>
+
+      <div class="between board-title">
+        <h2>Графики</h2>
+        <button type="button" class="btn accent" id="open-chart-catalog" aria-haspopup="dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Добавить график
+        </button>
+      </div>
+      <div class="split" id="primary-observation">
+        <div id="primary-chart"></div>
+        <section class="card focus-card" id="observation-summary" aria-label="Сводка основного графика"></section>
+      </div>
+      <div class="half" id="secondary-observations" hidden></div>
+      <section class="card" id="hidden-observations" hidden>
+        <div class="empty-chart">
+          <h3>Графики скрыты</h3>
+          <p>Добавьте нужные параметры из каталога.</p>
+        </div>
+      </section>
+      <footer><a href="/journal">Журнал наблюдений</a></footer>
+    </section>
+  </main>
+
+  <dialog id="chart-catalog" class="observation-catalog" aria-labelledby="catalog-title">
+    <div class="dialog-card">
+      <div class="between dialog-header">
+        <h2 id="catalog-title">Каталог графиков</h2>
+        <button type="button" class="icon-btn" data-close-catalog aria-label="Закрыть каталог">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <p class="muted catalog-intro">Выберите, что показать за текущий диапазон дат.</p>
+      <div class="catalog-groups" id="observation-catalog-groups"></div>
+      <div class="catalog-footer">
+        <span id="catalog-count" class="small muted"></span>
+        <button type="button" class="btn primary" data-close-catalog>Готово</button>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -86,7 +86,7 @@ async function runViewport(browser, viewport) {
 
   try {
     await step('Загрузка архива и выбор Кр1', async()=>{
-      const navigation = await page.goto(base, {waitUntil:'load'});
+      const navigation = await page.goto(base+'/journal', {waitUntil:'load'});
       assert.equal(navigation.status(),200);
       await page.waitForFunction(()=>document.querySelector('#station')?.value==='kr1' && !document.querySelector('#apply').disabled);
       assert.equal(await page.locator('#param').inputValue(),'pressure_hpa');

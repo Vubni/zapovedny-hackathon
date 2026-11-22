@@ -2,10 +2,11 @@
 import argparse
 import json
 import mimetypes
+import re
 import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
@@ -13,6 +14,7 @@ from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
 from review_service import ReportExpired, create_report, report_excel, report_page
 from review_upload import MAX_BYTES as MAX_REVIEW_UPLOAD
 from station_model import predict
+from station_catalog import register_station, station_list
 from temperature_events import export_events, query_events
 
 WEB = ROOT / "web"
@@ -32,10 +34,16 @@ API = {
     "/api/review.xlsx": "Полный расчёт в редактируемом Excel по token",
     "/api/review-original.xlsx": "Загруженная книга XLSX с отметками на исходном листе и рабочими решениями",
     "/api/model": "Прогноз следующей среднесуточной температуры по станции",
+    "/api/stations": "Каталог и карта станций. POST регистрирует пользовательскую станцию",
+    "/api/observations": "Ряды, покрытие и сравнение станций за общий выбранный период",
+    "/api/files": "Очередь, исходные файлы, предпросмотр и подтверждённые наборы наблюдений",
 }
 WEB_FILES = {
-    "/": "index.html",
-    "/index.html": "index.html",
+    "/": "observations.html",
+    "/index.html": "observations.html",
+    "/observations": "observations.html",
+    "/journal": "index.html",
+    "/files": "files-page.html",
     "/app.js": "app.js",
     "/style.css": "style.css",
     "/import": "import.html",
@@ -61,6 +69,13 @@ WEB_FILES = {
     "/precip.css": "precip.css",
     "/precip-example.json": "precip-example.json",
 }
+for asset in ("archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css",
+              "station-map.js", "station-map.css", "station-map-data.js", "observation-chart.js",
+              "observation-chart.css", "files-page.js", "files-page.css", "weather-pages.css",
+              "fonts/manrope.ttf", "fonts/OFL-Manrope.txt"):
+    WEB_FILES["/" + asset] = asset
+FILE_ACTIONS = {"/api/files/preview": "preview_file", "/api/files/confirm": "confirm_file",
+                "/api/files/discard": "discard_clean"}
 
 
 def ready():
@@ -83,11 +98,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        no_store = self.command == "POST" or self.path.startswith("/api/review")
+        no_store = self.command == "POST" or self.path.startswith(("/api/review", "/api/files", "/api/observations", "/api/stations"))
         self.send_header("Cache-Control", "no-store" if no_store else "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
         if filename:
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            fallback = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+            disposition = f'attachment; filename="{fallback}"'
+            if fallback != filename:
+                disposition += "; filename*=UTF-8''" + quote(filename, safe="")
+            self.send_header("Content-Disposition", disposition)
         self.end_headers()
         self.wfile.write(body)
 
@@ -102,6 +121,25 @@ class Handler(BaseHTTPRequestHandler):
             query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
             if route == "/api":
                 self.send_json(API)
+            elif route == "/api/stations":
+                self.send_json(station_list())
+            elif route == "/api/observations":
+                from observations import chart_data
+                self.send_json(chart_data(query))
+            elif route in ("/api/files", "/api/files/item", "/api/files/preview", "/api/files/original", "/api/files/excel"):
+                import observation_store as store
+                if route == "/api/files":
+                    self.send_json(store.list_files())
+                elif route == "/api/files/item":
+                    self.send_json(store.file_record(query))
+                elif route == "/api/files/preview":
+                    self.send_json(store.get_file(query))
+                elif route == "/api/files/original":
+                    name, kind, body = store.original_file(query)
+                    self.respond(body, kind, filename=name)
+                else:
+                    name, body = store.preview_excel(query)
+                    self.respond(body, XLSX_TYPE, filename=name)
             elif route == "/api/meta":
                 self.send_json(metadata())
             elif route == "/api/series":
@@ -138,10 +176,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(predict(query))
             elif route in WEB_FILES:
                 path = WEB / WEB_FILES[route]
+                if route in ("/", "/index.html") and ("station" in query or query.get("view") == "compare") and "stations" not in query:
+                    path = WEB / "index.html"  # Existing links to audit days, years and paired-station evidence.
                 if not path.is_file():
                     self.send_json({"error":"Файл интерфейса отсутствует. Данные доступны по /api."}, 404)
                     return
-                self.respond(path.read_bytes(), mimetypes.guess_type(path)[0] + "; charset=utf-8")
+                kind = mimetypes.guess_type(path)[0] or "application/octet-stream"
+                self.respond(path.read_bytes(), kind + "; charset=utf-8" if kind.startswith("text/") else kind)
             elif route == "/method":
                 self.respond((ROOT/"docs"/"МЕТОДИКА.md").read_bytes(), "text/plain; charset=utf-8")
             else:
@@ -159,12 +200,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             parts = urlsplit(self.path)
-            if parts.path not in ("/api/import", "/api/review"):
+            file_upload = parts.path == "/api/files/upload"
+            action = parts.path in FILE_ACTIONS or parts.path == "/api/stations"
+            if file_upload or action:
+                origin = self.headers.get("Origin")
+                if origin and origin != "http://" + self.headers.get("Host", ""):
+                    self.send_json({"error": "Откройте Метеоархив по его локальному адресу."}, HTTPStatus.FORBIDDEN)
+                    return
+            if parts.path not in ("/api/import", "/api/review") and not file_upload and not action:
                 self.send_json({"error": "Маршрут отсутствует"}, HTTPStatus.NOT_FOUND)
                 return
             source_format = CONTENT_FORMATS.get(self.headers.get_content_type())
             is_review = parts.path == "/api/review"
-            if not is_review and source_format is None:
+            if parts.path == "/api/import" and source_format is None:
                 self.send_json({"error": "Выберите файл CSV или JSON"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
                 return
             lengths = self.headers.get_all("Content-Length", [])
@@ -175,18 +223,43 @@ class Handler(BaseHTTPRequestHandler):
                 size = int(lengths[0])
             except ValueError:
                 raise ValueError("Указан неверный размер файла") from None
-            if size < 0 or (not is_review and size == 0):
+            if size < 0 or (parts.path == "/api/import" and size == 0):
                 raise ValueError("Файл не содержит данных")
-            maximum = MAX_REVIEW_UPLOAD if is_review else MAX_UPLOAD
+            maximum = 64 * 1024 if action else MAX_REVIEW_UPLOAD if is_review or file_upload else MAX_UPLOAD
             if size > maximum:
-                self.send_json({"error": f"Размер файла превышает {maximum // (1024*1024)} МиБ"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                self.send_json({"error": "Слишком большой запрос настроек" if action else
+                                f"Размер файла превышает {maximum // (1024*1024)} МиБ"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 return
             self.connection.settimeout(10)
             body = self.rfile.read(size)
             if len(body) != size:
                 raise ValueError("Файл загружен не полностью")
             query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
-            if is_review:
+            if action:
+                if body:
+                    if self.headers.get_content_type() != "application/json":
+                        raise ValueError("Для настроек используйте JSON.")
+                    settings = json.loads(body)
+                    if not isinstance(settings, dict):
+                        raise ValueError("Настройки должны быть объектом JSON.")
+                    if parts.path in FILE_ACTIONS:
+                        settings = {key: value for key, value in settings.items() if value is not None}
+                        for key in ("filters", "sources"):
+                            items = settings.get(key)
+                            if isinstance(items, list) and all(isinstance(item, str) for item in items):
+                                settings[key] = ",".join(items)
+                        if any(type(value) not in (str, int) for value in settings.values()):
+                            raise ValueError("Проверьте значения настроек обработки и списки фильтров и источников.")
+                    query.update(settings)
+                if parts.path == "/api/stations":
+                    self.send_json(register_station(query), 201)
+                else:
+                    import observation_store as store
+                    self.send_json(getattr(store, FILE_ACTIONS[parts.path])(query))
+            elif file_upload:
+                from observation_store import upload_file
+                self.send_json(upload_file(query, body, self.headers.get_content_type()), 201)
+            elif is_review:
                 self.send_json(create_report(query, body, self.headers.get_content_type()))
             else:
                 self.send_json(preview_import(body, source_format, query))

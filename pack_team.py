@@ -60,6 +60,11 @@ def pack(destination):
         if hashlib.sha256(database.read_bytes()).hexdigest() != manifest["database_sha256"]:
             raise ValueError("Контрольная сумма базы в комплекте не совпала с манифестом")
         check(project, ["journal.py"], "334/366")
+        check(project, ["-c", "from observations import chart_data; from station_catalog import station_list; "
+                        "r = chart_data(dict(stations='kr1', chart='pressure', start='2024-01-01', "
+                        "end='2024-12-31', grain='month')); "
+                        "print(len(station_list()['stations']), r['coverage'][0]['valid_days'], "
+                        "r['coverage'][0]['valid_months'])"], "3 334 11")
         database.unlink()  # Rehearse a cold rebuild in the temporary extracted copy.
         check(project, ["research_results.py"], "оба наклона")
         check(project, ["journal.py"], "334/366")
@@ -73,7 +78,10 @@ def pack(destination):
                         "r = create_report(q, b'', ''); "
                         "print(r['counts']['excluded'], report_excel(r)[1][:2])"], "38 b'PK'")
         check(project, ["station_model.py", "--output", "trial-model.json"], "Кр1")
-        for rel in ("web/index.html", "web/app.js", "web/import.html", "web/import.js",
+        for rel in ("web/observations.html", "web/observations.js", "web/station-map-data.js",
+                    "web/observation-chart.js", "web/files-page.html", "web/files-page.js",
+                    "web/fonts/manrope.ttf", "web/fonts/OFL-Manrope.txt",
+                    "web/index.html", "web/app.js", "web/import.html", "web/import.js",
                     "web/events.html", "web/events.js", "web/forecast.html", "web/forecast.js",
                     "web/forecast-example.json", "web/calendar.html", "web/calendar.js",
                     "web/calendar.css", "web/review.html", "web/review.js", "web/review.css",
@@ -90,7 +98,9 @@ def pack(destination):
             "В отдельной папке проверены CRC, SHA-256 комплектной базы, запуск с базой и повторная сборка из исходного ZIP, воспроизведение исследования и месячного расчёта, сверка "
             "со всеми 31 исходными строками 29 апреля и импорт 48 наблюдений за 1 апреля.\n"
             "Проверены отбор 38 записей по залипанию, выгрузка XLSX и обучение модели станции из распакованной копии.\n"
-            "Отчёт фактического браузерного прогона этой версии находится в results/browser/acceptance.json.\n",
+            "В Наблюдениях из распакованной копии доступны три архивных станции. "
+            "У Кр1 проходят 334 дня и 11 месяцев давления за 2024 год. "
+            "Протокол HTTP для новых станций и импорта находится в results/observations/workflow.json.\n",
             encoding="utf-8")
         os.replace(packet, destination)
         os.replace(note, destination.with_name("Проверка.txt"))

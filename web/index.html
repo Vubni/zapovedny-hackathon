@@ -8,10 +8,13 @@
   <title>Метеожурнал · Урочище «Красное»</title>
   <link rel="stylesheet" href="style.css">
   <script defer src="app.js"></script>
+  <link rel="stylesheet" href="/legacy-shell.css">
+  <script type="module" src="/archive-shell.js"></script>
 </head>
-<body>
+<body class="legacy-workspace">
+  <aside class="side" data-archive-nav></aside>
   <a class="skip-link" href="#content">К данным наблюдений</a>
-  <header class="masthead">
+  <header class="masthead context-tabs">
     <div class="shell masthead-inner">
       <a class="brand" href="./" aria-label="Метеожурнал, главная">
         <svg width="35" height="35" viewBox="0 0 36 36" fill="none" aria-hidden="true">

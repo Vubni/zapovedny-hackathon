@@ -523,10 +523,13 @@ def options(query):
     return station, param, filters, int(pressure), policy
 
 
-def review(query, records=None):
+def review(query, records=None, *, passport=None):
     """Roll up a reversible selection without reusing or mutating official aggregates."""
     station, param, filters, pressure, policy = options(query)
     config = STATIONS[station]
+    if passport:
+        from dataclasses import replace
+        config = replace(config, minimum_slots=passport["minimum_slots"], slot_minutes=passport["slot_minutes"])
     range_upper = pressure if param == "pressure_hpa" else LIMITS[param][1]
     context = CONTEXT_MINUTES if set(filters) - {"conflicts"} or ("conflicts" in filters and policy == "best") else 0
     fields = {}

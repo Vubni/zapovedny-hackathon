@@ -9,8 +9,11 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/review.css">
   <script defer src="/review.js"></script>
+  <link rel="stylesheet" href="/legacy-shell.css">
+  <script type="module" src="/archive-shell.js"></script>
 </head>
-<body>
+<body class="legacy-workspace">
+  <aside class="side" data-archive-nav></aside>
   <a class="skip-link" href="#content">К форме фильтрации</a>
   <header class="masthead">
     <div class="shell masthead-inner">
@@ -52,11 +55,13 @@
             <label for="review-file">Файл наблюдений</label>
             <input type="file" id="review-file" accept=".csv,.json,.xlsx,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-describedby="review-file-hint">
             <p class="review-hint" id="review-file-hint">CSV в UTF-8, JSON или XLSX, до 12 МиБ. В Excel ищем первую таблицу со столбцом datetime.</p>
+            <p id="review-saved-file" hidden></p>
           </div>
           <div class="review-scope">
             <div class="filter">
               <label for="review-station">Станция</label>
               <select id="review-station" required><option value="">Загрузка…</option></select>
+              <span id="review-saved-station" hidden></span>
             </div>
             <div class="filter">
               <label for="review-param">Параметр</label>

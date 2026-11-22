@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172c23">
+  <title>Файлы и импорт · Метеоархив</title>
+  <link rel="stylesheet" href="/archive.css">
+  <link rel="stylesheet" href="/files-page.css">
+  <script type="module" src="/archive-shell.js"></script>
+  <script type="module" src="/files-page.js"></script>
+</head>
+<body>
+  <aside class="side" data-archive-nav aria-label="Основная навигация"></aside>
+  <main id="main" class="files-main" tabindex="-1">
+    <section aria-busy="true">
+      <header>
+        <div class="breadcrumb"><strong>Урочище Красное</strong><span>/</span><span>Центрально-Лесной заповедник</span></div>
+        <div class="heading-line"><h1>Файлы и импорт</h1></div>
+        <p class="sub" role="status">Загрузка списка файлов…</p>
+      </header>
+    </section>
+  </main>
+  <input id="fileInput" type="file" multiple accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+  <dialog id="files-dialog" class="files-dialog dialog-card" aria-labelledby="files-dialog-title"></dialog>
+</body>
+</html>

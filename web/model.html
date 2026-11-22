@@ -4,121 +4,118 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#173e32">
-  <title>Локальный прогноз температуры · Метеожурнал</title>
-  <link rel="stylesheet" href="/style.css">
+  <meta name="theme-color" content="#172c23">
+  <title>Локальный прогноз температуры · Метеоархив</title>
+  <link rel="stylesheet" href="/archive.css">
   <link rel="stylesheet" href="/model.css">
+  <link rel="stylesheet" href="/weather-pages.css">
+  <script type="module" src="/archive-shell.js"></script>
   <script defer src="/model.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#content">К прогнозу</a>
-  <header class="masthead">
-    <div class="shell masthead-inner">
-      <a class="brand" href="/"><span>Урочище «Красное»<small>Архив метеонаблюдений</small></span></a>
-    </div>
-  </header>
-  <main class="shell model-shell" id="content">
-    <header class="page-heading">
-      <div>
-        <h1>Локальный прогноз температуры</h1>
-        <p>Среднесуточная температура воздуха на следующий календарный день.</p>
-      </div>
-      <div class="page-actions">
-        <a class="button secondary" href="/forecast">Прогноз на 3 дня</a>
-        <a class="button secondary" href="/">В метеожурнал</a>
-      </div>
-    </header>
+  <a class="skip-archive" href="#content">К прогнозу</a>
+  <aside class="side" data-archive-nav></aside>
+  <main class="weather-page model-shell" id="content" tabindex="-1">
+    <section class="stack" aria-labelledby="weather-heading">
+      <header class="weather-header">
+        <div class="breadcrumb"><a href="/">Метеоархив</a><span aria-hidden="true">›</span><a href="/forecast">Прогноз</a><span aria-hidden="true">›</span><strong>Локальная модель</strong></div>
+        <div>
+          <h1 id="weather-heading">Локальный прогноз температуры</h1>
+          <p class="sub">Среднесуточная температура воздуха на следующий календарный день.</p>
+        </div>
+        <div class="weather-actions">
+          <a class="btn line" href="/forecast">Прогноз на 3 дня</a>
+          <a class="btn line" href="/journal">Журнал наблюдений</a>
+        </div>
+      </header>
 
-    <form class="filters model-filters" id="model-form">
-      <div class="filter">
-        <label for="model-station">Станция</label>
-        <select id="model-station" disabled></select>
-      </div>
-      <div class="filter">
-        <label for="model-mode">Источник наблюдений</label>
-        <select id="model-mode" disabled>
-          <option value="archive">Архив станции</option>
-          <option value="manual">Ввести наблюдения</option>
-        </select>
-      </div>
-      <div class="filter">
-        <label for="model-day">Последний день наблюдений</label>
-        <input type="date" id="model-day" aria-describedby="model-hint" required disabled>
-      </div>
-      <div class="filter manual-input" hidden>
-        <label for="model-yesterday">За предыдущий день, °C</label>
-        <input type="number" id="model-yesterday" min="-50" max="45" step="any" inputmode="decimal" disabled>
-      </div>
-      <div class="filter manual-input" hidden>
-        <label for="model-today">За выбранный день, °C</label>
-        <input type="number" id="model-today" min="-50" max="45" step="any" inputmode="decimal" disabled>
-      </div>
-      <button class="button primary model-submit" type="submit" disabled>Рассчитать</button>
-      <p class="model-hint" id="model-hint"></p>
-    </form>
-    <p class="status" id="model-status" role="status">Загружаем модель…</p>
+      <form class="card filters model-filters" id="model-form">
+        <div class="field">
+          <label for="model-station">Станция</label>
+          <select id="model-station" disabled></select>
+        </div>
+        <div class="field">
+          <label for="model-mode">Источник наблюдений</label>
+          <select id="model-mode" disabled>
+            <option value="archive">Архив станции</option>
+            <option value="manual">Ввести наблюдения</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="model-day">Последний день наблюдений</label>
+          <input type="date" id="model-day" aria-describedby="model-hint" required disabled>
+        </div>
+        <div class="field manual-input" hidden>
+          <label for="model-yesterday">За предыдущий день, °C</label>
+          <input type="number" id="model-yesterday" min="-50" max="45" step="any" inputmode="decimal" disabled>
+        </div>
+        <div class="field manual-input" hidden>
+          <label for="model-today">За выбранный день, °C</label>
+          <input type="number" id="model-today" min="-50" max="45" step="any" inputmode="decimal" disabled>
+        </div>
+        <button class="btn primary model-submit" type="submit" disabled>Рассчитать</button>
+        <p class="model-hint" id="model-hint"></p>
+      </form>
+      <p class="weather-status" id="model-status" role="status">Загружаем модель…</p>
 
-    <div class="model-grid" id="model-data" hidden>
-      <section class="ledger model-result" id="model-result" aria-labelledby="model-result-title">
-        <div class="ledger-heading">
-          <div>
-            <h2 id="model-result-title">Расчёт</h2>
-            <p id="model-result-note"></p>
+      <div class="model-grid" id="model-data" hidden>
+        <section class="card ledger model-result" id="model-result" aria-labelledby="model-result-title">
+          <div class="ledger-heading">
+            <div>
+              <h2 id="model-result-title">Расчёт</h2>
+              <p id="model-result-note"></p>
+            </div>
           </div>
-        </div>
-        <dl class="model-readings">
-          <div>
-            <dt>Модель</dt>
-            <dd id="model-prediction"></dd>
+          <dl class="model-readings">
+            <div>
+              <dt>Модель</dt>
+              <dd id="model-prediction"></dd>
+            </div>
+            <div>
+              <dt>«Как сегодня»</dt>
+              <dd id="model-baseline"></dd>
+            </div>
+            <div id="model-observed-row">
+              <dt>Факт в архиве</dt>
+              <dd id="model-observed"></dd>
+            </div>
+          </dl>
+          <div class="model-inputs">
+            <h3>Исходные сутки</h3>
+            <ul id="model-inputs"></ul>
           </div>
-          <div>
-            <dt>«Как сегодня»</dt>
-            <dd id="model-baseline"></dd>
+        </section>
+        <section class="card ledger model-validation" aria-labelledby="model-test-title">
+          <div class="ledger-heading">
+            <div>
+              <h2 id="model-test-title">Проверка на отложенном годе</h2>
+              <p>Средняя абсолютная ошибка (MAE) в °C. Меньше — точнее.</p>
+            </div>
           </div>
-          <div id="model-observed-row">
-            <dt>Факт в архиве</dt>
-            <dd id="model-observed"></dd>
+          <div class="weather-table" tabindex="0" role="region" aria-label="Результаты проверки модели">
+            <table aria-labelledby="model-test-title">
+              <thead>
+                <tr>
+                  <th scope="col">Станция и даты теста</th>
+                  <th scope="col" class="num">Суток</th>
+                  <th scope="col" class="num">Модель</th>
+                  <th scope="col" class="num">«Как сегодня»</th>
+                </tr>
+              </thead>
+              <tbody id="model-test-rows"></tbody>
+            </table>
           </div>
-        </dl>
-        <div class="model-inputs">
-          <h3>Исходные сутки</h3>
-          <ul id="model-inputs"></ul>
-        </div>
-      </section>
-      <section class="ledger model-validation" aria-labelledby="model-test-title">
-        <div class="ledger-heading">
-          <div>
-            <h2 id="model-test-title">Проверка на отложенном годе</h2>
-            <p>Средняя абсолютная ошибка (MAE) в °C. Меньше — точнее.</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table aria-labelledby="model-test-title">
-            <thead>
-              <tr>
-                <th scope="col">Станция и даты теста</th>
-                <th scope="col" class="num">Суток</th>
-                <th scope="col" class="num">Модель</th>
-                <th scope="col" class="num">«Как сегодня»</th>
-              </tr>
-            </thead>
-            <tbody id="model-test-rows"></tbody>
-          </table>
-        </div>
-        <p class="model-test-note" id="model-test-note"></p>
-      </section>
-    </div>
+          <p class="model-test-note" id="model-test-note"></p>
+        </section>
+      </div>
 
-    <details class="ledger model-method">
-      <summary>Как работает модель</summary>
-      <p>Для каждой станции обучена отдельная линейная регрессия. Входы — температура за последние двое последовательных суток и положение целевого дня в годовом цикле. Свежие данные вводятся как средние за завершившиеся сутки.</p>
-      <p>Для теста отложен последний год каждой станции. Модель и правило «как сегодня» оцениваются на одних и тех же днях с пригодными значениями за цель и оба предыдущих дня. Пропуски исключаются. Модель использует только локальные измерения температуры и календарь.</p>
-    </details>
-    <noscript><p class="status">Включите JavaScript, чтобы рассчитать прогноз.</p></noscript>
+      <details class="card ledger model-method">
+        <summary>Как работает модель</summary>
+        <p>Для каждой станции обучена отдельная линейная регрессия. Входы — температура за последние двое последовательных суток и положение целевого дня в годовом цикле. Свежие данные вводятся как средние за завершившиеся сутки.</p>
+        <p>Для теста отложен последний год каждой станции. Модель и правило «как сегодня» оцениваются на одних и тех же днях с пригодными значениями за цель и оба предыдущих дня. Пропуски исключаются. Модель использует только локальные измерения температуры и календарь.</p>
+      </details>
+      <noscript><p class="weather-status">Включите JavaScript, чтобы рассчитать прогноз.</p></noscript>
+    </section>
   </main>
-  <footer class="footer shell">
-    <span>Метеонаблюдения урочища «Красное»</span>
-    <a href="/">К журналу наблюдений</a>
-  </footer>
 </body>
 </html>

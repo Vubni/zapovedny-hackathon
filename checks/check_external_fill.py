@@ -36,9 +36,10 @@ class ExternalFill(unittest.TestCase):
             raw = (fill.FIXTURES / info["file"]).read_bytes()
             model = fill.MODELS[info["id"]]
             self.assertEqual(info["sha256"], hashlib.sha256(raw).hexdigest())
-            self.assertEqual(info["url"], model.url(fill.SNAPSHOT_START_UTC, fill.SNAPSHOT_END_UTC))
+            start, end = fill.SNAPSHOT_START_UTC, fill.SNAPSHOT_END_UTC
+            self.assertEqual(info["url"], model.url(start, end, fill.ARCHIVE_POINT))
             self.assertEqual(info["retrieved_at"], model.retrieved_at)
-            _, series = fill._parse_model(model, json.loads(raw), fill.SNAPSHOT_START_UTC, fill.SNAPSHOT_END_UTC)
+            _, series = fill._parse_model(model, json.loads(raw), start, end, fill.ARCHIVE_POINT)
             for param in fill.UNITS:
                 self.assertEqual(len(series[param]), 768)
                 self.assertEqual(info["count_by_parameter"][param], 768)
@@ -54,10 +55,12 @@ class ExternalFill(unittest.TestCase):
         self.assertEqual(response["external"]["estimated_count"], 24)
         self.assertEqual(row["provenance"]["start_utc"], "2024-04-21T08:00:00+00:00")
         self.assertEqual(row["provenance"]["end_utc"], "2024-04-21T09:00:00+00:00")
+        self.assertEqual(row["provenance"]["requested_coordinates"], {"latitude": 56.52, "longitude": 32.87})
         era, merra = row["provenance"]["sources"]
         self.assertEqual([v["value"] for v in era["samples"]], [10.3, 9.3])
         self.assertEqual(era["value"], 9.8)
         self.assertEqual(merra["value"], 8.2)
+        self.assertEqual(era["coordinates"], {"latitude": 56.5, "longitude": 32.75, "elevation_m": 250.0})
         utc = fill.apply_estimates(report(), dict(QUERY, timezone="UTC"))
         self.assertEqual(utc["rows"][8]["estimate"], row["estimate"])
 
@@ -116,7 +119,7 @@ class ExternalFill(unittest.TestCase):
         self.assertEqual(response["external"]["estimated_count"], 0)
         self.assertEqual(response["rows"][0]["provenance"]["source_count"], 1)
         model = fill.MODELS["merra2"]
-        data = fill._load_model(model, fill.SNAPSHOT_START_UTC, fill.SNAPSHOT_END_UTC, True)
+        data = fill._load_model(model, fill.SNAPSHOT_START_UTC, fill.SNAPSHOT_END_UTC, True, fill.ARCHIVE_POINT)
         first_minute = datetime(2024, 3, 31, 0, 1, tzinfo=fill.UTC)
         self.assertIsNone(fill._sample(data, "t_air", first_minute))
         exact_anchor = first_minute.replace(minute=30)
@@ -166,20 +169,77 @@ class ExternalFill(unittest.TestCase):
         self.assertEqual(result["external"]["estimated_count"], 0)
         self.assertEqual([s["status"] for s in result["external"]["sources"]], ["available", "unavailable"])
 
+    def test_custom_station_points_use_their_own_network_cache(self):
+        first = {"latitude": 53.5, "longitude": 40.0}
+        second = {"latitude": 53.75, "longitude": 40.25}
+        archive = {"latitude": 56.52, "longitude": 32.87}
+        era = json.loads((fill.FIXTURES / fill.MODELS["era5"].snapshot).read_bytes())
+        merra = json.loads((fill.FIXTURES / fill.MODELS["merra2"].snapshot).read_bytes())
+
+        def serve(url, timeout):
+            parts = urlparse(url)
+            params = parse_qs(parts.query)
+            coordinates = {key: float(params[key][0]) for key in first}
+            self.assertIn(coordinates, (first, second))
+            value = 12.0 if coordinates == first else 18.0
+            if parts.netloc == "archive-api.open-meteo.com":
+                body = copy.deepcopy(era)
+                body.update(coordinates)
+                body["hourly"]["temperature_2m"] = [value] * len(body["hourly"]["time"])
+            else:
+                self.assertEqual(parts.netloc, "power.larc.nasa.gov")
+                body = copy.deepcopy(merra)
+                body["geometry"]["coordinates"] = [coordinates["longitude"], coordinates["latitude"], 200.0]
+                hours = body["properties"]["parameter"]["T2M"]
+                body["properties"]["parameter"]["T2M"] = dict.fromkeys(hours, value + 4)
+            return io.BytesIO(json.dumps(body).encode())
+
+        with patch.object(fill, "_CACHE", OrderedDict()), patch.object(fill, "urlopen", side_effect=serve) as opening:
+            reserve = fill.apply_estimates(report(), dict(QUERY, **archive))
+            first_result = fill.apply_estimates(report(), dict(QUERY, **first))
+            second_result = fill.apply_estimates(report(), dict(QUERY, **second))
+            replay = fill.apply_estimates(report(), dict(QUERY, **first))
+        self.assertEqual(opening.call_count, 4)
+        self.assertEqual(reserve["rows"][11]["estimate"], 9.0)
+        self.assertEqual([source["mode"] for source in reserve["external"]["sources"]], ["snapshot", "snapshot"])
+        self.assertEqual(first_result["rows"][11]["estimate"], 14.0)
+        self.assertEqual(second_result["rows"][11]["estimate"], 20.0)
+        self.assertEqual(replay, first_result)
+        self.assertEqual(second_result["external"]["requested_coordinates"], second)
+        provenance = second_result["rows"][11]["provenance"]
+        self.assertEqual(provenance["requested_coordinates"], second)
+        for source in provenance["sources"]:
+            self.assertEqual({key: source["coordinates"][key] for key in second}, second)
+            params = parse_qs(urlparse(source["url"]).query)
+            self.assertEqual({key: float(params[key][0]) for key in second}, second)
+
+    def test_malformed_station_coordinates_stop_before_network(self):
+        invalid = ({"latitude": 56.52}, {"longitude": 32.87}, {"latitude": True, "longitude": 32.87},
+                   {"latitude": "56.52", "longitude": 32.87}, {"latitude": 91, "longitude": 0},
+                   {"latitude": 56.52, "longitude": float("nan")}, {"latitude": 0, "longitude": 181})
+        with patch.object(fill, "_load_sources") as loader:
+            for coordinates in invalid:
+                with self.subTest(coordinates=coordinates), self.assertRaises(ValueError):
+                    fill.apply_estimates(report(), dict(QUERY, **coordinates))
+        loader.assert_not_called()
+
     def test_http_error_and_incompatible_payload(self):
         start, end = fill.SNAPSHOT_START_UTC, fill.SNAPSHOT_END_UTC
         model = fill.MODELS["merra2"]
         with patch.object(fill, "urlopen", side_effect=HTTPError(model.endpoint, 503, "unavailable", {}, None)):
-            self.assertEqual(fill._load_model(model, start, end, False).metadata["error"], "HTTP 503")
+            data = fill._load_model(model, start, end, False, fill.ARCHIVE_POINT)
+        self.assertEqual(data.metadata["error"], "HTTP 503")
         body = json.loads((fill.FIXTURES / model.snapshot).read_bytes())
         body["header"]["sources"].append("GEOS-IT")
         with patch.object(fill, "urlopen", return_value=io.BytesIO(json.dumps(body).encode())):
-            self.assertEqual(fill._load_model(model, start, end, False).metadata["status"], "unavailable")
+            data = fill._load_model(model, start, end, False, fill.ARCHIVE_POINT)
+        self.assertEqual(data.metadata["status"], "unavailable")
 
     def test_wait_budget_reports_unavailable_source(self):
         pending = Future()
         with patch.object(fill._FETCHERS, "submit", return_value=pending), patch.object(fill, "TIMEOUT", 0):
-            data, = fill._load_sources(("era5",), {datetime(2024, 5, 2, 12, tzinfo=fill.UTC)}, False)
+            stamps = {datetime(2024, 5, 2, 12, tzinfo=fill.UTC)}
+            data, = fill._load_sources(("era5",), stamps, False, fill.ARCHIVE_POINT)
         self.assertTrue(pending.cancelled())
         self.assertEqual(data.metadata["status"], "unavailable")
         self.assertEqual(data.metadata["error"], "Истекло время ожидания")

@@ -76,7 +76,7 @@ async function check() {
     const page = await browser.newPage({viewport: {width: 390, height: 844}, hasTouch: true});
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
-    await page.goto(base);
+    await page.goto(base + '/journal');
     await page.locator('a[href="/calendar"]').first().click();
     await waitForYear(page, "Кр1 · поляна · 2025");
     const evidence = {kr1: await assertYear(page, "kr1", 2025)};
@@ -166,7 +166,10 @@ async function check() {
       document: document.documentElement.scrollWidth,
       monthColumns: getComputedStyle(document.querySelector("#temperature-months")).gridTemplateColumns.split(" ").length,
     }));
-    assert.equal(evidence.desktop.monthColumns, 6);
+    assert.equal(evidence.desktop.monthColumns, 4);
+    await page.setViewportSize({width: 1600, height: 900});
+    assert.equal(await page.locator("#temperature-months").evaluate(element =>
+      getComputedStyle(element).gridTemplateColumns.split(" ").length), 6);
     assert.ok(evidence.desktop.document <= evidence.desktop.viewport);
     assert.deepEqual(errors, []);
     await fs.writeFile(report, JSON.stringify(evidence, null, 2) + "\n");
