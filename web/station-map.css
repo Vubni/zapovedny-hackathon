@@ -142,6 +142,7 @@
 }
 
 .station-map-marker-area { width: 43px; height: 43px; outline: 1px dashed #326847; outline-offset: 4px; }
+.station-map-overview-marker { width: 42px; height: 42px; font-size: 15px; }
 .station-map-marker[aria-pressed="true"] { border-color: var(--lime, #d7e950); --selection-ring: #20563b; }
 .station-map-marker[aria-pressed="mixed"] { border-color: #e5f0e5; --selection-ring: #61896f; }
 .station-map-marker:hover, .station-map-marker:focus { z-index: 1; }

@@ -64,17 +64,21 @@ function archiveHint(station) {
     return "В подтверждённых наблюдениях нет двух последовательных суток с пригодной средней температурой. Можно ввести две суточные температуры вручную.";
   }
   const { first_source_day: start, last_source_day: end } = station.archive;
-  return `Доступные даты исходных наблюдений: ${formatPeriod(start, end)}. Для расчёта нужны пригодные измерения за выбранные и предыдущие сутки.`;
+  return `Доступны даты ${formatPeriod(start, end)}. Для расчёта нужны пригодные измерения за выбранные и предыдущие сутки.`;
 }
 
 function refreshControls() {
   const station = stations.get(stationSelect.value);
   const manual = modeSelect.value === "manual";
+  const lastCompleteDay = station?.last_complete_day || "";
+  if (manual && (!sourceDays.manual || (lastCompleteDay && sourceDays.manual > lastCompleteDay))) {
+    sourceDays.manual = lastCompleteDay;
+  }
   stationSelect.disabled = !station;
   modeSelect.disabled = !station;
   form.dataset.manual = String(manual);
   dayInput.min = manual ? "" : station?.archive?.first_source_day || "";
-  dayInput.max = manual ? "" : station?.archive?.last_source_day || "";
+  dayInput.max = manual ? lastCompleteDay : station?.archive?.last_source_day || "";
   dayInput.value = sourceDays[modeSelect.value];
   dayInput.disabled = !canCalculate();
   submit.disabled = !canCalculate();
@@ -83,8 +87,9 @@ function refreshControls() {
     input.required = manual;
     input.disabled = !manual;
   }
+  const calendar = station?.calendar_label ? ` Календарь расчёта — ${station.calendar_label}.` : "";
   find("model-hint").textContent = !station ? "" : manual
-    ? "Введите средние температуры воздуха выбранной станции за два последовательных завершившихся дня по её календарю."
+    ? `Введите средние температуры воздуха выбранной станции за два последовательных завершившихся дня.${calendar}`
     : archiveHint(station);
 }
 
@@ -139,7 +144,7 @@ function renderValidation({ training, tests, transfer_tests: transfer }) {
   if (tests.length) testResults.append(renderTestTable("Отложенные даты", "dates", tests, station));
   if (transfer.length) testResults.append(renderTestTable("Проверка переноса на исключённую станцию", "transfer", transfer, station));
   const dates = formatPeriod(training.first_target_day, training.last_target_day);
-  find("model-test-note").textContent = `Общая модель обучена на архиве заповедника: ${countNumber.format(training.days)} примеров за ${dates}. Точность в других районах пока не проверялась.`;
+  find("model-test-note").textContent = `Общая модель обучена на ${countNumber.format(training.days)} примерах из архива заповедника за ${dates}. Точность в других районах пока не проверялась.`;
 }
 
 function highlightTests() {

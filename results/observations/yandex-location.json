@@ -50,6 +50,7 @@
   },
   "provider_request_blocked": true,
   "local_rectangle_selection": true,
+  "local_map_retained_offline": true,
   "selection_without_coordinates_in_dialog": true,
   "russia_view_crosses_antimeridian": true,
   "layouts": [

@@ -12,6 +12,8 @@ export function mountTimeline(panel, onEdit) {
   const track = find('.nav-track');
   const bands = find('.date-range-bands');
   const ticks = find('.timeline-ticks');
+  const help = find('.timeline-help');
+  const instructions = help.textContent;
   const scope = find('[data-zoom]');
   const picker = find('[data-interval]');
   const prev = find('[data-prev]');
@@ -132,6 +134,9 @@ export function mountTimeline(panel, onEdit) {
       periods = nextPeriods;
       active = Math.min(active, periods.length - 1);
       pending = hasDraft;
+      help.textContent = pending
+        ? 'Нажмите «Показать», чтобы применить введённые интервалы и продолжить выбор на шкале.'
+        : instructions;
       if (newBounds || !old || (!selecting && (oldSpan !== span() || value().start > right || value().end < left))) centerOnInterval();
       picker.closest('label').hidden = periods.length <= 1;
       const options = periods.map((p, i) => new Option('Интервал ' + (i+1) + ' · ' + label(p.start) + ' — ' + label(p.end), String(i)));

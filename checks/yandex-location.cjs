@@ -193,10 +193,20 @@ async function check(base) {
     const eastMarker = overview.getByRole("button", {name: chukotka.label, exact: true});
     await eastMarker.waitFor();
     const eastBox = await eastMarker.boundingBox();
-    const westBox = await overview.locator(".station-map-marker-area").boundingBox();
+    const westGroup = overview.locator('.station-map-overview-marker[aria-label*="Кр1"]');
+    await westGroup.waitFor();
+    assert.equal(await westGroup.textContent(), "6");
+    const westBox = await westGroup.boundingBox();
     assert.ok(eastBox.x > westBox.x, "Чукотка за 180° показана восточнее заповедника");
     await overview.getByRole("button", {name: "К станциям"}).click();
     await eastMarker.waitFor();
+    const onlineRequests = blocked.length;
+    await page.evaluate(() => Object.defineProperty(navigator, "onLine", {value: false}));
+    await yandexButton.click();
+    assert.equal(await localButton.getAttribute("aria-pressed"), "true");
+    assert.equal(await frame.count(), 0);
+    assert.equal(blocked.length, onlineRequests);
+    assert.match(await overview.locator(".station-provider-caption").textContent(), /Схема станций доступна/);
     assert.deepEqual(errors, []);
     assert.ok(blocked.some(url => url.startsWith(`${yandex}${widgetPath}`)));
     return {
@@ -205,6 +215,7 @@ async function check(base) {
       iframe: { origin: yandex, path: widgetPath, loading: "lazy", requests_before_explicit_choice: 0, initial, located },
       provider_request_blocked: true,
       local_rectangle_selection: true,
+      local_map_retained_offline: true,
       selection_without_coordinates_in_dialog: true,
       russia_view_crosses_antimeridian: true,
       layouts,

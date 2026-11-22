@@ -211,7 +211,10 @@ export function mountYandexLocation(viewport, callbacks) {
   }
 
   function switchMode(next) {
-    if (next === mode) return;
+    if (next === mode) {
+      if (next === 'local') caption.hidden = true;
+      return;
+    }
     mode = next;
     const online = next === 'yandex';
     column.dataset.mapProvider = 'local';
@@ -226,6 +229,7 @@ export function mountYandexLocation(viewport, callbacks) {
     for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.provider === next));
     surface.hidden = pointList.hidden = true;
     caption.hidden = !online;
+    link.hidden = false;
     viewport.hidden = false;
     for (const node of localNotes) node.hidden = false;
     if (online) {
@@ -241,7 +245,14 @@ export function mountYandexLocation(viewport, callbacks) {
   });
   controls.addEventListener('click', event => {
     const button = event.target.closest('button');
-    if (button && !button.disabled) switchMode(button.dataset.provider);
+    if (!button || button.disabled) return;
+    if (button.dataset.provider === 'yandex' && !navigator.onLine) {
+      caption.hidden = false;
+      link.hidden = true;
+      note.textContent = 'Для Яндекс Карт нужно подключение к интернету. Схема станций доступна.';
+      return;
+    }
+    switchMode(button.dataset.provider);
   });
   if (window.IntersectionObserver) {
     observer = new IntersectionObserver(entries => {

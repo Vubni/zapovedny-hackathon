@@ -386,7 +386,10 @@ function renderMode() {
 }
 
 function syncHandles() {
-  timeline.update(bounds, state.intervals, dateRows.children.length !== state.intervals.length);
+  const rows = readDateRows();
+  const hasDraft = rows.length !== state.intervals.length || (rows.length > 1 &&
+    rows.some((row, index) => row.start !== state.intervals[index].start || row.end !== state.intervals[index].end));
+  timeline.update(bounds, state.intervals, hasDraft);
 }
 
 function applyDateBounds() {
@@ -455,6 +458,7 @@ function commitIntervals(intervals, { immediate = true, redraw = false, retry = 
 function dateChange({ immediate = false } = {}) {
   setStatus(get("date-result"), "");
   const rows = readDateRows();
+  if (rows.length > 1 && !immediate) syncHandles();
   for (const [index, { start, end, startInput, endInput }] of rows.entries()) {
     const fields = [startInput, endInput];
     const prefix = rows.length > 1 ? `Интервал ${index + 1}. ` : "";

@@ -4,7 +4,7 @@ import json
 import os
 import unittest
 from contextlib import closing
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from statistics import fmean
 from tempfile import TemporaryDirectory
@@ -161,6 +161,53 @@ class StationModelTest(unittest.TestCase):
         early = predict({"station": "ame60", "day": "1992-07-02"})
         self.assertEqual(early["fit"]["kind"], "baseline")
         self.assertEqual(early["prediction_c"], early["baseline_c"])
+
+    def test_completed_days_use_reporting_and_confirmed_source_timezones(self):
+        key = "test-model-calendar"
+        register_station({"id": key, "label": "Проверка календаря прогноза"})
+
+        def publish(name, days, zone=None):
+            rows = ["datetime,t_air", *(
+                f"{day} {hour:02d}:15,{temperature}"
+                for day, temperature in days for hour in range(18)
+            )]
+            body = ("\n".join(rows) + "\n").encode()
+            file = upload_file({"filename": name, "station": key}, body, "text/csv")
+            request = {"id": file["id"], "station": key, "filters": "", "fill": "none"}
+            if zone:
+                request["timezone"] = zone
+            confirm_file({**request, "revision": preview_file(request)["revision"]})
+
+        publish("default.csv", [("2026-11-19", 1), ("2026-11-20", 2), ("2026-11-21", 3)])
+        manual = {"mode": "manual", "day": "2026-11-21", "today": "3", "yesterday": "2"}
+        before_moscow_midnight = datetime(2026, 11, 21, 20, 59, tzinfo=timezone.utc)
+        with patch("station_model.utc_now", return_value=before_moscow_midnight):
+            with self.assertRaisesRegex(ValueError, "Europe/Moscow"):
+                predict({**manual, "station": "kr1"})
+        moment = datetime(2026, 11, 21, 21, 30, tzinfo=timezone.utc)
+        with patch("station_model.utc_now", return_value=moment):
+            stations = {entry["id"]: entry for entry in model_catalog()["stations"]}
+            self.assertEqual((stations["kr1"]["calendar_timezone"], stations["kr1"]["last_complete_day"]),
+                             ("Europe/Moscow", "2026-11-21"))
+            self.assertEqual((stations[key]["calendar_timezone"], stations[key]["last_complete_day"]),
+                             ("UTC", "2026-11-20"))
+            self.assertEqual(predict({**manual, "station": "kr1"})["target_day"], "2026-11-22")
+            with self.assertRaisesRegex(ValueError, "UTC"):
+                predict({**manual, "station": key})
+            with self.assertRaisesRegex(ValueError, "завершившиеся сутки"):
+                predict({"station": key, "day": "2026-11-21"})
+            self.assertEqual(stations[key]["archive"]["last_source_day"], "2026-11-20")
+            self.assertIsNone(predict({"station": key})["observed_c"])
+
+            publish("moscow.csv", [("2026-11-21", 4)], "Europe/Moscow")
+            stations = {entry["id"]: entry for entry in model_catalog()["stations"]}
+            self.assertEqual(stations[key]["archive"]["last_source_day"], "2026-11-21")
+            self.assertEqual(stations[key]["last_complete_day"], "2026-11-20")
+            self.assertEqual(predict({"station": key})["baseline_c"], 4)
+
+        utc_midnight = datetime(2026, 11, 22, tzinfo=timezone.utc)
+        with patch("station_model.utc_now", return_value=utc_midnight):
+            self.assertEqual(predict({**manual, "station": key})["target_day"], "2026-11-22")
 
 
 if __name__ == "__main__":

@@ -81,6 +81,8 @@ def pack(destination):
         for rel in ("web/observations.html", "web/observations.js", "web/chart-archive.js", "web/station-map-data.js",
                     "web/observation-chart.js", "web/files-page.html", "web/files-page.js",
                     "web/yandex-location.js", "web/yandex-station-sdk.js", "web/coverage-overview.js",
+                    "web/russia-map-data.js", "web/precip-boundary.js", "web/observation-timeline.js",
+                    "web/reserve-brand.css", "web/clgz-logo.png", "docs/КАРТА.md",
                     "web/observation-indicators.js", "admin_auth.py", "web/operator.html",
                     "web/fonts/manrope.ttf", "web/fonts/OFL-Manrope.txt",
                     "web/index.html", "web/app.js", "web/import.html", "web/import.js",

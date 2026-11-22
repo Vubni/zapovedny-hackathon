@@ -333,6 +333,41 @@ async function run() {
     assert.equal(await overview.getByRole('checkbox', {name: /Кр2/}).isChecked(), true);
     if (process.env.METEO_MAP_SCREENSHOTS) await page.screenshot({path: '/tmp/station-overview-desktop.png'});
 
+    await overview.getByRole('button', {name: 'Вся Россия'}).click();
+    const cluster = overview.locator('.station-map-overview-marker');
+    await cluster.waitFor();
+    assert.equal(await cluster.textContent(), '7');
+    assert.match(await cluster.getAttribute('aria-label'), /7 станций рядом.*Кр1.*Восточный берег/);
+    assert.equal(await overviewArea.isHidden(), true);
+    assert.equal(await cluster.getAttribute('aria-pressed'), 'mixed');
+    assert.equal(await overview.locator('[data-overview-marker-note]').isVisible(), true);
+    assert.equal(await overview.locator('[data-area-note]').isHidden(), true);
+
+    const actualPositions = await overviewMap.evaluate(map => {
+      const point = element => ({x: parseFloat(element.style.left), y: parseFloat(element.style.top)});
+      const {x, y} = map.getBoundingClientRect();
+      return {
+        offset: {x: x + map.clientLeft, y: y + map.clientTop},
+        area: point(map.querySelector('.station-map-marker-area')),
+        east: point(map.querySelector('[aria-label="Восточный берег, Западный берег"]')),
+      };
+    });
+    const {offset, area: geoArea, east: geoEast} = actualPositions;
+    await boxSelect(page, {left: offset.x + geoArea.x - 30, top: offset.y + geoArea.y - 28,
+      right: offset.x + (geoEast.x + geoArea.x) / 2, bottom: offset.y + geoArea.y + 20});
+    await overviewResult(['kr1', 'kr2', 'ame60', 'field-check', 'testing-ame']);
+    assert.equal(await overview.getByRole('checkbox', {name: /Восточный берег/}).isChecked(), false);
+    await cluster.click();
+    assert.equal(await selectedList.getByRole('checkbox').count(), 7);
+    assert.equal(await cluster.getAttribute('aria-pressed'), 'true');
+    if (process.env.METEO_MAP_SCREENSHOTS) await overview.screenshot({path: '/tmp/station-overview-cluster.png'});
+    await overview.getByRole('button', {name: /Показать на карте: Кр1/}).click();
+    await cluster.waitFor({state: 'hidden'});
+    await overviewArea.waitFor();
+    assert.equal(await overviewArea.textContent(), '3');
+    assert.equal(await overview.locator('[data-area-note]').isVisible(), true);
+    assert.equal(await exact.isVisible(), true);
+
     await page.setViewportSize({width: 390, height: 780});
     assert.ok((await overviewList.boundingBox()).y > (await overviewMap.boundingBox()).y);
     assert.ok(await overview.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
@@ -341,7 +376,7 @@ async function run() {
     assert.equal(await overviewMap.count(), 0);
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
-    console.log('Карта станций: встроенная карта, паспорта и типы местности, выбор для статистики, синхронизация с диалогом, рамка мышью и касанием, Ctrl/⌘, Escape, перемещение, регистрация, 1280 и 390 px.');
+    console.log('Карта станций: обзорные группы, рамка по реальным точкам, паспорта, синхронизация с диалогом, мышь и касания, регистрация, 1280 и 390 px.');
   } finally {
     await browser.close();
   }

@@ -1,0 +1,108 @@
+{
+  "stationOptions": 4,
+  "archive": {
+    "station": "kr1",
+    "target": "2025-12-31",
+    "prediction_c": -6.568205032593281,
+    "baseline_c": -6.519583333333333,
+    "observed_c": -8.501041666666667,
+    "training_through": "2024-12-31"
+  },
+  "newStation": {
+    "initialArchive": null,
+    "separatedDaysArchive": null,
+    "defaultManualDay": "2026-11-21",
+    "calendar": "UTC",
+    "manual": {
+      "station": "test-model-new-station",
+      "mode": "manual",
+      "source_day": "2026-05-17",
+      "target_day": "2026-05-18",
+      "inputs": [
+        {
+          "day": "2026-05-16",
+          "temperature_c": 9.5,
+          "origin": "manual"
+        },
+        {
+          "day": "2026-05-17",
+          "temperature_c": 13.25,
+          "origin": "manual"
+        }
+      ],
+      "prediction_c": 13.612214150352647,
+      "baseline_c": 13.25,
+      "observed_c": null,
+      "fit": {
+        "kind": "transfer",
+        "training_through": "2025-12-31"
+      }
+    },
+    "confirmed": {
+      "station": "test-model-new-station",
+      "mode": "archive",
+      "source_day": "2026-05-18",
+      "target_day": "2026-05-19",
+      "inputs": [
+        {
+          "day": "2026-05-17",
+          "temperature_c": 10,
+          "origin": "confirmed"
+        },
+        {
+          "day": "2026-05-18",
+          "temperature_c": 12,
+          "origin": "confirmed"
+        }
+      ],
+      "prediction_c": 12.16417942535669,
+      "baseline_c": 12,
+      "observed_c": null,
+      "fit": {
+        "kind": "transfer",
+        "training_through": "2025-12-31"
+      }
+    }
+  },
+  "historical": [
+    {
+      "station": "ame60",
+      "days": 249,
+      "model_mae_c": 1.8499057231635208,
+      "baseline_mae_c": 1.887049778059607
+    },
+    {
+      "station": "kr1",
+      "days": 365,
+      "model_mae_c": 1.7225118089351306,
+      "baseline_mae_c": 1.7260424429223744
+    },
+    {
+      "station": "kr2",
+      "days": 353,
+      "model_mae_c": 1.6959863960877422,
+      "baseline_mae_c": 1.706366160960649
+    }
+  ],
+  "transfer": [
+    {
+      "station": "ame60",
+      "days": 0,
+      "reason": "До начала теста отсутствуют обучающие данные других станций."
+    },
+    {
+      "station": "kr1",
+      "days": 365,
+      "model_mae_c": 1.7218574723848705,
+      "baseline_mae_c": 1.7260424429223744
+    },
+    {
+      "station": "kr2",
+      "days": 353,
+      "model_mae_c": 1.6949372806225693,
+      "baseline_mae_c": 1.706366160960649
+    }
+  ],
+  "missingDay": "Для прогноза нужны двое последовательных суток с пригодной среднесуточной температурой. Нет пригодной температуры за 2000-01-09, 2000-01-10",
+  "mobileWidth": 390
+}

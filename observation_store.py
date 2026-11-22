@@ -267,13 +267,15 @@ def _settings(query, default_station, *, allow_legacy_buddy=False):
         raise ValueError("Выберите фильтры из списка.")
     filters = [item for item in allowed if item in requested]
     filling = fill_settings(query)
-    zone = subhour = pressure_reference = None
+    zone = query.get("timezone") or None
+    if zone is not None and zone not in ZONES:
+        raise ValueError("Укажите часовой пояс исходных сроков: UTC или МСК.")
+    subhour = pressure_reference = None
     sources = []
     if filling["fill_external"]:
         if not station["archive"] and station.get("location_precision") != "exact":
             raise ValueError("Для внешней оценки укажите координаты в паспорте станции.")
-        zone = query.get("timezone")
-        if zone not in ZONES:
+        if zone is None:
             raise ValueError("Для внешней оценки укажите часовой пояс исходных сроков: UTC или МСК.")
         subhour = query.get("subhour") or "skip"
         if subhour not in {"skip", "interpolate"}:
@@ -916,7 +918,7 @@ def _legacy_params(db, file_id):
     return [item["id"] if isinstance(item, dict) else item for item in fields]
 
 
-def _merge_terms(db, stamp, candidates, legacy):
+def _merge_terms(db, stamp, candidates, legacy, temperature_calendars):
     merged = {"datetime": stamp, "synthetic": True, "declared": [], "estimates": {}}
     declared = set()
     for entry in candidates:
@@ -940,13 +942,19 @@ def _merge_terms(db, stamp, candidates, legacy):
             declared.add(param)
             if param in term:
                 merged[param] = term[param]
+                if param == "t_air" and temperature_calendars is not None:
+                    file_id = entry["file_id"]
+                    if file_id not in temperature_calendars:
+                        meta, = db.execute("SELECT confirmed_meta FROM files WHERE id=?", (file_id,)).fetchone()
+                        temperature_calendars[file_id] = json.loads(meta)["settings"].get("timezone")
+                    merged["temperature_timezone"] = temperature_calendars[file_id]
             elif param in estimates:
                 merged["estimates"][param] = dict(estimates[param], synthetic=False)
     merged["declared"] = [param for param in PARAMS if param in declared]
     return merged
 
 
-def confirmed_rows(station_id, start, end):
+def confirmed_rows(station_id, start, end, *, include_temperature_timezone=False):
     """Yield one row per time with the latest real declaration for each parameter."""
     first, last = _limits(start, end)
     with _database() as db:
@@ -959,8 +967,9 @@ def confirmed_rows(station_id, start, end):
             (station_id, first, last),
         )
         legacy = {}
+        temperature_calendars = {} if include_temperature_timezone else None
         for stamp, candidates in groupby(records, lambda row: row["time"]):
-            yield _merge_terms(db, stamp, candidates, legacy)
+            yield _merge_terms(db, stamp, candidates, legacy, temperature_calendars)
 
 
 def confirmed_days(station_id, start, end):

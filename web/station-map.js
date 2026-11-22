@@ -4,10 +4,13 @@ const reserve = {latitude: 56.52, longitude: 32.87};
 const russiaExtent = [{latitude: 41, longitude: 19}, {latitude: 82.3, longitude: -169}];
 const initialScale = 410;
 const maxScale = 9600;
+const overviewScale = 40;
+const markerSpacing = 44;
 const degrees = Math.PI / 180;
 let mapId = 0;
 let passportId = 0;
 const coordinateFormat = new Intl.NumberFormat('ru', {maximumFractionDigits: 5});
+const stationPlural = new Intl.PluralRules('ru');
 const terrains = {
   clearing: ['Поляна', '#5e6b2d'],
   field: ['Поле', '#8a5628'],
@@ -68,6 +71,11 @@ function stationGroups(stations) {
   return [...groups.values()];
 }
 
+function toggleState(stations, ids) {
+  const count = stations.filter(station => ids.has(station.id)).length;
+  return count === stations.length ? 'true' : count ? 'mixed' : 'false';
+}
+
 function terrainType(station) {
   return Object.hasOwn(terrains, station.terrain) ? station.terrain : 'unknown';
 }
@@ -108,9 +116,12 @@ function stationPassport(station, locationLabel, id) {
   return panel;
 }
 
-function createMap(viewport, onPick, onSelect) {
+function createMap(viewport, onPick, onSelect, onToggle) {
   const canvas = viewport.querySelector('canvas');
   const overlay = viewport.querySelector('.station-map-markers');
+  const overviewNote = viewport.parentElement.querySelector('[data-overview-marker-note]');
+  const areaNote = viewport.parentElement.querySelector('[data-area-note]');
+  const overviewMarkers = new Map();
   const scaleLine = viewport.querySelector('.station-map-scale');
   const frame = viewport.querySelector('.station-map-frame');
   const modes = [...viewport.querySelectorAll('[data-map-mode]')];
@@ -129,6 +140,7 @@ function createMap(viewport, onPick, onSelect) {
   let height = 0;
   let pendingFrame;
   let markers = [];
+  let selection = new Set();
   let draft = null;
   let fittedPoints = null;
   let mode = 'select';
@@ -198,6 +210,67 @@ function createMap(viewport, onPick, onSelect) {
     context.lineWidth = 0.75;
     context.stroke();
     context.restore();
+  }
+
+  function resolveOverviewMarker(groups, active) {
+    const stations = groups.flatMap(group => group.stations);
+    const key = JSON.stringify(stations.map(station => station.id));
+    active.add(key);
+    if (!overviewMarkers.has(key)) {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = 'station-map-marker station-map-overview-marker';
+      const endings = {one: 'станция', few: 'станции', many: 'станций'};
+      const count = `${stations.length} ${endings[stationPlural.select(stations.length)]} рядом`;
+      element.textContent = stations.length;
+      element.title = `${count}. ${stations.map(station => station.label).join(', ')}`;
+      element.setAttribute('aria-label', element.title);
+      element.setAttribute('aria-pressed', toggleState(stations, selection));
+      element.style.setProperty('--terrain-fill', terrainFill([...new Set(stations.map(terrainType))]));
+      element.disabled = picking;
+      element.addEventListener('click', () => onToggle(stations));
+      overviewMarkers.set(key, {element, stations});
+      overlay.append(element);
+    }
+    return overviewMarkers.get(key).element;
+  }
+
+  function positionMarkers() {
+    const visible = [];
+    for (const marker of markers) {
+      const [x, y] = project(marker.point.longitude, marker.point.latitude);
+      marker.element.hidden = x < 0 || x > width || y < 0 || y > height;
+      marker.element.style.left = `${x}px`;
+      marker.element.style.top = `${y}px`;
+      if (!marker.element.hidden) visible.push({x, y, area: marker.area, groups: [marker]});
+    }
+    const active = new Set();
+    const positions = [];
+    if (scale < overviewScale) {
+      for (const position of visible) {
+        const neighbor = positions.find(other => Math.hypot(other.x - position.x, other.y - position.y) < markerSpacing);
+        if (neighbor) neighbor.groups.push(...position.groups);
+        else positions.push(position);
+      }
+      for (const {x, y, groups} of positions) {
+        if (groups.length < 2) continue;
+        for (const marker of groups) marker.element.hidden = true;
+        const overview = resolveOverviewMarker(groups, active);
+        overview.style.left = `${x}px`;
+        overview.style.top = `${y}px`;
+      }
+    } else {
+      positions.push(...visible);
+    }
+    for (const [key, {element}] of overviewMarkers) {
+      if (!active.has(key)) {
+        element.remove();
+        overviewMarkers.delete(key);
+      }
+    }
+    overviewNote.hidden = !active.size;
+    areaNote.hidden = !positions.some(({area, groups}) => area && groups.length === 1);
+    return positions;
   }
 
   let west, east, south, north;
@@ -298,14 +371,9 @@ function createMap(viewport, onPick, onSelect) {
       control.offsetLeft + control.offsetWidth + 6, control.offsetTop + control.offsetHeight + 6]);
     const font = getComputedStyle(viewport).fontFamily;
     context.textBaseline = 'middle';
-    for (const marker of markers) {
-      const [x, y] = project(marker.point.longitude, marker.point.latitude);
-      marker.element.hidden = x < 0 || x > width || y < 0 || y > height;
-      marker.element.style.left = `${x}px`;
-      marker.element.style.top = `${y}px`;
-      if (marker.element.hidden) continue;
+    for (const {x, y, area} of positionMarkers()) {
       occupied.push([x - 31, y - 25, x + 31, y + 25]);
-      if (marker.area && scale >= 180) {
+      if (area && scale >= 180) {
         const label = 'Район заповедника';
         context.font = `800 11px ${font}`;
         const labelWidth = context.measureText(label).width;
@@ -509,9 +577,16 @@ function createMap(viewport, onPick, onSelect) {
   observer.observe(viewport);
   return {
     zoom, focus, fit, cancelGesture,
-    setSelection(ids) { provider.update(markers, ids); },
+    setSelection(ids) {
+      selection = new Set(ids);
+      for (const {element, stations} of overviewMarkers.values()) {
+        element.setAttribute('aria-pressed', toggleState(stations, selection));
+      }
+      provider.update(markers, ids);
+    },
     setMarkers(next) {
       markers = next;
+      overviewMarkers.clear();
       for (const marker of markers) marker.element.disabled = picking;
       overlay.replaceChildren(...markers.map(marker => marker.element));
       redraw();
@@ -526,6 +601,7 @@ function createMap(viewport, onPick, onSelect) {
       provider.setPicking(active);
       for (const button of modes) button.disabled = active;
       for (const marker of markers) marker.element.disabled = active;
+      for (const {element} of overviewMarkers.values()) element.disabled = active;
       viewport.classList.toggle('is-picking', active);
       if (active) viewport.focus();
     },
@@ -562,10 +638,10 @@ function mapContents() {
   </div>
   <div class="station-map-source">
     <span>Обзорная карта · <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a>, <a href="https://www.geonames.org/export/" target="_blank" rel="noreferrer">GeoNames</a></span>
-    <span data-area-note>Общий маркер показывает район заповедника.</span>
+    <span data-area-note hidden>Общий маркер показывает район заповедника.</span>
   </div>
   <ul class="station-terrain-legend" data-terrain-legend aria-label="Тип местности на карте" hidden></ul>
-  <p id="${hintId}" class="station-map-shortcut"><span class="station-map-mouse-tip">Зажмите левую кнопку и протяните рамку. Ctrl или ⌘ добавят станции к выбору.</span><span class="station-map-touch-tip">Проведите пальцем по карте в режиме выделения.</span></p>
+  <p id="${hintId}" class="station-map-shortcut"><span data-overview-marker-note hidden>Число в группе показывает количество соседних станций. </span><span class="station-map-mouse-tip">Зажмите левую кнопку и протяните рамку. Ctrl или ⌘ добавят станции к выбору.</span><span class="station-map-touch-tip">Проведите пальцем по карте в режиме выделения.</span></p>
 </section>`;
 }
 
@@ -604,7 +680,17 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
     selected = next;
     refreshSelection();
     onChange([...selected]);
-  });
+  }, toggleStations);
+
+  function toggleStations(group) {
+    const select = group.some(station => !selected.has(station.id));
+    for (const station of group) {
+      if (select) selected.add(station.id);
+      else selected.delete(station.id);
+    }
+    refreshSelection();
+    onChange([...selected]);
+  }
 
   function fitMarkers() {
     map.fit(markers.map(group => group.point));
@@ -642,8 +728,7 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       active.scrollIntoView({block: 'nearest'});
     }
     for (const group of markers) {
-      const count = group.stations.filter(station => selected.has(station.id)).length;
-      group.element.setAttribute('aria-pressed', count === group.stations.length ? 'true' : count ? 'mixed' : 'false');
+      group.element.setAttribute('aria-pressed', toggleState(group.stations, selected));
     }
   }
 
@@ -713,15 +798,7 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       element.style.setProperty('--terrain-fill', terrainFill(types));
       if (group.stations.length > 1 || group.area) element.textContent = group.stations.length;
       else element.innerHTML = icon('pin');
-      element.addEventListener('click', () => {
-        const select = group.stations.some(station => !selected.has(station.id));
-        for (const station of group.stations) {
-          if (select) selected.add(station.id);
-          else selected.delete(station.id);
-        }
-        refreshSelection();
-        onChange([...selected]);
-      });
+      element.addEventListener('click', () => toggleStations(group.stations));
       return {...group, element};
     });
     const legend = get('[data-terrain-legend]');
@@ -734,7 +811,6 @@ function createStationSelection(root, {onPick, onChange, emptyText}) {
       return item;
     }));
     legend.hidden = !seenTypes.size;
-    get('[data-area-note]').hidden = !markers.some(group => group.area);
     fitButton.disabled = !markers.length;
     map.setMarkers(markers);
     if (!positioned && markers.length) {
