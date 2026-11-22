@@ -51,7 +51,8 @@
           "status": "passed",
           "observed": {
             "periods": 12,
-            "matchesReference": true
+            "matchesReference": true,
+            "latestDays": 5
           }
         },
         {
@@ -98,7 +99,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 144
+            "elapsedMs": 160
           }
         },
         {
@@ -345,7 +346,8 @@
           "status": "passed",
           "observed": {
             "periods": 12,
-            "matchesReference": true
+            "matchesReference": true,
+            "latestDays": 5
           }
         },
         {
@@ -392,7 +394,7 @@
             "calendarDays": 10958,
             "validDays": 8337,
             "tablePageSize": 60,
-            "elapsedMs": 133
+            "elapsedMs": 160
           }
         },
         {

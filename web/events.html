@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#173e32">
+  <title>Переходы через 0 °C · Урочище «Красное»</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/events.js"></script>
+  <style>
+    .events-nav .nav-button { display: inline-flex; align-items: center; text-decoration: none; }
+    .events-filters { grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)) auto; }
+    .events-filters .button { justify-self: start; }
+    .events-method { margin-top: 10px; max-width: 75ch; font-size: .85rem; }
+    .events-method p { margin-top: 5px; }
+    .events-method summary { color: var(--green); font-weight: 650; }
+    .events-scroll { max-height: 28rem; }
+    .events-scroll thead th { position: sticky; top: 0; }
+    .event-value { display: block; color: var(--muted); white-space: nowrap; }
+    .event-direction { display: block; color: var(--muted); font-size: .75rem; font-weight: 400; }
+    .event-day { white-space: nowrap; }
+    .event-day + .event-day { margin-left: .4em; }
+    .events-empty { padding: 12px 15px; }
+    @media (max-width: 650px) {
+      .events-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .events-station { grid-column: 1/-1; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#content">К фильтрам переходов</a>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <a class="brand" href="/" aria-label="Метеожурнал, главная">
+        <svg width="35" height="35" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="34" height="34" rx="8" stroke="currentColor" opacity=".55"/>
+          <path d="M9 23h18M12 23l5-10 3 6 2-4 4 8M9 26h18" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="23.5" cy="10.5" r="2" stroke="currentColor" stroke-width="1.35"/>
+        </svg>
+        <span>Урочище «Красное»<small>Архив метеонаблюдений</small></span>
+      </a>
+      <nav class="events-nav" aria-label="Разделы метеожурнала">
+        <a class="nav-button" href="/">Метеожурнал</a>
+        <span class="nav-button" aria-current="page">Переходы через 0 °C</span>
+      </nav>
+    </div>
+  </header>
+
+  <main class="shell" id="content">
+    <header class="page-heading">
+      <div>
+        <h1>Переходы через 0 °C</h1>
+        <p>Смена знака среднесуточной температуры воздуха.</p>
+      </div>
+    </header>
+
+    <form class="filters events-filters" action="/events" aria-label="Фильтры переходов">
+      <div class="filter events-station">
+        <label for="event-station">Станция</label>
+        <select id="event-station" name="station">
+          <option value="all">Все станции</option>
+          <option value="ame60">АМЕ-60</option>
+          <option value="kr1">Кр1 · поляна</option>
+          <option value="kr2">Кр2 · поле</option>
+        </select>
+      </div>
+      <div class="filter">
+        <label for="event-start">С даты</label>
+        <input id="event-start" name="start" type="date" required>
+      </div>
+      <div class="filter">
+        <label for="event-end">По дату</label>
+        <input id="event-end" name="end" type="date" required>
+      </div>
+      <button class="button primary" type="submit">Показать</button>
+    </form>
+
+    <details class="events-method">
+      <summary>Как определяем переход</summary>
+      <p>Берём только сутки одной станции, прошедшие контроль качества температуры. Два ненулевых средних разных знаков
+        должны приходиться на соседние дни или быть разделены только пригодными нулевыми сутками.
+        Пропуск или непригодные сутки прерывают последовательность.</p>
+      <p>Границы периода включены. Оба ненулевых дня должны входить в выборку. Событие датируем первым днём
+        с новым знаком. Значение по модулю до 10<sup>−12</sup> °C включительно считаем нулём
+        для учёта двоичного округления.</p>
+      <p>Ночные заморозки при положительном среднем за сутки могут остаться за пределами выборки.</p>
+    </details>
+
+    <p class="status" id="events-status" role="status"></p>
+    <div id="events-data" hidden>
+      <section class="ledger" aria-labelledby="events-title">
+        <div class="ledger-heading">
+          <div>
+            <h2 id="events-title">Найденные переходы</h2>
+            <p id="events-period"></p>
+            <p id="events-raw-note">Даты ведут к исходным измерениям и флагам качества в JSON.</p>
+          </div>
+          <a class="button secondary" id="events-download" download>Скачать CSV</a>
+        </div>
+        <div class="table-wrap events-scroll" id="events-table" tabindex="0" role="region" aria-label="Таблица переходов">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Станция</th>
+                <th scope="col">Сутки до перехода</th>
+                <th scope="col">Дата перехода</th>
+                <th scope="col">Нулевые сутки</th>
+              </tr>
+            </thead>
+            <tbody id="events-rows"></tbody>
+          </table>
+        </div>
+        <p class="events-empty muted" id="events-empty" hidden>За выбранный период переходов нет.</p>
+      </section>
+
+      <section class="ledger" aria-labelledby="events-coverage-title">
+        <div class="ledger-heading">
+          <div>
+            <h2 id="events-coverage-title">Покрытие по станциям</h2>
+            <p>Пригодные сутки из числа календарных суток внутри периода станции.</p>
+          </div>
+        </div>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Таблица покрытия">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Станция</th>
+                <th scope="col">Учтённый период</th>
+                <th scope="col" class="num">Пригодные сутки</th>
+                <th scope="col" class="num">В плюс</th>
+                <th scope="col" class="num">В минус</th>
+              </tr>
+            </thead>
+            <tbody id="events-coverage"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+    <noscript><p class="status">Включите JavaScript, чтобы увидеть таблицу переходов.</p></noscript>
+  </main>
+
+  <footer class="footer shell">
+    <span>Метеонаблюдения урочища «Красное»</span>
+    <a href="/">К архиву наблюдений</a>
+  </footer>
+</body>
+</html>

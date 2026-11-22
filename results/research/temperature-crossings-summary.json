@@ -1,0 +1,224 @@
+{
+  "station": "all",
+  "param": "t_air",
+  "unit": "°C",
+  "start": "1992-01-01",
+  "end": "2025-12-31",
+  "zero_tolerance_c": 1e-12,
+  "stations": [
+    {
+      "station": "ame60",
+      "label": "АМЕ-60",
+      "archive_start": "1992-01-01",
+      "archive_end": "2021-12-31",
+      "start": "1992-01-01",
+      "end": "2021-12-31",
+      "calendar_days": 10958,
+      "valid_days": 8337,
+      "zero_days": 1,
+      "valid_pairs": 8290,
+      "warming": 291,
+      "cooling": 289,
+      "invalid_days": 2621,
+      "events": 580
+    },
+    {
+      "station": "kr1",
+      "label": "Кр1 · поляна",
+      "archive_start": "2022-01-01",
+      "archive_end": "2025-12-31",
+      "start": "2022-01-01",
+      "end": "2025-12-31",
+      "calendar_days": 1461,
+      "valid_days": 1016,
+      "zero_days": 0,
+      "valid_pairs": 1010,
+      "warming": 35,
+      "cooling": 35,
+      "invalid_days": 445,
+      "events": 70
+    },
+    {
+      "station": "kr2",
+      "label": "Кр2 · поле",
+      "archive_start": "2022-01-01",
+      "archive_end": "2025-12-31",
+      "start": "2022-01-01",
+      "end": "2025-12-31",
+      "calendar_days": 1461,
+      "valid_days": 857,
+      "zero_days": 5,
+      "valid_pairs": 849,
+      "warming": 34,
+      "cooling": 35,
+      "invalid_days": 604,
+      "events": 69
+    }
+  ],
+  "total_events": 719,
+  "examples": {
+    "april_2024": {
+      "station": "all",
+      "param": "t_air",
+      "unit": "°C",
+      "start": "2024-04-01",
+      "end": "2024-04-30",
+      "zero_tolerance_c": 1e-12,
+      "stations": [
+        {
+          "station": "ame60",
+          "label": "АМЕ-60",
+          "archive_start": "1992-01-01",
+          "archive_end": "2021-12-31",
+          "start": null,
+          "end": null,
+          "calendar_days": 0,
+          "valid_days": 0,
+          "zero_days": 0,
+          "valid_pairs": 0,
+          "warming": 0,
+          "cooling": 0,
+          "invalid_days": 0,
+          "events": 0
+        },
+        {
+          "station": "kr1",
+          "label": "Кр1 · поляна",
+          "archive_start": "2022-01-01",
+          "archive_end": "2025-12-31",
+          "start": "2024-04-01",
+          "end": "2024-04-30",
+          "calendar_days": 30,
+          "valid_days": 28,
+          "zero_days": 0,
+          "valid_pairs": 26,
+          "warming": 1,
+          "cooling": 1,
+          "invalid_days": 2,
+          "events": 2
+        },
+        {
+          "station": "kr2",
+          "label": "Кр2 · поле",
+          "archive_start": "2022-01-01",
+          "archive_end": "2025-12-31",
+          "start": "2024-04-01",
+          "end": "2024-04-30",
+          "calendar_days": 30,
+          "valid_days": 30,
+          "zero_days": 0,
+          "valid_pairs": 29,
+          "warming": 1,
+          "cooling": 1,
+          "invalid_days": 0,
+          "events": 2
+        }
+      ],
+      "events": [
+        {
+          "station": "kr1",
+          "direction": "cooling",
+          "previous_day": "2024-04-03",
+          "previous_mean_c": 7.809375,
+          "day": "2024-04-04",
+          "mean_c": -1.3591666666666666,
+          "zero_days": []
+        },
+        {
+          "station": "kr2",
+          "direction": "cooling",
+          "previous_day": "2024-04-03",
+          "previous_mean_c": 8.55125,
+          "day": "2024-04-04",
+          "mean_c": -1.7706382978723405,
+          "zero_days": []
+        },
+        {
+          "station": "kr1",
+          "direction": "warming",
+          "previous_day": "2024-04-04",
+          "previous_mean_c": -1.3591666666666666,
+          "day": "2024-04-05",
+          "mean_c": 0.34,
+          "zero_days": []
+        },
+        {
+          "station": "kr2",
+          "direction": "warming",
+          "previous_day": "2024-04-05",
+          "previous_mean_c": -0.27062499999999995,
+          "day": "2024-04-06",
+          "mean_c": 7.022826086956522,
+          "zero_days": []
+        }
+      ]
+    },
+    "ame60_across_zero": {
+      "station": "ame60",
+      "param": "t_air",
+      "unit": "°C",
+      "start": "2014-12-12",
+      "end": "2014-12-14",
+      "zero_tolerance_c": 1e-12,
+      "stations": [
+        {
+          "station": "ame60",
+          "label": "АМЕ-60",
+          "archive_start": "1992-01-01",
+          "archive_end": "2021-12-31",
+          "start": "2014-12-12",
+          "end": "2014-12-14",
+          "calendar_days": 3,
+          "valid_days": 3,
+          "zero_days": 1,
+          "valid_pairs": 2,
+          "warming": 1,
+          "cooling": 0,
+          "invalid_days": 0,
+          "events": 1
+        }
+      ],
+      "events": [
+        {
+          "station": "ame60",
+          "direction": "warming",
+          "previous_day": "2014-12-12",
+          "previous_mean_c": -0.9739583333333334,
+          "day": "2014-12-14",
+          "mean_c": 1.6427083333333332,
+          "zero_days": [
+            "2014-12-13"
+          ]
+        }
+      ]
+    },
+    "ame60_zero_sample_count": 96,
+    "kr2_zeros_before_gap": {
+      "station": "kr2",
+      "param": "t_air",
+      "unit": "°C",
+      "start": "2023-01-17",
+      "end": "2023-01-30",
+      "zero_tolerance_c": 1e-12,
+      "stations": [
+        {
+          "station": "kr2",
+          "label": "Кр2 · поле",
+          "archive_start": "2022-01-01",
+          "archive_end": "2025-12-31",
+          "start": "2023-01-17",
+          "end": "2023-01-30",
+          "calendar_days": 14,
+          "valid_days": 6,
+          "zero_days": 5,
+          "valid_pairs": 5,
+          "warming": 0,
+          "cooling": 0,
+          "invalid_days": 8,
+          "events": 0
+        }
+      ],
+      "events": []
+    }
+  }
+}

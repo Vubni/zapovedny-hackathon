@@ -1,0 +1,47 @@
+{
+  "retrieved_utc": "2026-11-22T08:34:19+00:00",
+  "source_url": "https://api.open-meteo.com/v1/forecast?latitude=56.52&longitude=32.87&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&wind_speed_unit=ms&timezone=Europe%2FMoscow&forecast_days=3",
+  "response": {
+    "latitude": 56.527283,
+    "longitude": 32.891407,
+    "generationtime_ms": 0.1678466796875,
+    "utc_offset_seconds": 10800,
+    "timezone": "Europe/Moscow",
+    "timezone_abbreviation": "GMT+3",
+    "elevation": 250.0,
+    "daily_units": {
+      "time": "iso8601",
+      "temperature_2m_max": "°C",
+      "temperature_2m_min": "°C",
+      "precipitation_sum": "mm",
+      "wind_speed_10m_max": "m/s"
+    },
+    "daily": {
+      "time": [
+        "2026-11-22",
+        "2026-11-23",
+        "2026-11-24"
+      ],
+      "temperature_2m_max": [
+        0.6,
+        0.0,
+        -1.1
+      ],
+      "temperature_2m_min": [
+        -0.6,
+        -2.2,
+        -2.6
+      ],
+      "precipitation_sum": [
+        1.8,
+        1.2,
+        0.5
+      ],
+      "wind_speed_10m_max": [
+        2.78,
+        2.33,
+        3.03
+      ]
+    }
+  }
+}

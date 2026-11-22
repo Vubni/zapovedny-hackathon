@@ -6,7 +6,7 @@ import sqlite3
 import zipfile
 from collections import defaultdict
 from contextlib import closing
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache
 from itertools import groupby
 from pathlib import Path
@@ -129,6 +129,21 @@ def seasonal_slope(months):
 
 def extremes(days, key, reducer):
     return reducer((d[key] for d in days if d[key] is not None), default=None)
+
+
+def latest_five_days(query):
+    station, param = selection(query)
+    with closing(database()) as con:
+        last = con.execute(
+            "SELECT MAX(day) FROM daily WHERE station=? AND param=? AND raw_n > 0",
+            (station, param),
+        ).fetchone()[0]
+    if last is None:
+        raise ValueError("В архиве станции нет исходных наблюдений")
+    end = date.fromisoformat(last)
+    first = date(STATIONS[station][1], 1, 1)
+    return analyze(dict(station=station, param=param, grain="day",
+                        start=max(first, end - timedelta(days=4)).isoformat(), end=last))
 
 
 def analyze(query):

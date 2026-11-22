@@ -125,7 +125,11 @@ async function runViewport(browser, viewport) {
       const csv=await downloaded(page.locator('#export'),page);
       const sample=await fs.readFile(path.join(exampleDir,'kr1-pressure-2024.csv'),'utf8');
       assert.equal(csv.replace(/\r\n/g,'\n'),sample.replace(/\r\n/g,'\n'));
-      return {periods:12,matchesReference:true};
+      const lastFive = (await downloaded(page.locator('#export-latest'), page)).trimEnd().split(/\r?\n/).slice(1);
+      assert.equal(lastFive.length, 5);
+      assert.ok(lastFive[0].startsWith('kr1;pressure_hpa;') && lastFive[0].includes('2025-12-27'));
+      assert.ok(lastFive[4].includes('2025-12-31'));
+      return {periods:12,matchesReference:true,latestDays:lastFive.length};
     });
     await step('Переход с апреля к исходной строке 5644',async()=>{
       const april=page.locator('#ledger-table tbody tr').filter({hasText:/Апрель/});
@@ -159,6 +163,10 @@ async function runViewport(browser, viewport) {
       assert.equal(await rows.count(),12);
       const means=await rows.evaluateAll(rr=>rr.map(r=>r.querySelector('td').innerText.trim()));
       assert.ok(means.every(v=>v==='—'));
+      const latestWind = (await downloaded(page.locator('#export-latest'), page)).trimEnd().split(/\r?\n/).slice(1);
+      assert.equal(latestWind.length, 5);
+      assert.ok(latestWind[0].includes('2021-11-02') && latestWind[4].includes('2021-11-06'));
+      assert.ok(latestWind.every(row => row.startsWith('ame60;wind_dir;') && row.includes(';нет;;;;')));
       await apply(page,{param:'t_air',start:'2016-02-01',end:'2016-02-29',grain:'dekad'});
       assert.equal(await rows.count(),3);
       return {directionMonthsWithoutValue:means.length,leapFebruaryDekads:3};

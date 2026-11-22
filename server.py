@@ -7,9 +7,10 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, export_csv, metadata, raw_day
+from analytics import ARCHIVE, DATABASE, ROOT, analyze, comparison, export_csv, latest_five_days, metadata, raw_day
 from build_data import build, sha256
 from import_station import CONTENT_FORMATS, MAX_UPLOAD, preview_import
+from temperature_events import export_events, query_events
 
 WEB = ROOT / "web"
 IMPORT_EXAMPLE = ROOT / "results" / "examples" / "kr1-station-2024-04-01.json"
@@ -18,7 +19,10 @@ API = {
     "/api/series": "Суточные, декадные и месячные ряды с расчётом покрытия",
     "/api/raw": "Исходные сроки одного дня с номером строки CSV",
     "/api/export": "Таблица выбранного ряда в CSV",
+    "/api/export/latest-five": "CSV за последние пять календарных суток архива станции",
     "/api/compare": "Общие даты и часы поляны и поля за 2025 год",
+    "/api/events": "Переходы среднесуточной температуры воздуха через 0 °C",
+    "/api/events/export": "Выгрузка выбранных переходов в CSV",
     "/api/import": "POST с файлом наблюдений в формате CSV или JSON для отдельного расчёта",
 }
 WEB_FILES = {
@@ -29,6 +33,12 @@ WEB_FILES = {
     "/import": "import.html",
     "/import.html": "import.html",
     "/import.js": "import.js",
+    "/forecast": "forecast.html",
+    "/forecast.js": "forecast.js",
+    "/forecast-example.json": "forecast-example.json",
+    "/events": "events.html",
+    "/events.html": "events.html",
+    "/events.js": "events.js",
 }
 
 
@@ -74,8 +84,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(metadata())
             elif route == "/api/series":
                 self.send_json(analyze(query))
-            elif route == "/api/export":
-                result = analyze(query)
+            elif route in ("/api/export", "/api/export/latest-five"):
+                result = latest_five_days(query) if route.endswith("/latest-five") else analyze(query)
                 name = "_".join(result[k] for k in ("station","param","start","end","grain")) + ".csv"
                 self.respond(export_csv(result), "text/csv; charset=utf-8", filename=name)
             elif route == "/api/raw":
@@ -84,6 +94,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(result, filename=name)
             elif route == "/api/compare":
                 self.send_json(comparison())
+            elif route == "/api/events":
+                self.send_json(query_events(query))
+            elif route == "/api/events/export":
+                result = query_events(query)
+                name = "_".join(result[k] for k in ("station", "start", "end"))
+                self.respond(export_events(result), "text/csv; charset=utf-8",
+                             filename=f"temperature_crossings_{name}.csv")
             elif route == "/api/import/example":
                 self.respond(IMPORT_EXAMPLE.read_bytes(), "application/json; charset=utf-8",
                              filename=IMPORT_EXAMPLE.name)

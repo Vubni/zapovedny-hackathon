@@ -1,0 +1,2510 @@
+{
+  "browser": "Chromium 153.0.8010.12",
+  "source": "Current web/index.html + web/style.css + web/app.js with saved archive API responses",
+  "oldStaticWarnings": [
+    "1.0:1 (need 4.5:1) — text #fffefa on #ffffff",
+    "1.4:1 (need 4.5:1) — text #d3e0d1 on #ffffff"
+  ],
+  "viewports": [
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "checks": [
+        {
+          "state": "loading + keyboard skip link",
+          "samples": 24,
+          "activeSamples": 20,
+          "failures": [],
+          "inactive": [
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                127.39999999999999,
+                148.39999999999998,
+                140
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.1777682070951117,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#station",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#station",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#param",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#param",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            }
+          ],
+          "activeMin": {
+            "selector": "P",
+            "text": "АМЕ-60 и две точки Сокол М1 · урочище «Красное»",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(245, 244, 237)",
+            "backgroundElement": "HTML",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              245,
+              244,
+              237
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.877893115816242,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "skip-link",
+              "text": "К данным наблюдений",
+              "computedForeground": "rgb(34, 99, 76)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "skip-link",
+              "compositedForeground": [
+                34,
+                99,
+                76
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.036981959376906,
+              "threshold": 4.5
+            },
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                127.39999999999999,
+                148.39999999999998,
+                140
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.1777682070951117,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#station",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#station",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#param",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#param",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "journal / baseline expanded",
+          "samples": 209,
+          "activeSamples": 209,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                23,
+                62,
+                50
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "journal / comparison tab hover",
+          "samples": 209,
+          "activeSamples": 209,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                23,
+                62,
+                50
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "journal / anomalies",
+          "samples": 209,
+          "activeSamples": 209,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                23,
+                62,
+                50
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "April drilldown",
+          "samples": 170,
+          "activeSamples": 170,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "2 апр.",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(251, 245, 232)",
+            "backgroundElement": "invalid",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              251,
+              245,
+              232
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.519764755974475,
+            "threshold": 4.5
+          }
+        },
+        {
+          "state": "29 April source lines",
+          "samples": 178,
+          "activeSamples": 178,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "STRONG",
+            "text": "Сутки исключены из расчёта.",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(255, 254, 250)",
+            "backgroundElement": "#detail",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              255,
+              254,
+              250
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.942742470599749,
+            "threshold": 4.5
+          }
+        },
+        {
+          "state": "comparison / months",
+          "samples": 109,
+          "activeSamples": 109,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "segment",
+            "text": "По часам",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(239, 239, 231)",
+            "backgroundElement": "#compare-modes",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              239,
+              239,
+              231
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.607848229363923,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#compare-title",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            }
+          ]
+        },
+        {
+          "state": "comparison / hours",
+          "samples": 169,
+          "activeSamples": 169,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "segment",
+            "text": "По месяцам",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(239, 239, 231)",
+            "backgroundElement": "#compare-modes",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              239,
+              239,
+              231
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.607848229363923,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#compare-title",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            }
+          ]
+        },
+        {
+          "state": "print / navigation hidden",
+          "samples": 202,
+          "activeSamples": 202,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(0, 0, 0)",
+              "computedSurface": "rgb(255, 255, 255)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                0,
+                0,
+                0
+              ],
+              "compositedBackground": [
+                255,
+                255,
+                255
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 21,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(0, 0, 0)",
+              "computedSurface": "rgb(255, 255, 255)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                0,
+                0,
+                0
+              ],
+              "compositedBackground": [
+                255,
+                255,
+                255
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 21,
+              "threshold": 3
+            }
+          ]
+        },
+        {
+          "state": "invalid date range / output hidden",
+          "samples": 29,
+          "activeSamples": 28,
+          "failures": [],
+          "inactive": [
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            }
+          ],
+          "activeMin": {
+            "selector": "P",
+            "text": "АМЕ-60 и две точки Сокол М1 · урочище «Красное»",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(245, 244, 237)",
+            "backgroundElement": "HTML",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              245,
+              244,
+              237
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.877893115816242,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(37, 85, 69)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                37,
+                85,
+                69
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.445282162936309,
+              "threshold": 4.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "checks": [
+        {
+          "state": "loading + keyboard skip link",
+          "samples": 24,
+          "activeSamples": 20,
+          "failures": [],
+          "inactive": [
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                127.39999999999999,
+                148.39999999999998,
+                140
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.1777682070951117,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#station",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#station",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#param",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#param",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            }
+          ],
+          "activeMin": {
+            "selector": "P",
+            "text": "АМЕ-60 и две точки Сокол М1 · урочище «Красное»",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(245, 244, 237)",
+            "backgroundElement": "HTML",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              245,
+              244,
+              237
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.877893115816242,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "skip-link",
+              "text": "К данным наблюдений",
+              "computedForeground": "rgb(34, 99, 76)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "skip-link",
+              "compositedForeground": [
+                34,
+                99,
+                76
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.036981959376906,
+              "threshold": 4.5
+            },
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                127.39999999999999,
+                148.39999999999998,
+                140
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.1777682070951117,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#station",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#station",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#param",
+              "text": "Загрузка…",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(253, 253, 248)",
+              "backgroundElement": "#param",
+              "compositedForeground": [
+                98.9,
+                107.00000000000001,
+                100.20000000000002
+              ],
+              "compositedBackground": [
+                253.60000000000002,
+                253.3,
+                248.60000000000002
+              ],
+              "opacity": 0.7,
+              "inactive": true,
+              "ratio": 5.409624217199724,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "journal / baseline expanded",
+          "samples": 203,
+          "activeSamples": 203,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                23,
+                62,
+                50
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "journal / comparison tab hover",
+          "samples": 203,
+          "activeSamples": 203,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                23,
+                62,
+                50
+              ],
+              "compositedBackground": [
+                255,
+                254,
+                250
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            }
+          ]
+        },
+        {
+          "state": "journal / anomalies",
+          "samples": 180,
+          "activeSamples": 180,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          }
+        },
+        {
+          "state": "April drilldown",
+          "samples": 170,
+          "activeSamples": 170,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "2 апр.",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(251, 245, 232)",
+            "backgroundElement": "invalid",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              251,
+              245,
+              232
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.519764755974475,
+            "threshold": 4.5
+          }
+        },
+        {
+          "state": "29 April source lines",
+          "samples": 178,
+          "activeSamples": 178,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "STRONG",
+            "text": "Сутки исключены из расчёта.",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(255, 254, 250)",
+            "backgroundElement": "#detail",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              255,
+              254,
+              250
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.942742470599749,
+            "threshold": 4.5
+          }
+        },
+        {
+          "state": "comparison / months",
+          "samples": 103,
+          "activeSamples": 103,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "segment",
+            "text": "По часам",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(239, 239, 231)",
+            "backgroundElement": "#compare-modes",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              239,
+              239,
+              231
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.607848229363923,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#compare-title",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            }
+          ]
+        },
+        {
+          "state": "comparison / hours",
+          "samples": 162,
+          "activeSamples": 162,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "segment",
+            "text": "По месяцам",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(239, 239, 231)",
+            "backgroundElement": "#compare-modes",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              239,
+              239,
+              231
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.607848229363923,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#compare-title",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            }
+          ]
+        },
+        {
+          "state": "print / navigation hidden",
+          "samples": 196,
+          "activeSamples": 196,
+          "failures": [],
+          "inactive": [],
+          "activeMin": {
+            "selector": "row-link",
+            "text": "Апрель 2024",
+            "computedForeground": "rgb(134, 90, 36)",
+            "computedSurface": "rgb(237, 240, 229)",
+            "backgroundElement": "quality-card",
+            "compositedForeground": [
+              134,
+              90,
+              36
+            ],
+            "compositedBackground": [
+              237,
+              240,
+              229
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.196576229354972,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(0, 0, 0)",
+              "computedSurface": "rgb(255, 255, 255)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                0,
+                0,
+                0
+              ],
+              "compositedBackground": [
+                255,
+                255,
+                255
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 21,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(0, 0, 0)",
+              "computedSurface": "rgb(255, 255, 255)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                0,
+                0,
+                0
+              ],
+              "compositedBackground": [
+                255,
+                255,
+                255
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 21,
+              "threshold": 3
+            }
+          ]
+        },
+        {
+          "state": "invalid date range / output hidden",
+          "samples": 29,
+          "activeSamples": 28,
+          "failures": [],
+          "inactive": [
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            }
+          ],
+          "activeMin": {
+            "selector": "P",
+            "text": "АМЕ-60 и две точки Сокол М1 · урочище «Красное»",
+            "computedForeground": "rgb(82, 98, 86)",
+            "computedSurface": "rgb(245, 244, 237)",
+            "backgroundElement": "HTML",
+            "compositedForeground": [
+              82,
+              98,
+              86
+            ],
+            "compositedBackground": [
+              245,
+              244,
+              237
+            ],
+            "opacity": 1,
+            "inactive": false,
+            "ratio": 5.877893115816242,
+            "threshold": 4.5
+          },
+          "measuredControls": [
+            {
+              "selector": "SMALL",
+              "text": "Архив метеонаблюдений",
+              "computedForeground": "rgb(200, 216, 199)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "masthead",
+              "compositedForeground": [
+                200,
+                216,
+                199
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 7.960829811185053,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 11.746366414591575,
+              "threshold": 4.5
+            },
+            {
+              "selector": "nav-button",
+              "text": "Поляна и поле",
+              "computedForeground": "rgb(211, 224, 209)",
+              "computedSurface": "rgb(23, 62, 50)",
+              "backgroundElement": "nav-button",
+              "compositedForeground": [
+                211,
+                224,
+                209
+              ],
+              "compositedBackground": [
+                23,
+                62,
+                50
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.666321054347804,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#journal-title",
+              "text": "Метеожурнал",
+              "computedForeground": "rgb(32, 44, 36)",
+              "computedSurface": "rgb(245, 244, 237)",
+              "backgroundElement": "HTML",
+              "compositedForeground": [
+                32,
+                44,
+                36
+              ],
+              "compositedBackground": [
+                245,
+                244,
+                237
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 13.16068283616104,
+              "threshold": 3
+            },
+            {
+              "selector": "#export",
+              "text": "Скачать CSV",
+              "computedForeground": "rgb(23, 62, 50)",
+              "computedSurface": "rgb(255, 254, 250)",
+              "backgroundElement": "#export",
+              "compositedForeground": [
+                122.89999999999999,
+                143.89999999999998,
+                134.15
+              ],
+              "compositedBackground": [
+                250.5,
+                249.5,
+                244.14999999999998
+              ],
+              "opacity": 0.55,
+              "inactive": true,
+              "ratio": 3.242579409978668,
+              "threshold": 4.5
+            },
+            {
+              "selector": "#apply",
+              "text": "Показать",
+              "computedForeground": "rgb(255, 254, 250)",
+              "computedSurface": "rgb(37, 85, 69)",
+              "backgroundElement": "#apply",
+              "compositedForeground": [
+                255,
+                254,
+                250
+              ],
+              "compositedBackground": [
+                37,
+                85,
+                69
+              ],
+              "opacity": 1,
+              "inactive": false,
+              "ratio": 8.445282162936309,
+              "threshold": 4.5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

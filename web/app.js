@@ -265,6 +265,7 @@ function hideSeriesOutput() {
   seriesRequest?.abort();
   $("journal-view").removeAttribute("aria-busy");
   $("journal-data").hidden = true;
+  $("export-latest").removeAttribute("href");
   $("export").removeAttribute("href");
   $("export").setAttribute("aria-disabled", "true");
 }
@@ -295,6 +296,7 @@ async function loadSeries({syncUrl = true, requestedBase = {}} = {}) {
     page = 0;
     if (query.grain !== "month") mode = "series";
     $("export").href = endpoint("/api/export", query);
+    $("export-latest").href = endpoint("/api/export/latest-five", {station: data.station, param: data.param});
     $("export").setAttribute("download", "");
     $("export").removeAttribute("aria-disabled");
     $("journal-data").hidden = false;
