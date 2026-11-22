@@ -82,60 +82,88 @@
         <div class="review-section">
           <fieldset class="review-rule-fieldset" aria-describedby="review-rules-hint">
             <legend class="review-section-title">Фильтры рабочей копии</legend>
-            <p class="review-hint" id="review-rules-hint">Выберите нужные проверки независимо друг от друга. Без дополнительных фильтров действует базовая проверка значений и флагов качества.</p>
+            <p class="review-hint" id="review-rules-hint">Задайте рабочий диапазон выбранного параметра. Пустое поле использует стандартную границу. Флаги качества проверяются при любом диапазоне.</p>
+            <div class="review-range-fields">
+              <div class="filter">
+                <label for="review-range-min" id="review-range-min-label">Нижняя граница</label>
+                <input type="number" id="review-range-min" step="any" inputmode="decimal" data-rule="min">
+              </div>
+              <div class="filter">
+                <label for="review-range-max" id="review-range-max-label">Верхняя граница</label>
+                <input type="number" id="review-range-max" step="any" inputmode="decimal" data-rule="max">
+              </div>
+            </div>
+            <p class="review-hint" id="review-range-defaults"></p>
+          </fieldset>
+
+          <fieldset class="review-rule-fieldset review-extra-rules" aria-describedby="review-extra-rules-hint">
+            <legend class="review-section-title">Дополнительные проверки</legend>
+            <p class="review-hint" id="review-extra-rules-hint">Включайте проверки по отдельности. Пустой порог оставляет стандартное значение.</p>
             <div class="review-checks">
-              <label class="review-check">
-                <input type="checkbox" name="filter" value="conflicts">
-                <span><strong>Конфликты</strong><small>Повторяющиеся записи или флаг конфликта срока.</small></span>
-              </label>
-              <label class="review-check">
-                <input type="checkbox" name="filter" value="hampel">
-                <span><strong>Фильтр Хэмпеля</strong><small>Выбросы относительно соседних измерений.</small></span>
-              </label>
-              <label class="review-check">
-                <input type="checkbox" name="filter" value="spike">
-                <span><strong>Скачок с возвратом</strong><small>Резкое отклонение с возвратом к прежнему уровню.</small></span>
-              </label>
-              <label class="review-check">
-                <input type="checkbox" name="filter" value="stuck">
-                <span><strong>Залипание</strong><small>Одинаковые значения в длинном ряду измерений.</small></span>
-              </label>
-              <label class="review-check">
-                <input type="checkbox" name="filter" value="buddy" disabled>
-                <span><strong>Поляна и поле</strong><small>Сравнение температуры воздуха на Кр1 и Кр2 в архиве.</small></span>
-              </label>
+              <div>
+                <label class="review-check">
+                  <input type="checkbox" name="filter" value="conflicts">
+                  <span><strong>Записи с одинаковым временем</strong><small>Если на одно время приходятся разные показания, можно убрать всю группу или оставить запись, которая лучше согласуется с соседними.</small></span>
+                </label>
+                <div class="filter review-rule-detail" id="review-conflict-field" hidden>
+                  <label for="review-conflict">При повторе</label>
+                  <select id="review-conflict" disabled>
+                    <option value="all">Исключить все значения</option>
+                    <option value="best">Оставить однозначного кандидата</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="review-check">
+                  <input type="checkbox" name="filter" value="hampel">
+                  <span><strong>Значение выбивается из ряда</strong><small>Сравнивает показание с соседними. Отмечает его, когда разница превышает заданный порог и обычный разброс значений.</small></span>
+                </label>
+                <div class="filter review-rule-detail" id="review-hampel-field" hidden>
+                  <label for="review-hampel" id="review-hampel-label">Минимальное отклонение</label>
+                  <input type="number" id="review-hampel" step="any" min="0" inputmode="decimal" data-rule="hampel" disabled>
+                </div>
+              </div>
+              <div>
+                <label class="review-check">
+                  <input type="checkbox" name="filter" value="spike">
+                  <span><strong>Скачок с возвратом</strong><small>Значение резко меняется на один замер, а в следующем возвращается к прежнему уровню.</small></span>
+                </label>
+                <div class="filter review-rule-detail" id="review-spike-field" hidden>
+                  <label for="review-spike" id="review-spike-label">Отклонение от каждого соседа</label>
+                  <input type="number" id="review-spike" step="any" min="0" inputmode="decimal" data-rule="spike" disabled>
+                </div>
+              </div>
+              <div>
+                <label class="review-check">
+                  <input type="checkbox" name="filter" value="stuck">
+                  <span><strong>Датчик повторяет одно значение</strong><small>Отмечает одинаковые показания, которые держатся заданное число часов или дольше.</small></span>
+                </label>
+                <div class="filter review-rule-detail" id="review-stuck-field" hidden>
+                  <label for="review-stuck">Длительность, ч</label>
+                  <input type="number" id="review-stuck" step="any" min="0" inputmode="decimal" data-rule="stuck" disabled>
+                </div>
+              </div>
             </div>
           </fieldset>
           <p class="review-hint" id="review-wind-hint" hidden>Для направления ветра учитывается переход через 360°. Поиск временных аномалий пропускает записи со скоростью ветра 0 м/с.</p>
-
-          <div class="review-rule-options">
-            <div class="filter" id="review-conflict-field">
-              <label for="review-conflict">При конфликте</label>
-              <select id="review-conflict" aria-describedby="review-conflict-hint" disabled>
-                <option value="all">Исключить все значения</option>
-                <option value="best">Оставить однозначного кандидата</option>
-              </select>
-              <p class="review-hint" id="review-conflict-hint">Включите фильтр «Конфликты», чтобы применить это правило.</p>
-            </div>
-            <div class="filter" id="review-pressure-field">
-              <label for="review-pressure">Верхняя граница давления</label>
-              <select id="review-pressure" aria-describedby="review-pressure-hint">
-                <option value="1050">1050 гПа</option>
-                <option value="1550">1550 гПа</option>
-              </select>
-              <p class="review-hint" id="review-pressure-hint">В официальном расчёте граница составляет 1050 гПа.</p>
-            </div>
-          </div>
         </div>
 
         <details class="review-section review-estimate-options" id="review-estimate-options">
           <summary>Оценки для пропусков<span id="review-fill-active" hidden> · включены</span></summary>
           <div class="review-estimate-fields">
             <label class="review-check">
-              <input type="checkbox" id="review-fill">
-              <span><strong>Подобрать внешние оценки</strong><small>Для температуры воздуха, влажности и давления за период до 31 суток. Часовая оценка — среднее двух источников, ERA5 и NASA POWER / MERRA‑2.</small></span>
+              <input type="checkbox" id="review-fill-external">
+              <span><strong>Использовать внешние данные</strong><small>Для температуры воздуха, влажности и давления за период до 31 суток. Часовая оценка — среднее двух источников, ERA5 и NASA POWER / MERRA‑2.</small></span>
             </label>
-            <div class="filter">
+            <label class="review-check">
+              <input type="checkbox" id="review-fill-model">
+              <span><strong>Использовать модель</strong><small>Оценка отдельных пропусков по соседним измерениям станции. Для направления ветра недоступна.</small></span>
+            </label>
+          </div>
+          <p class="review-hint" id="review-fill-location" hidden>Для внешних данных укажите координаты станции в её паспорте.</p>
+          <p class="review-hint" id="review-fill-priority" hidden>Сначала подбираем внешние оценки, затем модель заполняет оставшиеся доступные пропуски.</p>
+          <div class="review-estimate-detail" id="review-external-options" hidden>
+            <div class="filter review-timezone">
               <label for="review-timezone">Часовой пояс измерений</label>
               <select id="review-timezone" aria-describedby="review-timezone-hint" disabled>
                 <option value="">Выберите часовой пояс</option>
@@ -144,15 +172,15 @@
               </select>
               <p class="review-hint" id="review-timezone-hint">Нужен для сопоставления с внешними данными на тот же час.</p>
             </div>
+            <label class="review-check">
+              <input type="checkbox" id="review-subhour" disabled>
+              <span><strong>Оценивать промежуточные минуты по соседним часам</strong><small>Только для записанных сроков с пустым или исключённым значением. Оба источника должны покрывать соседние часы.</small></span>
+            </label>
+            <label class="review-check" id="review-pressure-reference-field" hidden>
+              <input type="checkbox" id="review-pressure-reference" disabled>
+              <span><strong>Исходное давление измерено на высоте станции</strong><small>Подтвердите, что данные без приведения к уровню моря. Станция и модель могут находиться на разной высоте.</small></span>
+            </label>
           </div>
-          <label class="review-check review-estimate-detail" id="review-subhour-field" hidden>
-            <input type="checkbox" id="review-subhour" disabled>
-            <span><strong>Оценивать промежуточные минуты по соседним часам</strong><small>Только для записанных сроков с пустым или исключённым значением. Оба источника должны покрывать соседние часы.</small></span>
-          </label>
-          <label class="review-check review-estimate-detail" id="review-pressure-reference-field" hidden>
-            <input type="checkbox" id="review-pressure-reference" disabled>
-            <span><strong>Исходное давление измерено на высоте станции</strong><small>Подтвердите, что данные без приведения к уровню моря. Станция и модель могут находиться на разной высоте.</small></span>
-          </label>
           <div class="review-estimate-example">
             <button class="button secondary" id="review-fill-example" type="button">Открыть пример с оценкой</button>
             <p class="review-hint">Температура на Кр1, 21 апреля 2024 года. Для примера принимаем московское время.</p>
@@ -201,7 +229,7 @@
                 <th scope="col" class="num" id="review-working-heading">Рабочее значение</th>
                 <th scope="col">Причина</th>
                 <th scope="col">Официально</th>
-                <th scope="col" id="review-estimate-heading" hidden>Внешняя оценка</th>
+                <th scope="col" id="review-estimate-heading" hidden>Оценка</th>
                 <th scope="col">Источник</th>
               </tr>
             </thead>
@@ -244,13 +272,13 @@
           <summary>Как считается покрытие</summary>
           <p>Для Кр1 и Кр2 нужно не меньше 18 разных часов с пригодными измерениями. Например, при покрытии 15 из 18 необходимых часов сутки считаются неполными. Для АМЕ-60 нужно не меньше 72 разных сроков.</p>
           <p>Целый календарный месяц проходит проверку, если неполных суток не больше 10, а подряд не больше четырёх. Для части месяца показано только покрытие выбранного периода.</p>
-          <p>Покрытие, среднее, минимум и максимум рассчитываются по принятым измерениям. Внешние оценки приведены отдельно.</p>
+          <p>Покрытие, среднее, минимум и максимум рассчитываются по принятым измерениям. Оценки приведены отдельно.</p>
         </details>
       </section>
 
       <details class="review-panel review-excel" id="review-excel">
         <summary>Что сохраняется в Excel</summary>
-        <p>На листе «Сроки» сохраняются дата и время, источник, номера строк, исходные столбцы, рабочее значение, решение алгоритма, официальный статус, причины с флагами и внешняя оценка с источником. Суточная и месячная сводки фиксируют результаты расчёта на момент выгрузки.</p>
+        <p>На листе «Сроки» сохраняются дата и время, источник, номера строк, исходные столбцы, рабочее значение, решение алгоритма, официальный статус, причины с флагами и оценка с источником. Суточная и месячная сводки фиксируют результаты расчёта на момент выгрузки.</p>
         <p>В листе «Управление» можно вернуть все исходные значения или исключить их массово. В режиме «По алгоритму» столбец «Режим строки» позволяет вернуть, исключить или заменить отдельное значение оценкой. Зелёный цвет отмечает принятое исходное значение, красный — исключённое.</p>
         <p id="review-excel-original" hidden>Отдельно можно скачать копию исходной книги с отметками рядом с обработанными значениями.</p>
         <p><a href="/review-example.xlsx" download>Скачать готовый пример Excel</a></p>

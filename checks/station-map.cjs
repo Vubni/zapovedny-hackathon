@@ -199,7 +199,7 @@ async function run() {
 
     const offshore = picker.getByRole('button', { name: /Восточный берег, Западный берег/ });
     assert.equal(await offshore.count(), 0);
-    await picker.getByRole('button', { name: 'Показать все станции' }).click();
+    await picker.getByRole('button', { name: 'К станциям' }).click();
     await offshore.waitFor();
     assert.equal(await area.isVisible(), true);
     await picker.getByRole('button', { name: /Показать на карте: Восточный берег/ }).click();
@@ -288,10 +288,7 @@ async function run() {
     await result(['kr1', 'testing-ame']);
 
     await page.setViewportSize({width: 1280, height: 840});
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, 'onLine', {value: false});
-      window.mountTestOverview();
-    });
+    await page.evaluate(() => window.mountTestOverview());
     const overview = page.locator('#station-overview');
     const overviewMap = overview.locator('.station-map-viewport');
     const overviewList = overview.locator('[data-picker-list]');

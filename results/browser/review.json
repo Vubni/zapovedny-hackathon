@@ -19,12 +19,19 @@
   },
   "filters": {
     "baseOnlyByDefault": true,
-    "conflictPolicy": "best"
+    "conflictPolicy": "best",
+    "customRange": [
+      1006.25,
+      1050.75
+    ],
+    "customThreshold": 2.25
   },
   "estimates": {
     "hourly": 9,
     "interpolated": 5.97,
-    "timezone": "Europe/Moscow"
+    "timezone": "Europe/Moscow",
+    "model": 14,
+    "combined": true
   },
   "upload": {
     "csv": true,

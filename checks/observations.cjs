@@ -126,7 +126,8 @@ async function checkDisjointIntervals(browser) {
     ]);
     await hasPlot(page, chartId);
     assert.equal(await page.locator(".date-range-band").count(), 2);
-    assert.equal(await page.getByRole("slider").count(), 0);
+    assert.equal(await page.locator("#archive-range").getByRole("slider").count(), 2);
+    assert.equal(await page.locator("[data-interval] option").count(), 2);
     assert.equal(new URL(page.url()).searchParams.get("intervals"), `${first},${second}`);
     await page.locator("#observation-summary").getByText("08.07.2025 — 10.07.2025", { exact: true }).waitFor();
     await assertDownload(page, () => chart(page, chartId).locator('[data-chart-action="csv"]').click(), "csv", bytes => {

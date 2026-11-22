@@ -5,14 +5,19 @@
     "origin": "https://yandex.ru",
     "path": "/map-widget/v1/",
     "loading": "lazy",
-    "requests_before_scroll": 0,
+    "requests_before_explicit_choice": 0,
     "initial": {
       "center": [
-        32.87,
-        56.52
+        111.12122999999997,
+        61.397724894931024
       ],
-      "zoom": 10,
-      "pin": null
+      "zoom": 2,
+      "pins": [
+        "-170.54,65.68",
+        "32.78246,56.43567",
+        "32.87,56.52",
+        "32.91234,56.57525"
+      ]
     },
     "located": [
       {
@@ -21,7 +26,12 @@
           56.57525
         ],
         "zoom": 14,
-        "pin": "32.91234,56.57525,pm2gnm"
+        "pins": [
+          "-170.54,65.68",
+          "32.78246,56.43567",
+          "32.87,56.52",
+          "32.91234,56.57525"
+        ]
       },
       {
         "center": [
@@ -29,13 +39,19 @@
           56.43567
         ],
         "zoom": 14,
-        "pin": "32.78246,56.43567,pm2gnm"
+        "pins": [
+          "-170.54,65.68",
+          "32.78246,56.43567",
+          "32.87,56.52",
+          "32.91234,56.57525"
+        ]
       }
     ]
   },
   "provider_request_blocked": true,
   "local_rectangle_selection": true,
   "selection_without_coordinates_in_dialog": true,
+  "russia_view_crosses_antimeridian": true,
   "layouts": [
     {
       "width": 1280,

@@ -20,7 +20,9 @@
       "total": 366,
       "general_valid": 363,
       "pressure_valid": 334,
-      "april_pressure_valid": 2
+      "april_station_valid": 28,
+      "april_pressure_valid": 2,
+      "april_pressure_status": "excluded"
     },
     "selected_month_days": {
       "february": 2,
@@ -37,6 +39,8 @@
   "chromium": {
     "keyboard_navigation": true,
     "intervals_persisted_on_reload": true,
-    "coverage_cleared_without_stations": true
+    "coverage_cleared_without_stations": true,
+    "station_and_parameter_rows": true,
+    "same_coverage_in_chart": true
   }
 }

@@ -85,26 +85,37 @@ class ObservationsTests(unittest.TestCase):
         self.assertEqual(overview["rows"][1]["cells"][0]["ratio"], 0.0)
         self.assertEqual(overview["rows"][1]["cells"][0]["observed_days"], 0)
 
-        pressure = coverage_overview(dict(query, parameter="pressure_hpa"))
+        pressure = coverage_overview(dict(query, chart="pressure"))
+        self.assertEqual(pressure["parameter"], "pressure_hpa")
         self.assertEqual(pressure["rows"][0]["valid_days"], 334)
-        self.assertEqual(pressure["rows"][0]["cells"][3]["total_days"], 30)
-        self.assertLess(pressure["rows"][0]["cells"][3]["ratio"], 1.0)
+        overall, april = pressure["rows"][0]["station_cells"][3], pressure["rows"][0]["cells"][3]
+        self.assertEqual((overall["valid_days"], overall["total_days"], overall["status"]), (28, 30, "gaps"))
+        self.assertEqual((april["valid_days"], april["total_days"], april["status"]), (2, 30, "excluded"))
+        self.assertFalse(april["month_valid"])
+        self.assertEqual(april["longest_gap"], 28)
+        self.assertEqual(pressure["rows"][0]["cells"][0]["status"], "full")
+        self.assertEqual(pressure["rows"][1]["station_cells"][0]["status"], "absent")
         self.assertIsNone(pressure["rows"][1]["cells"][0]["ratio"])
         self.assertFalse(pressure["rows"][1]["supported"])
-        fallback = coverage_overview(dict(query, stations="ame60", parameter="pressure_hpa"))
-        self.assertEqual(fallback["parameter"], "all")
-        self.assertNotIn("pressure_hpa", {item["id"] for item in fallback["parameters"]})
+        unavailable = coverage_overview(dict(query, stations="ame60", chart="pressure"))
+        self.assertEqual(unavailable["parameter"], "pressure_hpa")
+        self.assertEqual(unavailable["rows"][0]["cells"][0]["status"], "unsupported")
+
+        other_april = coverage_overview(dict(stations="kr1", start="2023-04-01", end="2023-04-30",
+                                             chart="pressure"))["rows"][0]["cells"][0]
+        self.assertEqual((other_april["valid_days"], other_april["total_days"]), (24, 30))
+        self.assertEqual((other_april["status"], other_april["longest_gap"]), ("excluded", 5))
 
     def test_overview_uses_calendar_periods_with_only_selected_days(self):
         many_years = coverage_overview(dict(stations="ame60", start="1992-07-10", end="2025-12-31"))
-        self.assertEqual(many_years["grain"], "year")
-        self.assertEqual(len(many_years["periods"]), 34)
-        self.assertEqual(many_years["periods"][0]["total_days"], 175)
+        self.assertEqual(many_years["grain"], "month")
+        self.assertEqual(len(many_years["periods"]), 402)
+        self.assertEqual(many_years["periods"][0]["total_days"], 22)
         gap = next(cell for cell in many_years["rows"][0]["cells"] if cell["period"] == "2000-01-01")
-        self.assertEqual((gap["observed_days"], gap["total_days"]), (0, 366))
+        self.assertEqual((gap["observed_days"], gap["total_days"], gap["status"]), (0, 31, "absent"))
 
         selected = coverage_overview(dict(
-            stations="kr1", start="2024-01-01", end="2024-12-31",
+            stations="kr1", start="2024-01-01", end="2024-12-31", chart="pressure",
             intervals="2024-04-25:2024-04-30,2024-02-28:2024-02-29,2024-04-01:2024-04-05",
         ))
         self.assertEqual([period["id"] for period in selected["periods"]], ["2024-02-01", "2024-04-01"])
@@ -114,6 +125,8 @@ class ObservationsTests(unittest.TestCase):
                                               {"start": "2024-04-25", "end": "2024-04-30"}])
         self.assertEqual(selected["rows"][0]["total_days"], 13)
         self.assertEqual(selected["rows"][0]["cells"][0]["total_days"], 2)
+        self.assertIsNone(selected["rows"][0]["cells"][1]["month_valid"])
+        self.assertNotEqual(selected["rows"][0]["cells"][1]["status"], "excluded")
 
     def test_overview_new_station_uses_only_confirmed_distinct_hours(self):
         station, day = "slot-test", "2026-05-15"

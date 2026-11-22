@@ -1,112 +1,576 @@
 {
-  "version": 1,
+  "version": 2,
   "source": "meteo_hack_dataset.zip",
   "source_sha256": "8c574c518617aea0f301997c62dfe75dc09b059abca1cdbd268645a3cd6cc33d",
   "database_sha256": "3f6495f6ffee9e7e9d6e2c522b7655488bcc4f9285fa681d039484cf0b4111c9",
   "target": "next_calendar_day_mean_air_temperature",
   "unit": "°C",
-  "method": "ordinary_least_squares",
+  "method": "station_balanced_residual_least_squares",
   "features": [
-    "intercept",
-    "today_c",
     "today_minus_yesterday_c",
-    "annual_sin",
-    "annual_cos"
+    "hemisphere_adjusted_seasonal_drift"
   ],
   "baseline": "last_observed_daily_mean",
-  "stations": [
+  "archive_ranges": {
+    "ame60": {
+      "first_source_day": "1992-07-02",
+      "last_source_day": "2021-11-05",
+      "default_source_day": "2021-11-04"
+    },
+    "kr1": {
+      "first_source_day": "2022-05-03",
+      "last_source_day": "2025-12-31",
+      "default_source_day": "2025-12-30"
+    },
+    "kr2": {
+      "first_source_day": "2022-07-25",
+      "last_source_day": "2025-12-31",
+      "default_source_day": "2025-12-30"
+    }
+  },
+  "fits": [
     {
-      "id": "ame60",
-      "label": "АМЕ-60",
+      "days": 172,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1992-12-31",
+      "available_from": "1993-01-01",
+      "stations": {
+        "ame60": 172
+      },
       "coefficients": [
-        0.927288959909978,
-        0.799798560514201,
-        0.17727212768030398,
-        -0.45386030247536874,
-        -2.4564944599381806
-      ],
+        0.16161475875624134,
+        0.18359050283906994
+      ]
+    },
+    {
+      "days": 534,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1993-12-31",
+      "available_from": "1994-01-01",
+      "stations": {
+        "ame60": 534
+      },
+      "coefficients": [
+        0.10088974907741324,
+        0.18793143959445205
+      ]
+    },
+    {
+      "days": 837,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1994-12-31",
+      "available_from": "1995-01-01",
+      "stations": {
+        "ame60": 837
+      },
+      "coefficients": [
+        0.09662078243684409,
+        0.20290423452137538
+      ]
+    },
+    {
+      "days": 1177,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1995-12-23",
+      "available_from": "1996-01-01",
+      "stations": {
+        "ame60": 1177
+      },
+      "coefficients": [
+        0.058637844117053556,
+        0.20375339913208085
+      ]
+    },
+    {
+      "days": 1470,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1996-12-31",
+      "available_from": "1997-01-01",
+      "stations": {
+        "ame60": 1470
+      },
+      "coefficients": [
+        0.057509492354693326,
+        0.19009909008324818
+      ]
+    },
+    {
+      "days": 1822,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1997-12-31",
+      "available_from": "1998-01-01",
+      "stations": {
+        "ame60": 1822
+      },
+      "coefficients": [
+        0.09114904039450397,
+        0.18686287706099242
+      ]
+    },
+    {
+      "days": 2170,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "1998-12-27",
+      "available_from": "1999-01-01",
+      "stations": {
+        "ame60": 2170
+      },
+      "coefficients": [
+        0.08460829523337833,
+        0.19033320214931077
+      ]
+    },
+    {
+      "days": 2303,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2003-12-31",
+      "available_from": "2004-01-01",
+      "stations": {
+        "ame60": 2303
+      },
+      "coefficients": [
+        0.07522336033307744,
+        0.1915530898481597
+      ]
+    },
+    {
+      "days": 2665,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2004-12-31",
+      "available_from": "2005-01-01",
+      "stations": {
+        "ame60": 2665
+      },
+      "coefficients": [
+        0.0794938117613228,
+        0.187507646585323
+      ]
+    },
+    {
+      "days": 3027,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2005-12-28",
+      "available_from": "2006-01-01",
+      "stations": {
+        "ame60": 3027
+      },
+      "coefficients": [
+        0.06970078975392638,
+        0.1865187979166553
+      ]
+    },
+    {
+      "days": 3373,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2006-12-31",
+      "available_from": "2007-01-01",
+      "stations": {
+        "ame60": 3373
+      },
+      "coefficients": [
+        0.07752878460816001,
+        0.19086709548071656
+      ]
+    },
+    {
+      "days": 3719,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2007-12-26",
+      "available_from": "2008-01-01",
+      "stations": {
+        "ame60": 3719
+      },
+      "coefficients": [
+        0.07700935325246987,
+        0.18954084295358567
+      ]
+    },
+    {
+      "days": 4078,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2008-12-31",
+      "available_from": "2009-01-01",
+      "stations": {
+        "ame60": 4078
+      },
+      "coefficients": [
+        0.07815686657499588,
+        0.1865573930721706
+      ]
+    },
+    {
+      "days": 4443,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2009-12-31",
+      "available_from": "2010-01-01",
+      "stations": {
+        "ame60": 4443
+      },
+      "coefficients": [
+        0.08597150995692368,
+        0.1824747863579373
+      ]
+    },
+    {
+      "days": 4808,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2010-12-31",
+      "available_from": "2011-01-01",
+      "stations": {
+        "ame60": 4808
+      },
+      "coefficients": [
+        0.086501560147151,
+        0.18688719485796465
+      ]
+    },
+    {
+      "days": 5147,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2011-12-31",
+      "available_from": "2012-01-01",
+      "stations": {
+        "ame60": 5147
+      },
+      "coefficients": [
+        0.08232683343911597,
+        0.18884291918711088
+      ]
+    },
+    {
+      "days": 5502,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2012-12-31",
+      "available_from": "2013-01-01",
+      "stations": {
+        "ame60": 5502
+      },
+      "coefficients": [
+        0.08194248308817545,
+        0.1903390554786023
+      ]
+    },
+    {
+      "days": 5821,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2013-12-31",
+      "available_from": "2014-01-01",
+      "stations": {
+        "ame60": 5821
+      },
+      "coefficients": [
+        0.07924861063029237,
+        0.19018743553906273
+      ]
+    },
+    {
+      "days": 6186,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2014-12-31",
+      "available_from": "2015-01-01",
+      "stations": {
+        "ame60": 6186
+      },
+      "coefficients": [
+        0.07666391446822095,
+        0.19030000649948006
+      ]
+    },
+    {
+      "days": 6551,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2015-12-31",
+      "available_from": "2016-01-01",
+      "stations": {
+        "ame60": 6551
+      },
+      "coefficients": [
+        0.08145497712678997,
+        0.18722317992873216
+      ]
+    },
+    {
+      "days": 6917,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2016-12-31",
+      "available_from": "2017-01-01",
+      "stations": {
+        "ame60": 6917
+      },
+      "coefficients": [
+        0.07844478686413305,
+        0.18880370007598782
+      ]
+    },
+    {
+      "days": 7238,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2017-12-18",
+      "available_from": "2018-01-01",
+      "stations": {
+        "ame60": 7238
+      },
+      "coefficients": [
+        0.08054862161531501,
+        0.18634121672796813
+      ]
+    },
+    {
+      "days": 7549,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2018-12-31",
+      "available_from": "2019-01-01",
+      "stations": {
+        "ame60": 7549
+      },
+      "coefficients": [
+        0.08180410716867913,
+        0.1876552952721775
+      ]
+    },
+    {
+      "days": 7807,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2019-10-04",
+      "available_from": "2020-01-01",
+      "stations": {
+        "ame60": 7807
+      },
+      "coefficients": [
+        0.07930987541038251,
+        0.1883968582451777
+      ]
+    },
+    {
+      "days": 8000,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2020-10-31",
+      "available_from": "2021-01-01",
+      "stations": {
+        "ame60": 8000
+      },
+      "coefficients": [
+        0.0783745427434206,
+        0.1876147062144597
+      ]
+    },
+    {
+      "days": 8249,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2021-11-05",
+      "available_from": "2022-01-01",
+      "stations": {
+        "ame60": 8249
+      },
+      "coefficients": [
+        0.07958882471290185,
+        0.18607849843784646
+      ]
+    },
+    {
+      "days": 8520,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2022-12-31",
+      "available_from": "2023-01-01",
+      "stations": {
+        "ame60": 8249,
+        "kr1": 170,
+        "kr2": 101
+      },
+      "coefficients": [
+        0.11542216850568805,
+        0.17089046437709382
+      ]
+    },
+    {
+      "days": 8655,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2023-04-25",
+      "available_from": "2024-01-01",
+      "stations": {
+        "ame60": 8249,
+        "kr1": 282,
+        "kr2": 124
+      },
+      "coefficients": [
+        0.170013627917218,
+        0.15383702556080603
+      ]
+    },
+    {
+      "days": 9376,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2024-12-31",
+      "available_from": "2025-01-01",
+      "stations": {
+        "ame60": 8249,
+        "kr1": 639,
+        "kr2": 488
+      },
+      "coefficients": [
+        0.12783131793841732,
+        0.1831619997704918
+      ]
+    },
+    {
+      "days": 10094,
+      "first_target_day": "1992-07-03",
+      "last_target_day": "2025-12-31",
+      "available_from": "2026-01-01",
+      "stations": {
+        "ame60": 8249,
+        "kr1": 1004,
+        "kr2": 841
+      },
+      "coefficients": [
+        0.11408961409200717,
+        0.17147883268383873
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "station": "ame60",
+      "label": "АМЕ-60",
+      "window_start": "2021-01-01",
+      "window_end": "2021-12-31",
+      "calendar_days": 365,
+      "days": 249,
+      "first_target_day": "2021-01-07",
+      "last_target_day": "2021-11-05",
       "training": {
         "days": 8000,
         "first_target_day": "1992-07-03",
-        "last_target_day": "2020-10-31"
+        "last_target_day": "2020-10-31",
+        "available_from": "2021-01-01",
+        "stations": {
+          "ame60": 8000
+        },
+        "coefficients": [
+          0.0783745427434206,
+          0.1876147062144597
+        ]
       },
-      "test": {
-        "days": 249,
-        "first_target_day": "2021-01-07",
-        "last_target_day": "2021-11-05",
-        "window_start": "2021-01-01",
-        "window_end": "2021-12-31",
-        "calendar_days": 365,
-        "model_mae_c": 1.792528509586822,
-        "baseline_mae_c": 1.887049778059607
-      },
-      "archive": {
-        "first_source_day": "2020-12-31",
-        "last_source_day": "2021-11-05",
-        "default_source_day": "2021-11-04"
-      }
+      "model_mae_c": 1.8499057231635208,
+      "baseline_mae_c": 1.887049778059607
     },
     {
-      "id": "kr1",
+      "station": "kr1",
       "label": "Кр1 · поляна",
-      "coefficients": [
-        1.8573505048979082,
-        0.6961405696709031,
-        0.2904894327448752,
-        -0.8826134338259711,
-        -3.6874475267168827
-      ],
+      "window_start": "2025-01-01",
+      "window_end": "2025-12-31",
+      "calendar_days": 365,
+      "days": 365,
+      "first_target_day": "2025-01-01",
+      "last_target_day": "2025-12-31",
       "training": {
-        "days": 639,
-        "first_target_day": "2022-05-04",
-        "last_target_day": "2024-12-31"
+        "days": 9376,
+        "first_target_day": "1992-07-03",
+        "last_target_day": "2024-12-31",
+        "available_from": "2025-01-01",
+        "stations": {
+          "ame60": 8249,
+          "kr1": 639,
+          "kr2": 488
+        },
+        "coefficients": [
+          0.12783131793841732,
+          0.1831619997704918
+        ]
       },
-      "test": {
-        "days": 365,
-        "first_target_day": "2025-01-01",
-        "last_target_day": "2025-12-31",
-        "window_start": "2025-01-01",
-        "window_end": "2025-12-31",
-        "calendar_days": 365,
-        "model_mae_c": 1.730951882940219,
-        "baseline_mae_c": 1.7260424429223744
-      },
-      "archive": {
-        "first_source_day": "2024-12-31",
-        "last_source_day": "2025-12-31",
-        "default_source_day": "2025-12-30"
-      }
+      "model_mae_c": 1.7225118089351306,
+      "baseline_mae_c": 1.7260424429223744
     },
     {
-      "id": "kr2",
+      "station": "kr2",
       "label": "Кр2 · поле",
-      "coefficients": [
-        1.9650123640478943,
-        0.7116193746649617,
-        0.3021681179618186,
-        -0.7563820896050614,
-        -3.6762196252138986
-      ],
+      "window_start": "2025-01-01",
+      "window_end": "2025-12-31",
+      "calendar_days": 365,
+      "days": 353,
+      "first_target_day": "2025-01-01",
+      "last_target_day": "2025-12-31",
       "training": {
-        "days": 488,
-        "first_target_day": "2022-07-26",
-        "last_target_day": "2024-12-31"
+        "days": 9376,
+        "first_target_day": "1992-07-03",
+        "last_target_day": "2024-12-31",
+        "available_from": "2025-01-01",
+        "stations": {
+          "ame60": 8249,
+          "kr1": 639,
+          "kr2": 488
+        },
+        "coefficients": [
+          0.12783131793841732,
+          0.1831619997704918
+        ]
       },
-      "test": {
-        "days": 353,
-        "first_target_day": "2025-01-01",
-        "last_target_day": "2025-12-31",
-        "window_start": "2025-01-01",
-        "window_end": "2025-12-31",
-        "calendar_days": 365,
-        "model_mae_c": 1.7437250801107356,
-        "baseline_mae_c": 1.706366160960649
+      "model_mae_c": 1.6959863960877422,
+      "baseline_mae_c": 1.706366160960649
+    }
+  ],
+  "transfer_tests": [
+    {
+      "station": "ame60",
+      "label": "АМЕ-60",
+      "window_start": "2021-01-01",
+      "window_end": "2021-12-31",
+      "calendar_days": 365,
+      "days": 0,
+      "eligible_target_days": 249,
+      "reason": "До начала теста отсутствуют обучающие данные других станций."
+    },
+    {
+      "station": "kr1",
+      "label": "Кр1 · поляна",
+      "window_start": "2025-01-01",
+      "window_end": "2025-12-31",
+      "calendar_days": 365,
+      "days": 365,
+      "first_target_day": "2025-01-01",
+      "last_target_day": "2025-12-31",
+      "training": {
+        "days": 8737,
+        "first_target_day": "1992-07-03",
+        "last_target_day": "2024-12-31",
+        "available_from": "2025-01-01",
+        "stations": {
+          "ame60": 8249,
+          "kr2": 488
+        },
+        "coefficients": [
+          0.12045993277200574,
+          0.18212504735234986
+        ]
       },
-      "archive": {
-        "first_source_day": "2024-12-31",
-        "last_source_day": "2025-12-31",
-        "default_source_day": "2025-12-30"
-      }
+      "model_mae_c": 1.7218574723848705,
+      "baseline_mae_c": 1.7260424429223744
+    },
+    {
+      "station": "kr2",
+      "label": "Кр2 · поле",
+      "window_start": "2025-01-01",
+      "window_end": "2025-12-31",
+      "calendar_days": 365,
+      "days": 353,
+      "first_target_day": "2025-01-01",
+      "last_target_day": "2025-12-31",
+      "training": {
+        "days": 8888,
+        "first_target_day": "1992-07-03",
+        "last_target_day": "2024-12-31",
+        "available_from": "2025-01-01",
+        "stations": {
+          "ame60": 8249,
+          "kr1": 639
+        },
+        "coefficients": [
+          0.11264519079083576,
+          0.18532852714342374
+        ]
+      },
+      "model_mae_c": 1.6949372806225693,
+      "baseline_mae_c": 1.706366160960649
     }
   ]
 }

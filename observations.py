@@ -404,50 +404,78 @@ def valid_months(start, end, valid):
     return output
 
 
-def overview_slots(station, start, end, param):
+def overview_slots(station, start, end, param=None):
     """Read archived daily slot counts and refresh only dates touched by published rows."""
     station_id = station["id"]
     archive = build_data.STATIONS.get(station_id)
-    slots = {}
+    station_counts, parameter_counts = {}, {}
     if archive:
-        column = "slots" if param else "station_slots"
         archive_param = param or archive.params[0]
         with closing(analytics.database()) as connection:
-            slots.update(connection.execute(
-                f"SELECT day, {column} FROM daily WHERE station=? AND param=? AND day BETWEEN ? AND ?",
+            rows = connection.execute(
+                "SELECT day, station_slots, slots FROM daily WHERE station=? AND param=? AND day BETWEEN ? AND ?",
                 (station_id, archive_param, start, end),
-            ))
+            )
+            for day, station_slots, parameter_slots in rows:
+                station_counts[day] = station_slots
+                if param:
+                    parameter_counts[day] = parameter_slots
     parameters = (param,) if param else ()
-    for day, rows in raw_days(station, start, end, parameters, imports_only=True, count_all_slots=param is None):
-        slots[day] = observed_slots(rows, station, param)
-    return slots
+    for day, rows in raw_days(station, start, end, parameters, imports_only=True, count_all_slots=True):
+        station_counts[day] = observed_slots(rows, station)
+        if param:
+            parameter_counts[day] = observed_slots(rows, station, param)
+    return station_counts, parameter_counts
 
 
-def overview_grain(windows):
-    months = set()
-    for first, last in windows:
-        lo, hi = first.year * 12 + first.month, last.year * 12 + last.month
-        if hi - lo >= 24:
-            return "year"
-        months.update(range(lo, hi + 1))
-        if len(months) > 24:
-            return "year"
-    return "month"
-
-
-def overview_periods(windows, grain, station_count):
+def overview_periods(windows, series_count):
     grouped = {}
     for first, last in windows:
-        for part in periods(first, last, grain):
+        for part in periods(first, last, "month"):
             item = grouped.setdefault(part.start, {
                 "id": part.start, "start": part.first, "end": part.last, "total_days": 0, "intervals": [],
             })
             item["end"] = part.last
             item["total_days"] += part.length
             item["intervals"].append({"start": part.first, "end": part.last})
-            if len(grouped) * station_count > MAX_POINTS:
+            if len(grouped) * series_count > MAX_POINTS:
                 raise ValueError("Слишком много ячеек покрытия. Сократите периоды или число станций.")
     return list(grouped.values())
+
+
+def coverage_cells(months, counts, minimum_slots, supported=True):
+    items = []
+    for month in months:
+        observed_days = 0
+        validity = []
+        for period in month["intervals"]:
+            for day in calendar_days(period["start"], period["end"]):
+                count = counts.get(day, 0)
+                observed_days += bool(count)
+                validity.append(count >= minimum_slots)
+        total, valid_days, longest_gap, admitted = build_data.coverage(validity)
+        year, number = int(month["id"][:4]), int(month["id"][5:7])
+        complete = total == calendar.monthrange(year, number)[1]
+        if not supported:
+            status = "unsupported"
+        elif not observed_days:
+            status = "absent"
+        elif valid_days == total:
+            status = "full"
+        elif complete and not admitted:
+            status = "excluded"
+        else:
+            status = "gaps"
+        items.append({
+            "period": month["id"], "valid_days": valid_days, "observed_days": observed_days,
+            "total_days": total, "ratio": valid_days / total if supported else None, "status": status,
+            "month_valid": bool(admitted) if complete and supported else None,
+            "longest_gap": longest_gap if complete and supported else None,
+        })
+    return items
+
+
+COVERAGE_LABELS = {"pressure_hpa": "Давление", "rh": "Влажность"}
 
 
 def coverage_overview(query):
@@ -455,49 +483,46 @@ def coverage_overview(query):
     windows = query_intervals(query)
     selected_windows = [(first.isoformat(), last.isoformat()) for first, last in windows]
     start, end = selected_windows[0][0], selected_windows[-1][1]
-    grain = overview_grain(windows)
-    requested = query.get("parameter", "all")
+    chart = CHARTS.get(query.get("chart"))
+    chart_parameters = list(dict.fromkeys(param for param, _ in chart.fields)) if chart else []
+    requested = query.get("parameter", chart_parameters[0] if chart_parameters else "all")
     if requested != "all" and requested not in analytics.PARAMS:
         raise ValueError("Выберите доступный параметр покрытия")
 
     stations = query_stations(query)
     available = {param for station in stations for param in station_params(station)}
     parameters = [{"id": "all", "label": "Общее покрытие"}]
-    parameters.extend({"id": param, "label": label} for param, (label, _) in analytics.PARAMS.items()
-                      if param in available)
-    selected = requested if requested in available else "all"
-    result = {"start": start, "end": end, "grain": grain, "parameter": selected,
+    shown = available | set(chart_parameters) | {requested}
+    parameters.extend({"id": param, "label": COVERAGE_LABELS.get(param, label)}
+                      for param, (label, _) in analytics.PARAMS.items() if param in shown)
+    result = {"start": start, "end": end, "grain": "month", "parameter": requested,
+              "chart_parameters": chart_parameters,
               "parameters": parameters, "periods": [], "rows": [],
               "intervals": [{"start": lo, "end": hi} for lo, hi in selected_windows]}
     if not stations:
         return result
 
-    result["periods"] = overview_periods(selected_windows, grain, len(stations))
+    result["periods"] = overview_periods(selected_windows, len(stations) * (1 if requested == "all" else 2))
     selected_days = sum(item["total_days"] for item in result["periods"])
     for station in stations:
-        supported = selected == "all" or selected in station_params(station)
-        counts = {}
-        if supported:
-            for first, last in selected_windows:
-                counts.update(overview_slots(station, first, last, None if selected == "all" else selected))
-        observed = sorted(day for day, count in counts.items() if count)
-        valid = sorted(day for day, count in counts.items() if count >= station["minimum_slots"])
-        cells = []
-        for item in result["periods"]:
-            valid_days = sum(bisect_right(valid, part["end"]) - bisect_left(valid, part["start"])
-                             for part in item["intervals"])
-            observed_days = sum(bisect_right(observed, part["end"]) - bisect_left(observed, part["start"])
-                                for part in item["intervals"])
-            total_days = item["total_days"]
-            cells.append({
-                "period": item["id"], "valid_days": valid_days, "observed_days": observed_days,
-                "total_days": total_days, "ratio": valid_days / total_days if supported else None,
-            })
+        supported = requested == "all" or requested in station_params(station)
+        param = requested if requested != "all" and supported else None
+        station_counts, parameter_counts = {}, {}
+        for first, last in selected_windows:
+            overall, specific = overview_slots(station, first, last, param)
+            station_counts.update(overall)
+            parameter_counts.update(specific)
+        minimum_slots = station["minimum_slots"]
+        station_cells = coverage_cells(result["periods"], station_counts, minimum_slots)
+        cells = station_cells if requested == "all" else coverage_cells(
+            result["periods"], parameter_counts, minimum_slots, supported,
+        )
         result["rows"].append({
             "station": station["id"], "label": station["label"], "color": station.get("color"),
-            "minimum_slots": station["minimum_slots"], "slot_minutes": station["slot_minutes"],
-            "supported": supported, "valid_days": len(valid), "observed_days": len(observed),
-            "total_days": selected_days, "cells": cells,
+            "minimum_slots": minimum_slots, "slot_minutes": station["slot_minutes"],
+            "supported": supported, "valid_days": sum(cell["valid_days"] for cell in cells),
+            "observed_days": sum(cell["observed_days"] for cell in cells),
+            "total_days": selected_days, "cells": cells, "station_cells": station_cells,
         })
     return result
 
@@ -762,7 +787,7 @@ def _chart_interval(query, chart_id, grain, mode, stations, first, last, working
     chart = CHARTS[chart_id]
     result = {"title": chart.title, "unit": chart.unit, "kind": chart.kind, "axis": chart.axis,
               "series": [], "coverage": [], "statistics": [], "notes": [], "start": start, "end": end,
-              "grain": grain, "mode": mode, "chart": chart_id}
+              "grain": grain, "mode": mode, "chart": chart_id, "coverage_stations": [station["id"] for station in stations]}
     if not stations:
         result["notes"].append("Выберите хотя бы одну станцию")
         return result

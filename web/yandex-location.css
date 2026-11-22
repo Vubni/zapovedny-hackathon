@@ -6,6 +6,8 @@
 .station-overview .station-yandex-viewport { height: 300px; }
 .station-provider-caption { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding-top: 8px; color: #46594e; font-size: 13px; }
 .station-provider-caption a { color: var(--dark, #20563b); }
+.station-widget-points { display: flex; flex-wrap: wrap; gap: 6px; max-height: 105px; overflow: auto; margin-top: 7px; padding: 1px 1px 4px; }
+.station-widget-points .btn { min-height: 29px; padding: 4px 8px; overflow-wrap: anywhere; white-space: normal; font-size: 11px; text-align: left; }
 .station-map-column [hidden], #coverage-overview[hidden] { display: none !important; }
 .station-map-column[data-map-provider="widget"] [data-terrain-legend] { display: none; }
 @media (max-width: 720px) {

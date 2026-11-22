@@ -1,6 +1,7 @@
-import {mountYandexLocation} from './yandex-location.js';
+import {longitudeFrame, mountYandexLocation, wrapLongitude} from './yandex-location.js';
 
 const reserve = {latitude: 56.52, longitude: 32.87};
+const russiaExtent = [{latitude: 41, longitude: 19}, {latitude: 82.3, longitude: -169}];
 const initialScale = 410;
 const maxScale = 9600;
 const degrees = Math.PI / 180;
@@ -113,10 +114,12 @@ function createMap(viewport, onPick, onSelect) {
   const scaleLine = viewport.querySelector('.station-map-scale');
   const frame = viewport.querySelector('.station-map-frame');
   const modes = [...viewport.querySelectorAll('[data-map-mode]')];
-  const controls = viewport.querySelectorAll('.station-map-modes, .station-map-tools');
+  const controls = viewport.querySelectorAll('.station-map-modes, .station-map-tools, .station-map-jumps');
   const context = canvas.getContext('2d');
   let geography;
+  let russiaGeography;
   let requestedGeography = false;
+  let requestedRussia = false;
   const bound = (value, low, high) => Math.min(Math.max(value, low), high);
   const worldScale = () => Math.min(viewport.clientWidth / 370, viewport.clientHeight / 190);
   const cosine = latitude => Math.max(0.25, Math.cos(latitude * degrees));
@@ -127,11 +130,12 @@ function createMap(viewport, onPick, onSelect) {
   let pendingFrame;
   let markers = [];
   let draft = null;
+  let fittedPoints = null;
   let mode = 'select';
   let picking = false;
   let pointer = null;
   const provider = mountYandexLocation(viewport, {
-    center: reserve, inline: Boolean(viewport.closest('.station-overview')), onPick,
+    center: reserve, onPick,
     onToggleGroup: group => group.element.click(),
     onSelectIds: (ids, additive) => {
       const included = new Set(ids);
@@ -139,28 +143,61 @@ function createMap(viewport, onPick, onSelect) {
     },
   });
 
-  const project = (longitude, latitude) => [
+  const projectUnwrapped = (longitude, latitude) => [
     width / 2 + (longitude - center.longitude) * scale * cosine(center.latitude),
     height / 2 - (latitude - center.latitude) * scale,
   ];
-  const unproject = (x, y) => ({
-    longitude: bound(center.longitude + (x - width / 2) / (scale * cosine(center.latitude)), -180, 180),
-    latitude: bound(center.latitude - (y - height / 2) / scale, -90, 90),
-  });
+  const project = (longitude, latitude) =>
+    projectUnwrapped(center.longitude + wrapLongitude(longitude - center.longitude), latitude);
+  function unproject(x, y, wrap = true) {
+    const longitude = center.longitude + (x - width / 2) / (scale * cosine(center.latitude));
+    return {longitude: wrap ? wrapLongitude(longitude) : longitude,
+      latitude: bound(center.latitude - (y - height / 2) / scale, -90, 90)};
+  }
 
   function setCenter(latitude, longitude) {
-    center = {latitude: bound(latitude, -90, 90), longitude: bound(longitude, -180, 180)};
+    center = {latitude: bound(latitude, -90, 90), longitude: wrapLongitude(longitude)};
   }
 
   function trace(shapes, close = false) {
     context.beginPath();
-    for (const shape of shapes) {
-      if (shape[2] < west || shape[0] > east || shape[3] < south || shape[1] > north) continue;
-      const points = shape[4];
-      context.moveTo(...project(points[0], points[1]));
-      for (let i = 2; i < points.length; i += 2) context.lineTo(...project(points[i], points[i + 1]));
-      if (close) context.closePath();
+    for (const [left, bottom, right, top, points, minScale = 0] of shapes) {
+      if (scale < minScale || top < south || bottom > north) continue;
+      const first = Math.ceil((west - right) / 360);
+      const last = Math.floor((east - left) / 360);
+      for (let copy = first; copy <= last; copy++) {
+        const offset = copy * 360;
+        context.moveTo(...projectUnwrapped(points[0] + offset, points[1]));
+        for (let i = 2; i < points.length; i += 2) context.lineTo(...projectUnwrapped(points[i] + offset, points[i + 1]));
+        if (close) context.closePath();
+      }
     }
+  }
+
+  function drawRussiaLand(data, {water, landColor}) {
+    context.save();
+    context.beginPath();
+    for (const [left, bottom, right, top] of data.russiaExtent) {
+      const first = Math.ceil((west - right) / 360);
+      const last = Math.floor((east - left) / 360);
+      for (let copy = first; copy <= last; copy++) {
+        const offset = copy * 360;
+        const [x, y] = projectUnwrapped(left + offset, top);
+        const [rightX, bottomY] = projectUnwrapped(right + offset, bottom);
+        context.rect(x, y, rightX - x, bottomY - y);
+      }
+    }
+    context.clip();
+    context.fillStyle = water;
+    context.fillRect(0, 0, width, height);
+    trace(data.russiaLand, true);
+    context.fillStyle = landColor;
+    context.fill('evenodd');
+    trace(data.russiaCoastlines);
+    context.strokeStyle = '#aabfb4';
+    context.lineWidth = 0.75;
+    context.stroke();
+    context.restore();
   }
 
   let west, east, south, north;
@@ -179,58 +216,81 @@ function createMap(viewport, onPick, onSelect) {
         if (source) source.textContent = 'Географическая основа недоступна. Станции показаны по координатам.';
       });
     }
+    const closeToReserve = scale >= 135 && center.longitude >= 28 && center.longitude <= 38 &&
+      center.latitude >= 54 && center.latitude <= 59;
+    if (!requestedRussia && !closeToReserve) {
+      requestedRussia = true;
+      import('./russia-map-data.js').then(data => {
+        russiaGeography = data;
+        if (viewport.isConnected) redraw();
+      }).catch(() => {});
+    }
     const {land = [], lakes = [], places = [], rivers = [], roads = []} = geography || {};
+    const detail = russiaGeography && !closeToReserve ? russiaGeography : null;
+    const water = '#d7e8ea';
+    const landColor = '#edf0de';
     const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
     const pixelWidth = Math.round(width * pixelRatio);
     const pixelHeight = Math.round(height * pixelRatio);
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
     if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
     context.setTransform(pixelWidth / width, 0, 0, pixelHeight / height, 0, 0);
-    context.fillStyle = '#d7e8ea';
+    context.fillStyle = water;
     context.fillRect(0, 0, width, height);
-    ({longitude: west, latitude: north} = unproject(0, 0));
-    ({longitude: east, latitude: south} = unproject(width, height));
+    ({longitude: west, latitude: north} = unproject(0, 0, false));
+    ({longitude: east, latitude: south} = unproject(width, height, false));
 
     trace(land, true);
-    context.fillStyle = '#edf0de';
+    context.fillStyle = landColor;
     context.fill('evenodd');
     context.strokeStyle = '#aabfb4';
     context.lineWidth = 0.75;
     context.stroke();
+    if (detail?.russiaLand.length) drawRussiaLand(detail, {water, landColor});
 
     const cell = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 45, 90]
       .find(value => value * scale * cosine(center.latitude) >= 48) || 90;
     context.beginPath();
     for (let lon = Math.ceil(west / cell) * cell; lon <= east; lon += cell) {
-      context.moveTo(...project(lon, north));
-      context.lineTo(...project(lon, south));
+      context.moveTo(...projectUnwrapped(lon, north));
+      context.lineTo(...projectUnwrapped(lon, south));
     }
     for (let lat = Math.ceil(south / cell) * cell; lat <= north; lat += cell) {
-      context.moveTo(...project(west, lat));
-      context.lineTo(...project(east, lat));
+      context.moveTo(...projectUnwrapped(west, lat));
+      context.lineTo(...projectUnwrapped(east, lat));
     }
     context.strokeStyle = '#5d7a661f';
     context.stroke();
 
-    if (scale >= 10) {
-      trace(rivers);
+    if (detail || scale >= 10) {
+      trace(detail ? detail.russiaRivers : rivers);
       context.strokeStyle = '#94bfc8';
       context.lineWidth = 1.1;
       context.stroke();
-      trace(lakes, true);
+      trace(detail ? detail.russiaLakes : lakes, true);
       context.fillStyle = '#c3dfe2';
       context.fill('evenodd');
       context.strokeStyle = '#9fbfc1';
       context.lineWidth = 0.7;
       context.stroke();
     }
-    if (scale >= 75) {
-      trace(roads);
+    if (detail || scale >= 75) {
+      trace(detail ? detail.russiaRoads : roads);
       context.strokeStyle = '#faf8ef';
       context.lineWidth = 3;
       context.stroke();
       context.strokeStyle = '#c5ad88';
       context.lineWidth = 1.1;
+      context.stroke();
+    }
+    if (detail) {
+      trace(detail.russiaBoundaries);
+      context.strokeStyle = '#8a9a8880';
+      context.lineWidth = 0.7;
+      context.stroke();
+      trace(detail.russiaBorders);
+      context.strokeStyle = '#677e69';
+      context.lineWidth = 1;
       context.stroke();
     }
 
@@ -261,19 +321,23 @@ function createMap(viewport, onPick, onSelect) {
       }
     }
 
-    context.font = `600 11px ${font}`;
-    for (const [name, longitude, latitude, minScale] of places) {
-      if (scale < minScale || longitude < west || longitude > east || latitude < south || latitude > north) continue;
+    const geographicLabels = detail ? [...detail.russiaPlaces, ...detail.russiaWaterLabels, ...places] : places;
+    for (const [name, longitude, latitude, minScale, kind] of geographicLabels) {
+      if (scale < minScale || latitude < south || latitude > north) continue;
+      const waterLabel = kind === 'river' || kind === 'lake' || kind === 'sea';
+      context.font = `${waterLabel ? 'italic 600' : '600'} 11px ${font}`;
       const [x, y] = project(longitude, latitude);
       const label = [x - 4, y - 8, x + context.measureText(name).width + 10, y + 8];
       if (label[0] < 7 || label[2] > width - 8 || label[1] < 7 || label[3] > height - 7) continue;
       if (occupied.some(a => a[0] < label[2] && a[2] > label[0] && a[1] < label[3] && a[3] > label[1])) continue;
       occupied.push(label);
-      context.fillStyle = '#56695b';
-      context.beginPath();
-      context.arc(x, y, 2.1, 0, Math.PI * 2);
-      context.fill();
-      context.strokeStyle = '#f1f4e4';
+      context.fillStyle = waterLabel ? '#456c79' : '#56695b';
+      if (!waterLabel) {
+        context.beginPath();
+        context.arc(x, y, 2.1, 0, Math.PI * 2);
+        context.fill();
+      }
+      context.strokeStyle = waterLabel ? water : '#f1f4e4';
       context.lineWidth = 2.5;
       context.strokeText(name, x + 6, y);
       context.fillText(name, x + 6, y);
@@ -308,6 +372,7 @@ function createMap(viewport, onPick, onSelect) {
   }
 
   function zoom(factor, x = width / 2, y = height / 2) {
+    fittedPoints = null;
     const point = unproject(x, y);
     scale = bound(scale * factor, worldScale(), maxScale);
     const latitude = bound(point.latitude + (y - height / 2) / scale, -90, 90);
@@ -316,13 +381,15 @@ function createMap(viewport, onPick, onSelect) {
   }
 
   function pan(dx, dy) {
+    fittedPoints = null;
     const {longitude, latitude} = unproject(width / 2 - dx, height / 2 - dy);
     setCenter(latitude, longitude);
     redraw();
   }
 
   function focus(point) {
-    center = point;
+    fittedPoints = null;
+    setCenter(point.latitude, point.longitude);
     provider.focus(point, !markers.some(group => group.area &&
       group.point.latitude === point.latitude && group.point.longitude === point.longitude));
     scale = initialScale;
@@ -330,15 +397,15 @@ function createMap(viewport, onPick, onSelect) {
   }
 
   function fit(points) {
+    fittedPoints = points;
     const box = viewport.getBoundingClientRect();
     if (!points.length || !box.width || !box.height) return;
     const latitudes = points.map(p => p.latitude);
-    const longitudes = points.map(p => p.longitude);
     const latRange = Math.max(...latitudes) - Math.min(...latitudes);
-    const lonRange = Math.max(...longitudes) - Math.min(...longitudes);
-    setCenter(Math.min(...latitudes) + latRange / 2, Math.min(...longitudes) + lonRange / 2);
+    const {longitude, span} = longitudeFrame(points);
+    setCenter(Math.min(...latitudes) + latRange / 2, longitude);
     scale = bound(Math.min(initialScale, (box.height - 90) / (latRange || 1e-6),
-      (box.width - 80) / ((lonRange || 1e-6) * cosine(center.latitude))), worldScale(), maxScale);
+      (box.width - 80) / ((span || 1e-6) * cosine(center.latitude))), worldScale(), maxScale);
     redraw();
   }
 
@@ -437,7 +504,8 @@ function createMap(viewport, onPick, onSelect) {
     event.preventDefault();
   });
 
-  const observer = new ResizeObserver(redraw);
+  viewport.querySelector('[data-fit-russia]').addEventListener('click', () => fit(russiaExtent));
+  const observer = new ResizeObserver(() => fittedPoints ? fit(fittedPoints) : redraw());
   observer.observe(viewport);
   return {
     zoom, focus, fit, cancelGesture,
@@ -484,7 +552,10 @@ function mapContents() {
     <div class="station-map-tools" aria-label="Управление картой">
       <button class="icon-btn" type="button" data-zoom-in title="Приблизить" aria-label="Приблизить">${icon('plus')}</button>
       <button class="icon-btn" type="button" data-zoom-out title="Отдалить" aria-label="Отдалить">${icon('minus')}</button>
-      <button class="icon-btn" type="button" data-fit title="Показать все станции" aria-label="Показать все станции">${icon('fit')}</button>
+    </div>
+    <div class="station-map-jumps" role="group" aria-label="Область карты">
+      <button class="btn line" type="button" data-fit-russia>Вся Россия</button>
+      <button class="btn line" type="button" data-fit>К станциям</button>
     </div>
     <div class="station-map-scale" aria-hidden="true"></div>
     <p class="station-map-instruction" hidden>Укажите точку на карте или нажмите Enter для точки в центре.</p>
@@ -494,7 +565,7 @@ function mapContents() {
     <span data-area-note>Общий маркер показывает район заповедника.</span>
   </div>
   <ul class="station-terrain-legend" data-terrain-legend aria-label="Тип местности на карте" hidden></ul>
-  <p id="${hintId}" class="station-map-shortcut">Удерживайте Ctrl или ⌘, чтобы добавить станции рамкой.</p>
+  <p id="${hintId}" class="station-map-shortcut"><span class="station-map-mouse-tip">Зажмите левую кнопку и протяните рамку. Ctrl или ⌘ добавят станции к выбору.</span><span class="station-map-touch-tip">Проведите пальцем по карте в режиме выделения.</span></p>
 </section>`;
 }
 

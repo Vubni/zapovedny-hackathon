@@ -1,3 +1,5 @@
+import { mountCoverageOverview } from './coverage-overview.js';
+
 const cards = new WeakMap();
 const svgNamespace = 'http://www.w3.org/2000/svg';
 const DAY = 86_400_000;
@@ -574,37 +576,32 @@ function emptyContent(message, axis, detail = '') {
   return empty;
 }
 
-function coverageContent(model, open) {
+function coverageContent(state) {
+  const { model } = state;
+  const open = state.coverage?.open;
+  state.coverageView?.setEnabled(false);
+  state.coverageView = null;
   if (!model.coverage?.length && !model.notes?.length) return null;
   const content = html('details', 'obs-chart__coverage');
-  content.open = open;
+  content.open = Boolean(open);
   const summary = html('summary');
-  summary.append(html('span', '', 'Покрытие данных'), icon('chevron', 13));
+  summary.append(html('span', '', 'Покрытие по месяцам'), icon('chevron', 13));
   content.append(summary);
   const body = html('div', 'obs-chart__coverage-body');
   if (model.coverage?.length) {
-    const list = html('ul', 'obs-chart__coverage-list');
-    const stationRows = new Map();
-    const groupOf = row => `${row.station}|${row.interval ?? ''}`;
-    for (const row of model.coverage) addTo(stationRows, groupOf(row), row);
-    for (const row of model.coverage) {
-      const item = html('li', 'obs-chart__coverage-row');
-      const title = row.label || row.station || 'Общее покрытие';
-      const parameter = stationRows.get(groupOf(row)).length > 1 ? row.parameter_label?.toLowerCase() : '';
-      const label = html('strong', '', [title, parameter, row.interval_label].filter(Boolean).join(' · '));
-      const counts = html('div', 'obs-chart__coverage-counts');
-      const metrics = [['Сутки', row.valid_days, row.total_days], ['Месяцы', row.valid_months, row.total_months]];
-      for (const [label, valid, total] of metrics) {
-        if (!Number.isFinite(valid) || !Number.isFinite(total)) continue;
-        const metric = html('span', '', `${label} `);
-        metric.append(html('b', '', `${number.format(valid)} из ${number.format(total)}`));
-        counts.append(metric);
-      }
-      item.append(label, counts);
-      if (row.reason) item.append(html('p', '', row.reason));
-      list.append(item);
-    }
-    body.append(list);
+    const table = html('div');
+    const tableView = mountCoverageOverview(table, { compact: true });
+    tableView.setEnabled(Boolean(open));
+    tableView.update({
+      stations: model.coverage_stations,
+      start: model.start,
+      end: model.end,
+      intervals: model.intervals,
+      chart: model.chart,
+    });
+    content.addEventListener('toggle', () => tableView.setEnabled(content.isConnected && content.open));
+    state.coverageView = tableView;
+    body.append(table);
   }
   for (const note of model.notes || []) body.append(html('p', 'obs-chart__coverage-note', note));
   content.append(body);
@@ -1168,7 +1165,7 @@ function paintCard(state) {
     draw(state);
   });
   footer.append(legend, state.controls.zoom);
-  const coverage = coverageContent(model, state.coverage?.open);
+  const coverage = coverageContent(state);
   state.coverage = coverage;
   const status = html('div', 'inline-status obs-chart__status');
   status.setAttribute('role', 'status');
@@ -1224,6 +1221,7 @@ export function renderChartCard(container, data, options = {}) {
     destroy() {
       if (cards.get(container) !== state) return;
       state.observer?.disconnect();
+      state.coverageView?.setEnabled(false);
       if (state.enlarged) closeFullscreen(state);
       cards.delete(container);
       container.replaceChildren();

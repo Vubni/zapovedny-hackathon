@@ -62,12 +62,32 @@
         <p class="inline-status" id="date-error" role="alert" hidden></p>
         <p class="small muted" id="date-result" role="status" hidden></p>
         <div class="navigator archive-range" id="archive-range" role="group" aria-label="Диапазон дат архива" hidden>
-          <div class="nav-track">
+          <div class="timeline-controls">
+            <label>Масштаб шкалы
+              <select data-zoom>
+                <option value="auto">По выбранным датам</option>
+                <option value="7">Неделя</option><option value="31">31 день</option>
+                <option value="365">365 дней</option><option value="archive">Весь архив</option>
+              </select>
+            </label>
+            <label hidden>Редактировать <select data-interval></select></label>
+            <div class="timeline-travel">
+              <button type="button" class="btn line" data-prev aria-label="Сдвинуть шкалу раньше">←</button>
+              <button type="button" class="btn line" data-next aria-label="Сдвинуть шкалу позже">→</button>
+            </div>
+          </div>
+          <div class="timeline-selection"><strong data-selection></strong><span>
+            <button type="button" class="link-button" data-jump="start">К началу</button>
+            <button type="button" class="link-button" data-jump="end">К концу</button>
+          </span></div>
+          <div class="nav-track" title="Протяните от первого дня до последнего">
+            <div class="timeline-preview" hidden></div>
             <div class="date-range-bands" aria-hidden="true"></div>
             <input type="range" id="range-start" min="0" max="0" step="1" aria-label="Начало диапазона">
             <input type="range" id="range-end" min="0" max="0" step="1" aria-label="Конец диапазона">
           </div>
-          <div class="nav-caption" aria-hidden="true"><span id="archive-start"></span><span id="archive-end"></span></div>
+          <div class="nav-caption timeline-ticks" aria-hidden="true"></div>
+          <p class="timeline-help">Протяните по шкале для выбора дат. Стрелки клавиатуры двигают выбранную границу на сутки.</p>
         </div>
         <hr class="rule controls-rule">
         <div class="dash-modes">

@@ -11,7 +11,12 @@ const points = [
   { id: "test-north", label: "Контрольный северный пост", latitude: 56.57525, longitude: 32.91234 },
   { id: "test-south", label: "Контрольный южный пост", latitude: 56.43567, longitude: 32.78246 },
 ];
+const coincidentPoint = { ...points[0], id: "test-colocated", label: "Контрольный пост с общей точкой" };
+const chukotka = { id: "test-chukotka", label: "Контрольная точка Чукотки", latitude: 65.68, longitude: -170.54 };
 const noCoordinates = { id: "test-no-gps", label: "Контрольная без координат" };
+const area = {longitude: 32.87, latitude: 56.52};
+const testPin = ({longitude, latitude}) => `${longitude},${latitude}`;
+const expectedPins = [area, ...points, chukotka].map(testPin).sort();
 
 function assertWidget(source, point) {
   const url = new URL(source);
@@ -22,13 +27,14 @@ function assertWidget(source, point) {
   const zoom = Number(url.searchParams.get("z"));
   assert.ok(zoom >= 1 && zoom <= 21, "Масштаб z");
   assert.ok([...url.searchParams.keys()].every(key => !/key/i.test(key)), "Виджет открывается без ключа");
+  assert.equal(url.searchParams.get("l"), "map", "Подложка без слоя пробок");
+  const pins = url.searchParams.get("pt")?.split("~").sort();
+  assert.deepEqual(pins, expectedPins, "В виджет переданы все отдельные координаты и одна точка района");
   if (point) {
     const expected = [point.longitude, point.latitude];
-    const pin = url.searchParams.get("pt")?.split(",").slice(0, 2).map(Number);
     assert.deepEqual(center, expected, "Центр после действия «Показать на карте»");
-    assert.deepEqual(pin, expected, "Метка соответствует выбранной станции");
   }
-  return { center, zoom, pin: url.searchParams.get("pt") };
+  return { center, zoom, pins };
 }
 
 function checkbox(root, label) {
@@ -119,10 +125,6 @@ async function check(base) {
       blocked.push(url.href);
       return route.abort();
     });
-    const firstRequest = page.waitForRequest(request => {
-      const url = new URL(request.url());
-      return url.origin === yandex && url.pathname === widgetPath;
-    });
     await page.goto(`${base}/?stations=kr1&start=2025-07-01&end=2025-07-31&grain=day&charts=air`);
     const overview = page.locator("#station-overview");
     const provider = overview.locator(".station-provider");
@@ -130,16 +132,31 @@ async function check(base) {
     const yandexButton = provider.getByRole("button", { name: "Яндекс Карты", exact: true });
     const localButton = provider.getByRole("button", { name: "Схема станций", exact: true });
     await yandexButton.waitFor({ state: "attached" });
-    assert.equal(await yandexButton.getAttribute("aria-pressed"), "true");
+    assert.equal(await localButton.getAttribute("aria-pressed"), "true");
     assert.equal(await frame.count(), 0);
     assert.equal(blocked.length, 0);
     await overview.scrollIntoViewIfNeeded();
+    await overview.locator(".station-map-viewport .station-map-marker-area").waitFor();
+    assert.equal(await frame.count(), 0);
+    assert.equal(blocked.length, 0);
+    const firstRequest = page.waitForRequest(request => {
+      const url = new URL(request.url());
+      return url.origin === yandex && url.pathname === widgetPath;
+    });
+    await yandexButton.click();
     await frame.waitFor();
+    assert.equal(await yandexButton.getAttribute("aria-pressed"), "true");
     assert.equal(await frame.getAttribute("loading"), "lazy");
     assertWidget((await firstRequest).url());
     const initial = assertWidget(await frame.getAttribute("src"));
-    assert.deepEqual(initial.center, [32.87, 56.52]);
-    assert.equal(initial.pin, null, "Район заповедника показан без метки с точными координатами");
+    assert.ok(initial.center[0] > 95 && initial.center[0] < 115, "Широкий каталог центрирован между заповедником и Чукоткой");
+    const labels = overview.getByRole("group", {name: "Метки на Яндекс Картах"});
+    const areaLabel = labels.getByRole("button", {name: /^Район заповедника · 3 станции/});
+    const groupName = await areaLabel.getAttribute("aria-label");
+    assert.match(groupName, /Кр1.*Кр2|Кр2.*Кр1/);
+    assert.match(groupName, /АМЕ-60/);
+    assert.equal(await labels.getByRole("button", {name: `${points[0].label}, ${coincidentPoint.label}`}).count(), 1);
+    assert.equal(await labels.getByRole("button", {name: noCoordinates.label}).count(), 0);
     await page.locator("#widget-lazy-test-spacer").evaluate(element => element.remove());
 
     const located = [];
@@ -150,9 +167,13 @@ async function check(base) {
       const target = new URL(await link.getAttribute("href"));
       assert.equal(target.origin, yandex);
       assert.equal(target.pathname, "/maps/");
-      assert.equal(target.searchParams.get("pt"), located.at(-1).pin);
+      assert.deepEqual(target.searchParams.get("pt").split("~").sort(), located.at(-1).pins);
     }
     assert.notDeepEqual(located[0].center, located[1].center);
+    await areaLabel.click();
+    assertWidget(await frame.getAttribute("src"), area);
+    await labels.getByRole("button", {name: "Все метки"}).click();
+    assert.deepEqual(assertWidget(await frame.getAttribute("src")).center, initial.center);
     assert.equal(await locate(overview, noCoordinates.label).count(), 0);
     await checkbox(overview, points[0].label).check();
     assert.ok(new URL(page.url()).searchParams.get("stations").split(",").includes(points[0].id));
@@ -168,15 +189,24 @@ async function check(base) {
       await dialogLayout(page, overview, 1280, points[1], noCoordinates),
       await dialogLayout(page, overview, 320, noCoordinates),
     ];
+    await overview.getByRole("button", {name: "Вся Россия"}).click();
+    const eastMarker = overview.getByRole("button", {name: chukotka.label, exact: true});
+    await eastMarker.waitFor();
+    const eastBox = await eastMarker.boundingBox();
+    const westBox = await overview.locator(".station-map-marker-area").boundingBox();
+    assert.ok(eastBox.x > westBox.x, "Чукотка за 180° показана восточнее заповедника");
+    await overview.getByRole("button", {name: "К станциям"}).click();
+    await eastMarker.waitFor();
     assert.deepEqual(errors, []);
     assert.ok(blocked.some(url => url.startsWith(`${yandex}${widgetPath}`)));
     return {
       command: "node checks/yandex-location.cjs",
       database: "Temporary METEO_OBSERVATION_DB",
-      iframe: { origin: yandex, path: widgetPath, loading: "lazy", requests_before_scroll: 0, initial, located },
+      iframe: { origin: yandex, path: widgetPath, loading: "lazy", requests_before_explicit_choice: 0, initial, located },
       provider_request_blocked: true,
       local_rectangle_selection: true,
       selection_without_coordinates_in_dialog: true,
+      russia_view_crosses_antimeridian: true,
       layouts,
     };
   } finally {
@@ -184,11 +214,11 @@ async function check(base) {
   }
 }
 
-withIsolatedMeteo(check, { stations: [...points, noCoordinates] }).then(async report => {
+withIsolatedMeteo(check, { stations: [...points, coincidentPoint, chukotka, noCoordinates] }).then(async report => {
   const destination = path.join(__dirname, "..", "results", "observations", "yandex-location.json");
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.writeFile(destination, JSON.stringify(report, null, 2) + "\n");
-  console.log("PASS: отложенный виджет Яндекса, метки, локальная рамка, выбор станции, диалог 1280 и 320 px");
+  console.log("PASS: схема в первом кадре, все метки Яндекса, группировка, рамка, обзор России и диалог 1280/320 px");
 }).catch(error => {
   console.error(error);
   process.exitCode = 1;

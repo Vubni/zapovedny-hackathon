@@ -37,7 +37,8 @@ async function check() {
     page.on('pageerror', error => errors.push(error.message));
     const status = page.locator('#precip-status');
     const refresh = page.locator('#precip-refresh');
-    const slots = page.locator('#precip-rows button');
+    const slots = page.locator('#precip-map-points button');
+    const shadedCells = page.locator('#precip-map-shading rect');
     const hour = page.locator('#precip-hour');
     const interval = page.locator('#precip-period');
     const waitForForecast = () => page.waitForFunction(() => !document.querySelector('#precip-refresh').disabled);
@@ -48,6 +49,7 @@ async function check() {
       const message = await status.textContent();
       assert.match(message, /^Прогноз получен/);
       assert.equal(await slots.count(), 25);
+      assert.ok(await page.locator('#precip-map-places text').count() > 0);
       evidence.live = {verifiedUtc: new Date().toISOString(), status: message};
     }
 
@@ -72,25 +74,55 @@ async function check() {
       await hour.press('Home');
 
       assert.equal(await slots.count(), 25);
-      assert.deepEqual(await slots.allTextContents(), saved.response.map((cell, index) => {
+      assert.equal(await shadedCells.count(), 25);
+      assert.deepEqual(await slots.evaluateAll(buttons => buttons.map(button => button.title)), saved.response.map((cell, index) => {
         const value = cell.hourly.precipitation[0];
-        return (scenario === 'missing' && index === 0) || value === null ? '—' : number.format(value);
+        return (scenario === 'missing' && index === 0) || value === null ? 'Нет данных' : number.format(value) + ' мм';
       }));
-      assert.equal(await page.locator('.precip-grid .precip-marker').count(), 1);
+      assert.ok(await page.locator('#precip-map-places text').count() > 4);
+      assert.match(await page.locator('#precip-map-boundary').getAttribute('d'), /^M.*Z/);
+      assert.equal(await page.locator('#precip-map-marker').count(), 1);
+      const [markerX, markerY] = await page.locator('#precip-map-marker').evaluate(marker => {
+        const cell = document.querySelectorAll('#precip-map-shading rect')[12];
+        return [
+          (marker.cx.baseVal.value - cell.x.baseVal.value) / cell.width.baseVal.value,
+          (marker.cy.baseVal.value - cell.y.baseVal.value) / cell.height.baseVal.value,
+        ];
+      });
+      assert.ok(Math.abs(markerX - 0.46) < 0.001 && Math.abs(markerY - 0.18) < 0.001);
       assert.equal(await page.locator('#precip-prev').isDisabled(), true);
       assert.equal(await interval.textContent(), intervalText(times[0]));
 
       if (scenario === 'missing') {
         assert.equal(await slots.first().getAttribute('data-level'), 'missing');
-        assert.ok(await page.locator('#precip-rows button[data-level="0"]').count() > 0);
+        assert.equal(await shadedCells.first().evaluate(cell => getComputedStyle(cell).fill), 'url("#precip-nodata")');
+        assert.ok(await page.locator('#precip-map-points button[data-level="0"]').count() > 0);
+        await slots.first().click();
+        assert.equal(await page.locator('#precip-cell').textContent(), 'Нет данных');
       }
 
       await page.locator('#precip-next').click();
       assert.equal(await interval.textContent(), intervalText(times[1]));
+      assert.deepEqual(await shadedCells.evaluateAll(cells => cells.map(cell => cell.dataset.level)),
+        saved.response.map(cell => {
+          const mm = cell.hourly.precipitation[1];
+          if (mm === null) return 'missing';
+          if (mm === 0) return '0';
+          return mm < 0.2 ? '1' : mm < 1 ? '2' : mm < 3 ? '3' : '4';
+        }));
       await slots.last().click();
       const {latitude, longitude} = saved.response.at(-1);
       assert.equal(await page.locator('#precip-node').textContent(),
         `Узел модели ${number.format(latitude)}° с. ш., ${number.format(longitude)}° в. д.`);
+      const overview = Number(await shadedCells.last().getAttribute('width'));
+      await page.getByRole('button', {name: 'Увеличить карту'}).click();
+      assert.ok(Number(await shadedCells.last().getAttribute('width')) > overview);
+      await slots.last().focus();
+      await slots.last().press('ArrowLeft');
+      assert.equal(await slots.nth(23).getAttribute('aria-pressed'), 'true');
+      assert.equal(await slots.nth(23).evaluate(node => node === document.activeElement), true);
+      await page.getByRole('button', {name: 'Вся область'}).click();
+      assert.equal(Number(await shadedCells.last().getAttribute('width')), overview);
       await hour.press('End');
       assert.equal(await page.locator('#precip-next').isDisabled(), true);
       assert.equal(await interval.textContent(), intervalText(times.at(-1)));
@@ -107,6 +139,10 @@ async function check() {
       await page.setViewportSize({width, height: 844});
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `Горизонтальная прокрутка при ширине ${width} px`);
+      await page.waitForFunction(() =>
+        Number(document.querySelector('#precip-map-drawing').getAttribute('viewBox').split(' ')[2]) ===
+        document.querySelector('#precip-map').clientWidth);
+      assert.equal(await slots.filter({visible: true}).count(), 25);
     }
     assert.deepEqual(errors, []);
 

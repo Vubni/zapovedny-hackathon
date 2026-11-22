@@ -214,6 +214,48 @@ class ObservationWorkflowTest(unittest.TestCase):
     def discard(self, file):
         return self.fetch("/api/files/discard", payload={"id": file["id"], "version": file["version"]})
 
+    def test_registration_retry_keeps_one_geolocated_station_for_the_upload_batch(self):
+        first_day, second_day = "2026-05-16", "2026-05-17"
+        passport = {"id": "station-upload-retry", "label": "Пост на экваторе", "profile": "kr1",
+                    "latitude": 0, "longitude": -71.123456789}
+        with self.http_server():
+            self.fetch("/api/stations", payload=passport, status=201)
+            self.fetch("/api/stations", payload=passport, status=400)
+            self.fetch("/api/stations", payload=dict(passport, id="duplicate-id", label=passport["label"].upper()),
+                       status=400)
+            self.fetch("/api/stations", payload=dict(passport, id="out-of-range", label="Вне диапазона",
+                                                      latitude=-90.01), status=400)
+            restored = [item for item in self.fetch("/api/stations", authenticated=False)["stations"]
+                        if item["label"] == passport["label"]]
+            self.assertEqual(len(restored), 1)
+            station = restored[0]
+            for field, value in passport.items():
+                self.assertEqual(station[field], value)
+            self.assertEqual(station["location_precision"], "exact")
+            self.assertIsNone(station["start"])
+
+            def upload_day(day, value):
+                data = csv_bytes([("datetime", "t_air"), *[
+                    (f"{day} {hour:02d}:15", value) for hour in range(18)
+                ]])
+                uploaded = self.upload(f"{day}.csv", station["id"], data)
+                self.assertEqual(uploaded["station"], station["id"])
+                return self.preview(uploaded)[1]
+
+            first, second = upload_day(first_day, 8.125), upload_day(second_day, 11.375)
+            expected = {first_day: None, second_day: None}
+            self.assertEqual(self.values(station["id"], first_day, second_day), {station["id"]: expected})
+            self.confirm(first)
+            expected[first_day] = 8.125
+            self.assertEqual(self.values(station["id"], first_day, second_day), {station["id"]: expected})
+            self.confirm(second)
+            expected[second_day] = 11.375
+            self.assertEqual(self.values(station["id"], first_day, second_day), {station["id"]: expected})
+            confirmed = next(item for item in self.fetch("/api/stations", authenticated=False)["stations"]
+                             if item["id"] == station["id"])
+            self.assertEqual((confirmed["start"], confirmed["end"]), (first_day, second_day))
+            self.assertEqual((confirmed["latitude"], confirmed["longitude"]), (0, -71.123456789))
+
     def test_independent_csv_xlsx_confirmation_reprocessing_restart_and_removal(self):
         start, csv_day, xlsx_day = "2026-05-12", "2026-05-13", "2026-05-14"
         headers = ("datetime", "t_air", "rh")

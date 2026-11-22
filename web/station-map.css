@@ -156,7 +156,14 @@
 }
 
 .station-map-tools button { box-shadow: 0 1px 6px #172c2317; color: var(--dark, #20563b); }
-.station-map-tools button:last-child { margin-top: 4px; }
+.station-map-jumps {
+  display: flex;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  gap: 5px;
+}
+.station-map-jumps .btn { min-height: 31px; padding-inline: 8px; font-size: 11px; }
 .station-map-scale {
   position: absolute;
   left: 12px;
@@ -175,7 +182,7 @@
 
 .station-map-instruction {
   position: absolute;
-  bottom: 12px;
+  bottom: 52px;
   right: 12px;
   max-width: calc(100% - 118px);
   padding: 6px 9px;
@@ -198,7 +205,11 @@
 }
 
 .station-map-shortcut { color: var(--mute, #53645a); font-size: 11px; margin-top: 3px; }
-@media (pointer: coarse) { .station-map-shortcut { display: none; } }
+.station-map-touch-tip { display: none; }
+@media (pointer: coarse) {
+  .station-map-mouse-tip { display: none; }
+  .station-map-touch-tip { display: inline; }
+}
 
 .station-terrain-legend {
   display: flex;

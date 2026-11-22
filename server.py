@@ -37,6 +37,7 @@ API = {
     "/api/review.xlsx": "Полный расчёт в редактируемом Excel по token",
     "/api/review-original.xlsx": "Загруженная книга XLSX с отметками на исходном листе и рабочими решениями",
     "/api/model": "Прогноз следующей среднесуточной температуры по станции",
+    "/api/model/catalog": "Доступные станции и данные для общего прогноза температуры",
     "/api/stations": "Каталог и карта станций. POST регистрирует пользовательскую станцию",
     "/api/observations": "Ряды, покрытие и сравнение станций за общий выбранный период",
     "/api/observation-coverage": "Матрица покрытия выбранных станций за отмеченные интервалы",
@@ -77,8 +78,8 @@ WEB_FILES = {
     "/precip.css": "precip.css",
     "/precip-example.json": "precip-example.json",
 }
-for asset in ("archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js",
-              "station-map.js", "station-map.css", "station-map-data.js", "observation-chart.js",
+for asset in ("observation-timeline.js", "clgz-logo.png", "reserve-brand.css", "archive.css", "archive-shell.js", "legacy-shell.css", "observations.js", "observations.css", "chart-archive.js",
+              "station-map.js", "station-map.css", "station-map-data.js", "russia-map-data.js", "precip-boundary.js", "observation-chart.js",
               "yandex-location.js", "yandex-location.css", "yandex-station-sdk.js",
               "coverage-overview.js", "coverage-overview.css", "observation-indicators.js", "observation-indicators.css",
               "observation-chart.css", "files-page.js", "files-page.css", "weather-pages.css",
@@ -109,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         no_store = self.command == "POST" or self.path.startswith((
-            "/api/review", "/api/files", "/api/observation", "/api/stations", "/api/map-config",
+            "/api/review", "/api/files", "/api/observation", "/api/stations", "/api/map-config", "/api/model",
             "/api/operator", "/operator", "/files",
         ))
         self.send_header("Cache-Control", "no-store" if no_store else "no-cache")
@@ -166,7 +167,8 @@ class Handler(BaseHTTPRequestHandler):
                     name, body = store.preview_excel(query)
                     self.respond(body, XLSX_TYPE, filename=name)
             elif route == "/api/meta":
-                self.send_json(metadata())
+                from review_filter import quality_metadata
+                self.send_json({**metadata(), "quality": quality_metadata()})
             elif route == "/api/series":
                 self.send_json(analyze(query))
             elif route in ("/api/export", "/api/export/latest-five"):
@@ -197,6 +199,9 @@ class Handler(BaseHTTPRequestHandler):
             elif route == "/review-example.xlsx":
                 self.respond((ROOT / "results/review/review-example.xlsx").read_bytes(), XLSX_TYPE,
                              filename="review-example.xlsx")
+            elif route == "/api/model/catalog":
+                from station_model import model_catalog
+                self.send_json(model_catalog())
             elif route == "/api/model":
                 self.send_json(predict(query))
             elif route in WEB_FILES:
@@ -273,8 +278,14 @@ class Handler(BaseHTTPRequestHandler):
                             items = settings.get(key)
                             if isinstance(items, list) and all(isinstance(item, str) for item in items):
                                 settings[key] = ",".join(items)
-                        if any(type(value) not in (str, int) for value in settings.values()):
-                            raise ValueError("Проверьте значения настроек обработки и списки фильтров и источников.")
+                        for key, value in settings.items():
+                            if key in ("ranges", "thresholds"):
+                                if not isinstance(value, (dict, str)):
+                                    raise ValueError("Передайте границы и пороги по названиям параметров.")
+                            elif key in ("fill_external", "fill_model") and isinstance(value, bool):
+                                settings[key] = int(value)
+                            elif type(value) not in (str, int):
+                                raise ValueError("Проверьте настройки обработки, фильтры и источники.")
                     query.update(settings)
                 if parts.path == "/api/stations":
                     self.send_json(register_station(query), 201)

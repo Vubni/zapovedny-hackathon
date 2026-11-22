@@ -366,9 +366,9 @@ function wireMap(root, map, {onToggleGroup, onSelectIds, onPick}) {
       }
       scheduleRedraw();
     },
-    focus(point) {
+    focus(point, zoom) {
       if (destroyed || !isPoint(point)) return;
-      return map.setCenter(coordinates(point)).then(null, () => {});
+      return map.setCenter(coordinates(point), zoom).then(null, () => {});
     },
     setPicking(active) {
       if (destroyed) return;
@@ -394,7 +394,7 @@ function wireMap(root, map, {onToggleGroup, onSelectIds, onPick}) {
 }
 
 export async function openYandexStationMap(element, {
-  apiKey, groups = [], onToggleGroup = () => {}, onSelectIds = () => {}, onPick = () => {}, center = reserve,
+  apiKey, groups = [], onToggleGroup = () => {}, onSelectIds = () => {}, onPick = () => {}, center = reserve, zoom = 10,
 }) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('Требуется ключ JavaScript API Яндекс Карт.');
   const api = await loadYandex(apiKey.trim());
@@ -405,7 +405,7 @@ export async function openYandexStationMap(element, {
   try {
     map = new api.Map(root.querySelector('.yandex-station-base'), {
       center: coordinates(isPoint(center) ? center : reserve),
-      zoom: 10,
+      zoom,
       controls: [],
       behaviors: ['drag', 'dblClickZoom', 'multiTouch'],
     }, {autoFitToViewport: 'always', yandexMapDisablePoiInteractivity: true});

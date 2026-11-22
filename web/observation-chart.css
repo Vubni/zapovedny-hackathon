@@ -245,18 +245,6 @@
 .obs-chart__coverage summary:hover span { text-decoration: underline; }
 .obs-chart__coverage[open] summary svg { transform: rotate(180deg); }
 .obs-chart__coverage-body { display: grid; gap: 8px; padding-top: 9px; font-size: 12px; }
-.obs-chart__coverage-list { list-style: none; margin: 0; padding: 0; }
-.obs-chart__coverage-row {
-  display: grid;
-  grid-template-columns: minmax(105px, 1fr) minmax(0, 2fr);
-  gap: 2px 8px;
-  padding: 7px 0;
-}
-
-.obs-chart__coverage-row + .obs-chart__coverage-row { border-top: 1px solid var(--grid, #e5ebe3); }
-.obs-chart__coverage-counts { display: flex; flex-wrap: wrap; gap: 1px 16px; color: var(--mute, #53645a); }
-.obs-chart__coverage-counts b { color: var(--ink, #162820); }
-.obs-chart__coverage-row p { grid-column: 2; margin: 0; color: var(--mute, #53645a); }
 .obs-chart__coverage-note { margin: 0; color: var(--mute, #53645a); }
 .obs-chart__status:empty { display: none; }
 
@@ -289,6 +277,4 @@
 @media (max-width: 560px) {
   .obs-chart__panel { padding: 15px; }
   .obs-chart__head h2 { font-size: 20px; }
-  .obs-chart__coverage-row { grid-template-columns: 1fr; }
-  .obs-chart__coverage-row p { grid-column: auto; }
 }

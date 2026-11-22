@@ -52,10 +52,13 @@
 }
 .review-checks {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px 16px;
   margin-top: 10px;
 }
+.review-extra-rules { margin-top: 15px; padding-top: 6px; border-top: 1px solid var(--line); }
+.review-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 175px)); gap: 9px 13px; margin-top: 9px; }
+.review-rule-detail { margin: 6px 0 0 24px; }
 .review-check {
   display: grid;
   grid-template-columns: 17px minmax(0, 1fr);
@@ -74,12 +77,12 @@
 .review-check strong { display: block; font-size: .83rem; line-height: 1.38; }
 .review-check small { display: block; margin-top: 2px; color: var(--muted); font-size: .75rem; line-height: 1.37; }
 .review-check:has(input:disabled) { color: var(--muted); cursor: default; }
-.review-rule-options, .review-estimate-fields {
+.review-estimate-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(235px, 310px));
+  grid-template-columns: repeat(2, minmax(235px, 320px));
   align-items: start;
   gap: 8px 13px;
-  margin-top: 10px;
+  margin-top: 9px;
 }
 .review-estimate-options summary, .review-explainer summary, .review-excel summary {
   width: fit-content;
@@ -91,8 +94,9 @@
   text-decoration: underline;
   text-underline-offset: .18em;
 }
-.review-estimate-fields { grid-template-columns: repeat(2, minmax(235px, 320px)); margin-top: 9px; }
 .review-estimate-detail { max-width: 61ch; margin-top: 8px; }
+.review-timezone { max-width: 320px; }
+.review-estimate-detail .review-check { margin-top: 5px; }
 .review-estimate-example { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 11px; margin-top: 9px; }
 .review-estimate-example .button { min-height: 34px; }
 .review-estimate-example .secondary:enabled:hover { border-color: #a9bcaa; background: var(--green-tint); }
@@ -153,13 +157,12 @@
 .review-explainer p, .review-excel p { max-width: 80ch; margin-top: 6px; color: var(--muted); font-size: .82rem; line-height: 1.45; }
 
 @media (max-width: 930px) {
-  .review-checks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .review-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .review-results .review-scroll-hint { display: block; }
 }
 @media (max-width: 730px) {
   .review-scope { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .review-checks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .review-rule-options, .review-estimate-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-estimate-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 490px) {
   .review-section { padding-inline: 11px; }
@@ -170,7 +173,8 @@
   .review-scope > div { grid-column: span 3; }
   .review-scope > div:first-child { grid-column: span 2; }
   .review-scope > div:nth-child(2) { grid-column: span 4; }
-  .review-rule-options, .review-estimate-fields { grid-template-columns: 1fr; }
+  .review-estimate-fields { grid-template-columns: 1fr; }
+  .review-rule-detail { margin-left: 0; }
   .review-result-heading { align-items: start; flex-direction: column; }
   .review-summary-heading { gap: 7px; }
   .review-pager { padding-inline: 10px; }

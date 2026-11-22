@@ -109,17 +109,6 @@
 .model-shell .model-test-selected > :is(td, th) { background: var(--mint); }
 .model-shell .model-test-date { font-weight: 500; }
 
-.weather-page.precip-page { max-width: 1740px; }
-.precip-page .precip-panel,
-.precip-page .precip-source { margin-top: 0; }
-.precip-page .precip-grid tr > :is(td, th) { background: none; }
-.precip-page .precip-stepper .btn {
-  min-width: 40px;
-  padding: 0;
-  font-size: 1.1rem;
-}
-.precip-page .precip-stepper .btn:hover:enabled { background: var(--mint); }
-
 @media (max-width: 1120px) {
   .model-shell .model-filters[data-manual="true"] {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -140,6 +129,4 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .model-shell .model-filters .field { padding-inline: 9px; }
-  .precip-page .precip-grid button { font-size: .72rem; }
-  .precip-page .precip-stepper .btn { min-height: 44px; }
 }

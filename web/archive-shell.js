@@ -20,8 +20,8 @@ for (const aside of document.querySelectorAll("[data-archive-nav]")) {
     : ["/files", "/review", "/import"].includes(route) ? "/files" : "/";
   aside.setAttribute("aria-label", "Разделы Метеоархива");
   aside.innerHTML = `
-    <a href="/" class="brand" aria-label="Метеоархив, на главную"><span class="logo">${icon("chart",24)}</span><span>Метеоархив</span></a>
-    <div class="nav-label">Разделы</div>
+    <a href="/" class="brand" aria-label="Метеоархив, на главную"><img class="reserve-logo" src="/clgz-logo.png" width="100" height="100" alt="Центрально-Лесной заповедник"><span>Метеоархив</span></a>
+
     <nav class="nav" aria-label="Основная навигация">${links.map(({path,label,glyph}) =>
       `<a href="${path}" ${path === active ? 'aria-current="page"' : ''} aria-label="${label}" title="${label}">${icon(glyph,18)}<span>${label}</span></a>`).join("")}</nav>
     <div class="side-footer">Урочище Красное<strong>Центрально-Лесной заповедник</strong></div>`;

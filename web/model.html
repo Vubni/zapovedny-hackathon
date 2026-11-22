@@ -7,8 +7,8 @@
   <meta name="theme-color" content="#172c23">
   <title>Локальный прогноз температуры · Метеоархив</title>
   <link rel="stylesheet" href="/archive.css">
-  <link rel="stylesheet" href="/model.css">
   <link rel="stylesheet" href="/weather-pages.css">
+  <link rel="stylesheet" href="/model.css">
   <script type="module" src="/archive-shell.js"></script>
   <script defer src="/model.js"></script>
 </head>
@@ -21,7 +21,7 @@
         <div class="breadcrumb"><a href="/">Метеоархив</a><span aria-hidden="true">›</span><a href="/forecast">Прогноз</a><span aria-hidden="true">›</span><strong>Локальная модель</strong></div>
         <div>
           <h1 id="weather-heading">Локальный прогноз температуры</h1>
-          <p class="sub">Среднесуточная температура воздуха на следующий календарный день.</p>
+          <p class="sub">Среднесуточная температура воздуха на следующий день по двум суткам наблюдений выбранной станции.</p>
         </div>
         <div class="weather-actions">
           <a class="btn line" href="/forecast">Прогноз на 3 дня</a>
@@ -29,7 +29,8 @@
         </div>
       </header>
 
-      <form class="card filters model-filters" id="model-form">
+      <form class="card model-filters" id="model-form" aria-labelledby="model-controls-title">
+        <h2 id="model-controls-title">Данные для расчёта</h2>
         <div class="field">
           <label for="model-station">Станция</label>
           <select id="model-station" disabled></select>
@@ -37,8 +38,8 @@
         <div class="field">
           <label for="model-mode">Источник наблюдений</label>
           <select id="model-mode" disabled>
-            <option value="archive">Архив станции</option>
-            <option value="manual">Ввести наблюдения</option>
+            <option value="archive">Подтверждённые наблюдения</option>
+            <option value="manual">Ручной ввод</option>
           </select>
         </div>
         <div class="field">
@@ -53,13 +54,16 @@
           <label for="model-today">За выбранный день, °C</label>
           <input type="number" id="model-today" min="-50" max="45" step="any" inputmode="decimal" disabled>
         </div>
-        <button class="btn primary model-submit" type="submit" disabled>Рассчитать</button>
-        <p class="model-hint" id="model-hint"></p>
+        <button class="btn accent model-submit" id="model-submit" type="submit" disabled>Рассчитать</button>
+        <p class="model-hint" id="model-hint" aria-live="polite"></p>
       </form>
-      <p class="weather-status" id="model-status" role="status">Загружаем модель…</p>
+      <div class="model-message">
+        <p class="weather-status" id="model-status" role="status">Загружаем станции и историческую проверку…</p>
+        <button type="button" class="btn line" id="model-retry" hidden>Повторить загрузку</button>
+      </div>
 
       <div class="model-grid" id="model-data" hidden>
-        <section class="card ledger model-result" id="model-result" aria-labelledby="model-result-title">
+        <section class="card ledger model-result" id="model-result" aria-labelledby="model-result-title" hidden>
           <div class="ledger-heading">
             <div>
               <h2 id="model-result-title">Расчёт</h2>
@@ -68,51 +72,39 @@
           </div>
           <dl class="model-readings">
             <div>
-              <dt>Модель</dt>
+              <dt id="model-prediction-label">Общая модель</dt>
               <dd id="model-prediction"></dd>
             </div>
-            <div>
-              <dt>«Как сегодня»</dt>
+            <div id="model-baseline-row">
+              <dt>Правило «как сегодня»</dt>
               <dd id="model-baseline"></dd>
             </div>
             <div id="model-observed-row">
-              <dt>Факт в архиве</dt>
+              <dt>Фактическая температура</dt>
               <dd id="model-observed"></dd>
             </div>
           </dl>
           <div class="model-inputs">
-            <h3>Исходные сутки</h3>
+            <h3>Исходные наблюдения</h3>
             <ul id="model-inputs"></ul>
           </div>
         </section>
         <section class="card ledger model-validation" aria-labelledby="model-test-title">
           <div class="ledger-heading">
             <div>
-              <h2 id="model-test-title">Проверка на отложенном годе</h2>
-              <p>Средняя абсолютная ошибка (MAE) в °C. Меньше — точнее.</p>
+              <h2 id="model-test-title">Историческая проверка</h2>
+              <p>Средняя абсолютная ошибка (MAE) в °C. Для правила «как сегодня» прогноз равен последней суточной температуре.</p>
             </div>
           </div>
-          <div class="weather-table" tabindex="0" role="region" aria-label="Результаты проверки модели">
-            <table aria-labelledby="model-test-title">
-              <thead>
-                <tr>
-                  <th scope="col">Станция и даты теста</th>
-                  <th scope="col" class="num">Суток</th>
-                  <th scope="col" class="num">Модель</th>
-                  <th scope="col" class="num">«Как сегодня»</th>
-                </tr>
-              </thead>
-              <tbody id="model-test-rows"></tbody>
-            </table>
-          </div>
+          <div class="model-test-results" id="model-test-results"></div>
           <p class="model-test-note" id="model-test-note"></p>
         </section>
       </div>
 
       <details class="card ledger model-method">
         <summary>Как работает модель</summary>
-        <p>Для каждой станции обучена отдельная линейная регрессия. Входы — температура за последние двое последовательных суток и положение целевого дня в годовом цикле. Свежие данные вводятся как средние за завершившиеся сутки.</p>
-        <p>Для теста отложен последний год каждой станции. Модель и правило «как сегодня» оцениваются на одних и тех же днях с пригодными значениями за цель и оба предыдущих дня. Пропуски исключаются. Модель использует только локальные измерения температуры и календарь.</p>
+        <p>Для расчёта модель использует две суточные средние температуры воздуха выбранной станции и сезонный признак по дате прогноза и широте из паспорта станции. Если широта не указана, сезонная поправка равна нулю.</p>
+        <p>Для исторических дат выбирается версия модели, обученная до даты расчёта. В проверке переноса целевая станция исключена из обучения. Ошибки модели и правила «как сегодня» рассчитаны на одних и тех же днях с пригодными наблюдениями.</p>
       </details>
       <noscript><p class="weather-status">Включите JavaScript, чтобы рассчитать прогноз.</p></noscript>
     </section>

@@ -6,14 +6,18 @@ const parameter = byId("review-param");
 const startDate = byId("review-start");
 const endDate = byId("review-end");
 const fileInput = byId("review-file");
-const fill = byId("review-fill");
+const fillExternal = byId("review-fill-external");
+const fillModel = byId("review-fill-model");
 const timezone = byId("review-timezone");
 const subhour = byId("review-subhour");
 const pressureReference = byId("review-pressure-reference");
 const conflict = byId("review-conflict");
-const pressure = byId("review-pressure");
-const conflictFilter = form.querySelector('[value="conflicts"]');
-const buddyFilter = form.querySelector('[value="buddy"]');
+const rangeMin = byId("review-range-min");
+const rangeMax = byId("review-range-max");
+const filterToggles = [...form.querySelectorAll('input[name="filter"]')];
+const ruleInputs = [...form.querySelectorAll("[data-rule]")];
+const anomalyRules = ["hampel", "spike", "stuck"];
+const conflictFilter = filterToggles.find(({ value }) => value === "conflicts");
 const status = byId("review-status");
 const results = byId("review-results");
 const resultTitle = byId("review-title");
@@ -27,6 +31,7 @@ const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }
 const monthFormat = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" });
 const defaultDates = { start: "2024-04-01", end: "2024-04-05" };
 const datesBySource = new Map();
+const rulesByParameter = new Map();
 const uploadLimit = 12 * 1024 * 1024;
 const fileTypes = {
   csv: "text/csv",
@@ -42,7 +47,14 @@ const estimateReasons = {
   unknown_pressure_reference: "Для оценки подтвердите давление на высоте станции.",
   unsupported_parameter: "Оценки этого параметра недоступны.",
 };
+const modelReasons = {
+  unsupported_direction: "Модель недоступна для направления ветра.",
+  unknown_cadence: "По наблюдениям не удалось определить устойчивый шаг ряда для модели.",
+  no_supported_gaps: "Для модели не нашлось пропусков с подходящими соседними наблюдениями.",
+  no_remaining_gaps: "После внешней оценки пропусков для модели не осталось.",
+};
 let stations = [];
+let quality = { ranges: {}, thresholds: {} };
 let source = "archive";
 let stationId = "kr1";
 let report = null;
@@ -58,10 +70,41 @@ function setStatus(element, message, error = false) {
 function showParameters(preferred = parameter.value) {
   const available = source === "file" && savedSource ? savedSource.params :
     stations.find(({ id }) => id === station.value).params;
-  parameter.replaceChildren(...available.map(({ id, label, unit }) => new Option(label + " · " + unit, id)));
+  parameter.replaceChildren(...available.map(({ id, label, unit }) => {
+    const option = new Option(label + " · " + unit, id);
+    option.dataset.unit = unit;
+    return option;
+  }));
   if (available.some(({ id }) => id === preferred)) {
     parameter.value = preferred;
   }
+  syncRules();
+}
+
+function syncRules() {
+  const selected = parameter.value;
+  const values = rulesByParameter.get(selected) ?? {};
+  const [lower, upper] = quality.ranges[selected] ?? [];
+  const defaults = { min: lower, max: upper };
+  for (const id of anomalyRules) {
+    defaults[id] = quality.thresholds[id]?.[selected];
+  }
+  for (const input of ruleInputs) {
+    const id = input.dataset.rule;
+    input.placeholder = defaults[id] == null ? "" : String(defaults[id]);
+    if (id === "min" || id === "max") {
+      input.min = quality.max_absolute_bound ? String(-quality.max_absolute_bound) : "";
+    }
+    input.max = String((id === "stuck" ? quality.max_stuck_hours : quality.max_absolute_bound) ?? "");
+    input.value = values[id] ?? "";
+  }
+  const unit = parameter.selectedOptions[0]?.dataset.unit ?? "";
+  byId("review-range-min-label").textContent = "Нижняя граница" + (unit ? ", " + unit : "");
+  byId("review-range-max-label").textContent = "Верхняя граница" + (unit ? ", " + unit : "");
+  byId("review-hampel-label").textContent = "Минимальное отклонение" + (unit ? ", " + unit : "");
+  byId("review-spike-label").textContent = "Отклонение от каждого соседа" + (unit ? ", " + unit : "");
+  byId("review-range-defaults").textContent = lower == null ? "" :
+    "Стандартный диапазон от " + asNumber(lower) + " до " + asNumber(upper) + " " + unit + ".";
 }
 
 function dateKey() {
@@ -90,7 +133,7 @@ function syncControls() {
   const isFile = source === "file";
   const linked = isFile && Boolean(savedSource);
   const isPressure = parameter.value === "pressure_hpa";
-  const isBuddy = !isFile && station.value !== "ame60" && parameter.value === "t_air";
+  const hasKnownLocation = !linked || savedSource.passport.location_precision !== "unknown";
   byId("review-file-field").hidden = !isFile;
   fileInput.disabled = !isFile;
   fileInput.required = isFile && !linked;
@@ -98,23 +141,25 @@ function syncControls() {
   byId("review-saved-station").hidden = !linked;
   station.hidden = linked;
   station.disabled = linked;
-  fill.disabled = linked && savedSource.passport.location_precision === "unknown";
-  if (fill.disabled) fill.checked = false;
+  fillExternal.disabled = !hasKnownLocation;
+  if (fillExternal.disabled) fillExternal.checked = false;
+  byId("review-fill-location").hidden = hasKnownLocation;
   byId("review-period-hint").textContent = isFile
     ? "Укажите обе даты или оставьте их пустыми, чтобы взять весь период файла."
     : "Можно выбирать несколько лет. До 60 000 исходных строк в одной детальной книге.";
-  conflict.disabled = !conflictFilter.checked;
-  byId("review-conflict-hint").hidden = conflictFilter.checked;
-  byId("review-pressure-field").hidden = !isPressure;
-  pressure.disabled = !isPressure;
-  buddyFilter.disabled = !isBuddy;
+  for (const toggle of filterToggles) {
+    const id = toggle.value === "conflicts" ? "conflict" : toggle.value;
+    byId("review-" + id + "-field").hidden = !toggle.checked;
+    byId("review-" + id).disabled = !toggle.checked;
+  }
   byId("review-wind-hint").hidden = parameter.value !== "wind_dir";
-  timezone.disabled = !fill.checked;
-  timezone.required = fill.checked;
-  byId("review-fill-active").hidden = !fill.checked;
-  byId("review-subhour-field").hidden = !fill.checked;
-  subhour.disabled = !fill.checked;
-  const askPressureReference = fill.checked && isPressure;
+  timezone.disabled = !fillExternal.checked;
+  timezone.required = fillExternal.checked;
+  byId("review-fill-active").hidden = !fillExternal.checked && !fillModel.checked;
+  byId("review-fill-priority").hidden = !fillExternal.checked || !fillModel.checked;
+  byId("review-external-options").hidden = !fillExternal.checked;
+  subhour.disabled = !fillExternal.checked;
+  const askPressureReference = fillExternal.checked && isPressure;
   byId("review-pressure-reference-field").hidden = !askPressureReference;
   pressureReference.disabled = !askPressureReference;
 }
@@ -126,7 +171,7 @@ function rememberDates() {
 function resetExternalConfirmation() {
   timezone.value = "";
   pressureReference.checked = false;
-  if (fill.checked) {
+  if (fillExternal.checked) {
     byId("review-estimate-options").open = true;
   }
 }
@@ -217,6 +262,15 @@ function externalNotes(external) {
   return notes;
 }
 
+function modelNotes(model) {
+  if (!model) return [];
+  if (model.estimated_count > 0) {
+    const step = model.step_minutes ? " Шаг ряда " + asNumber(model.step_minutes) + " мин." : "";
+    return ["Оценок по модели · " + asNumber(model.estimated_count) + "." + step];
+  }
+  return [modelReasons[model.reason] ?? "Модель не добавила оценок для выбранного ряда."];
+}
+
 function rowElement(observation) {
   const row = document.createElement("tr");
   row.classList.toggle("review-excluded", !observation.keep && !observation.synthetic);
@@ -226,7 +280,9 @@ function rowElement(observation) {
   cell(row, original === undefined || original === null || original === "" ? "—" : String(original), "num review-original");
   rowDecision(row, observation.keep, observation.synthetic);
   const working = cell(row, asNumber(observation.keep ? observation.value : observation.estimate), "num");
-  if (!observation.keep && Number.isFinite(observation.estimate)) cellNote(working, "Оценка");
+  if (!observation.keep && Number.isFinite(observation.estimate)) {
+    cellNote(working, observation.estimate_method === "model" ? "Модель" : "Внешние данные");
+  }
   const reason = cell(row, observation.reasons?.join(" ") || "—", "review-reason");
   if (observation.original?.qc_flag) {
     cellNote(reason, "Исходные флаги · " + observation.original.qc_flag);
@@ -235,19 +291,25 @@ function rowElement(observation) {
   if (!observation.synthetic && observation.official_reasons?.length) {
     cellNote(official, observation.official_reasons.join(" "));
   }
-  if (report.external) {
+  if (report.external || report.model) {
     const estimate = cell(row, asNumber(observation.estimate), "review-estimate-cell");
     cellNote(estimate, observation.estimate_sources || estimateReasons[observation.estimate_reason]);
     const origin = observation.provenance;
-    if (origin?.sources?.length) {
+    if (origin?.sources?.length || origin?.anchors?.length) {
       const details = document.createElement("details");
       const title = document.createElement("summary");
-      title.textContent = "Значения источников";
+      title.textContent = origin.anchors ? "Опорные измерения" : "Значения источников";
       details.append(title);
       const stamp = origin.time_utc || origin.start_utc;
       if (stamp) cellNote(details, stamp.slice(0, 16).replace("T", " ") + " UTC");
-      for (const source of origin.sources) {
+      for (const source of origin.sources ?? []) {
         cellNote(details, source.model + " · " + asNumber(source.value) + " " + report.unit);
+      }
+      for (const anchor of origin.anchors ?? []) {
+        cellNote(details, asDate(anchor.time) + " " + anchor.time.slice(11) + " · " + asNumber(anchor.value) + " " + report.unit);
+      }
+      if (origin.validation?.kind === "uncalibrated_interpolation") {
+        cellNote(details, "Точность этой оценки не проверена на отдельных наблюдениях.");
       }
       estimate.append(details);
     }
@@ -265,9 +327,10 @@ function rowElement(observation) {
 
 function paintPage() {
   const { rows, offset, limit, token, total_rows: total } = report;
-  byId("review-estimate-heading").hidden = !report.external;
+  const withEstimates = Boolean(report.external || report.model);
+  byId("review-estimate-heading").hidden = !withEstimates;
   byId("review-rows").replaceChildren(...(rows.length ? rows.map(rowElement) : [
-    emptyRow(report.external ? 8 : 7, "В выбранном периоде нет строк. Укажите другой период или источник."),
+    emptyRow(withEstimates ? 8 : 7, "В выбранном периоде нет строк. Укажите другой период или источник."),
   ]));
   byId("review-page").textContent = rows.length
     ? asNumber(offset + 1) + "–" + asNumber(offset + rows.length) + " из " + asNumber(total)
@@ -335,7 +398,7 @@ function showReport(data, filename) {
   byId("review-context").textContent = sourceLabel + " · " + selectedDates + sourceDates;
   byId("review-original-heading").textContent = "Исходное, " + data.unit;
   byId("review-working-heading").textContent = "Рабочее, " + data.unit;
-  byId("review-estimate-heading").textContent = "Внешняя оценка, " + data.unit;
+  byId("review-estimate-heading").textContent = "Оценка, " + data.unit;
   const { raw_n, kept, rejected, official_kept } = data.counts;
   byId("review-metrics").replaceChildren(
     metric("Исходные строки", raw_n),
@@ -343,7 +406,7 @@ function showReport(data, filename) {
     metric("Исключено измерений", rejected),
     metric("Принято официально", official_kept),
   );
-  const warnings = [...data.warnings, ...externalNotes(data.external)];
+  const warnings = [...data.warnings, ...externalNotes(data.external), ...modelNotes(data.model)];
   const warningList = byId("review-warnings");
   warningList.replaceChildren(...warnings.map((text) => {
     const item = document.createElement("li");
@@ -399,7 +462,7 @@ function selection() {
       validationError("Дата окончания должна быть не раньше даты начала.", endDate);
       return null;
     }
-    if (fill.checked && days > 31) {
+    if (fillExternal.checked && days > 31) {
       validationError("Для заполнения внешними оценками выберите период до 31 суток включительно.", endDate);
       return null;
     }
@@ -415,20 +478,41 @@ function selection() {
     validationError("Размер файла превышает 12 МиБ.", fileInput);
     return null;
   }
-  const selectedFilters = [...form.querySelectorAll('input[name="filter"]:checked:enabled')].map(({ value }) => value);
+  const selected = parameter.value;
+  const selectedFilters = filterToggles.filter(({ checked }) => checked).map(({ value }) => value);
+  const limits = [rangeMin, rangeMax].map((input) => input.value === "" ? null : input.valueAsNumber);
+  const defaults = quality.ranges[selected] ?? [];
+  if ((limits[0] ?? defaults[0]) > (limits[1] ?? defaults[1])) {
+    validationError("Нижняя граница должна быть не выше верхней.", rangeMin);
+    return null;
+  }
+  const thresholds = {};
+  for (const id of anomalyRules) {
+    const input = byId("review-" + id);
+    if (input.disabled || input.value === "") continue;
+    if (input.valueAsNumber <= 0) {
+      validationError("Порог дополнительной проверки должен быть больше нуля.", input);
+      return null;
+    }
+    thresholds[id] = { [selected]: input.valueAsNumber };
+  }
   const query = new URLSearchParams({
     station: station.value,
-    param: parameter.value,
+    param: selected,
     start: startDate.value,
     end: endDate.value,
     filters: selectedFilters.join(","),
     conflict_policy: conflictFilter.checked ? conflict.value : "all",
-    fill: fill.checked ? "1" : "0",
+    fill_external: fillExternal.checked ? "1" : "0",
+    fill_model: fillModel.checked ? "1" : "0",
   });
-  if (!pressure.disabled) {
-    query.set("pressure_max", pressure.value);
+  if (limits.some((limit) => limit !== null)) {
+    query.set("ranges", JSON.stringify({ [selected]: limits }));
   }
-  if (fill.checked) {
+  if (Object.keys(thresholds).length) {
+    query.set("thresholds", JSON.stringify(thresholds));
+  }
+  if (fillExternal.checked) {
     query.set("timezone", timezone.value);
     query.set("subhour", subhour.checked ? "interpolate" : "skip");
     if (!pressureReference.disabled && pressureReference.checked) {
@@ -459,7 +543,7 @@ async function calculate() {
   fields.disabled = true;
   const submit = byId("review-submit");
   submit.textContent = "Фильтруем…";
-  setStatus(status, fill.checked ? "Фильтруем измерения и подбираем внешние оценки…" : "Проверяем измерения…");
+  setStatus(status, fillExternal.checked || fillModel.checked ? "Фильтруем измерения и подбираем оценки…" : "Проверяем измерения…");
   try {
     const response = await fetch("/api/review?" + request.query, request.options);
     const data = await responseData(response, "Не удалось отфильтровать измерения.");
@@ -548,6 +632,17 @@ form.addEventListener("invalid", (event) => {
   }
 }, true);
 
+form.addEventListener("input", (event) => {
+  const id = event.target.dataset.rule;
+  if (id) {
+    const selected = parameter.value;
+    const values = rulesByParameter.get(selected) ?? {};
+    values[id] = event.target.value;
+    rulesByParameter.set(selected, values);
+    byId("review-stale").hidden = !report;
+  }
+});
+
 form.addEventListener("change", (event) => {
   const target = event.target;
   if (target.name === "source" && target.checked) {
@@ -573,6 +668,10 @@ form.addEventListener("change", (event) => {
     showParameters();
     resetExternalConfirmation();
   }
+  if (target === parameter) {
+    syncRules();
+    pressureReference.checked = false;
+  }
   syncControls();
   setStatus(status, "");
   byId("review-stale").hidden = !report;
@@ -591,7 +690,8 @@ byId("review-fill-example").addEventListener("click", () => {
   datesBySource.set(stationId, { start: "2024-04-21", end: "2024-04-21" });
   syncDates();
   showParameters("t_air");
-  fill.checked = true;
+  fillExternal.checked = true;
+  fillModel.checked = false;
   timezone.value = "Europe/Moscow";
   subhour.checked = false;
   pressureReference.checked = false;
@@ -612,7 +712,9 @@ for (const [button, mode] of [[dailyButton, "daily"], [monthlyButton, "monthly"]
 async function init() {
   try {
     const response = await fetch("/api/meta");
-    ({ stations } = await responseData(response, "Не удалось получить список станций."));
+    const data = await responseData(response, "Не удалось получить список станций.");
+    stations = data.stations;
+    quality = data.quality ?? quality;
     station.replaceChildren(...stations.map(({ id, label }) => new Option(label, id)));
     station.value = stationId;
     showParameters("pressure_hpa");
@@ -645,10 +747,22 @@ async function openSavedSource(id) {
     station.value = stationId;
     byId("review-saved-file").textContent = "Открыт сохранённый оригинал «" + item.filename + "».";
     byId("review-saved-station").textContent = passport.label;
-    const filters = item.settings?.filters ?? [];
-    for (const checkbox of form.querySelectorAll('input[name="filter"]')) checkbox.checked = filters.includes(checkbox.value);
-    pressure.value = String(item.settings?.pressure_max ?? "1050");
-    conflict.value = item.settings?.conflict_policy ?? "all";
+    const settings = item.settings ?? {};
+    for (const checkbox of filterToggles) {
+      checkbox.checked = settings.filters?.includes(checkbox.value) ?? false;
+    }
+    for (const { id: param } of available) {
+      const [lower, upper] = settings.ranges?.[param] ?? [];
+      const values = { min: lower, max: upper };
+      if (param === "pressure_hpa" && upper == null && settings.pressure_max != null) {
+        values.max = settings.pressure_max;
+      }
+      for (const id of anomalyRules) {
+        values[id] = settings.thresholds?.[id]?.[param];
+      }
+      rulesByParameter.set(param, values);
+    }
+    conflict.value = settings.conflict_policy ?? "all";
     showParameters();
     syncDates();
     syncControls();

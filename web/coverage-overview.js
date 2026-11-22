@@ -1,10 +1,14 @@
+const monthShort = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
 const dateFormat = new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeZone: "UTC" });
-const monthFormat = new Intl.DateTimeFormat("ru-RU", { month: "short", timeZone: "UTC" });
-const fullMonthFormat = new Intl.DateTimeFormat("ru-RU", {
-  month: "long", year: "numeric", timeZone: "UTC"
-});
-const percentFormat = new Intl.NumberFormat("ru-RU", { style: "percent", maximumFractionDigits: 1 });
-const countFormat = new Intl.NumberFormat("ru-RU");
+const monthFormat = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" });
+const statusLabels = {
+  full: "Все сутки валидны",
+  gaps: "Есть пропуски",
+  excluded: "Месяц исключён",
+  absent: "Нет данных",
+  unsupported: "Станция не измеряет",
+};
+let nextCoverageId = 0;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -13,76 +17,144 @@ function element(tag, className, text) {
   return node;
 }
 
-function stationCount(valid, total) {
-  return `${countFormat.format(valid)} из ${countFormat.format(total)} сут.`;
-}
-
-function measureLevel(cell) {
-  if (cell.ratio === null) return "unsupported";
-  if (cell.observed_days === 0) return "absent";
-  if (cell.ratio === 1) return "full";
-  if (cell.ratio >= 0.75) return "high";
-  return "low";
-}
-
-const levels = [
-  ["full", "100%"],
-  ["high", "75–99,9%"],
-  ["low", "Менее 75%"],
-  ["absent", "Нет наблюдений"],
-  ["unsupported", "Параметр недоступен"]
-];
-
-function labelPeriod(cell, grain) {
-  const day = new Date(cell.id);
-  return grain === "year" ? cell.id.slice(0, 4) : fullMonthFormat.format(day);
-}
-
 function detailDates(period) {
-  return (period.intervals || [period]).map(({ start, end }) => {
+  return period.intervals.map(({ start, end }) => {
     const first = dateFormat.format(new Date(start));
     return start === end ? first : `${first} — ${dateFormat.format(new Date(end))}`;
   }).join(", ");
 }
 
-function detailSlot(row) {
-  if (row.slot_minutes === 60) return `Порог суток — ${row.minimum_slots} разных часов.`;
-  return `Порог суток — ${row.minimum_slots} разных сроков.`;
+function describeCell(cell) {
+  const status = statusLabels[cell.status];
+  if (cell.status === "unsupported") return `${status} этот параметр.`;
+  const count = `${cell.valid_days} из ${cell.total_days} суток.`;
+  if (cell.status !== "excluded") return `${count} ${status}.`;
+  return `${count} ${status}. Неполных суток ${cell.total_days - cell.valid_days}, до ${cell.longest_gap} подряд. Допустимо до 10 неполных суток и до 4 подряд.`;
 }
 
-function describeCell(row, period, cell, grain) {
-  const label = period.intervals?.length > 1 ? detailDates(period) : labelPeriod(period, grain);
-  if (!row.supported) return `${row.label}, ${label}. Станция не измеряет этот параметр.`;
-  const measured = cell.observed_days > 0 ? stationCount(cell.valid_days, cell.total_days) : "Нет наблюдений";
-  return `${row.label}, ${label}. ${measured}.`;
-}
-
-function makeLegend() {
+function legend(statuses) {
   const list = element("ul", "coverage-overview-legend");
-  list.setAttribute("aria-label", "Шкала доли пригодных суток");
-  for (const [level, label] of levels) {
+  list.setAttribute("aria-label", "Состояния покрытия");
+  for (const [status, label] of Object.entries(statusLabels)) {
+    if ((status === "absent" || status === "unsupported") && !statuses.has(status)) continue;
     const item = element("li", "", label);
     const marker = element("span", "coverage-overview-swatch");
-    marker.dataset.level = level;
+    marker.dataset.level = status;
     marker.setAttribute("aria-hidden", "true");
-    if (level === "unsupported") item.hidden = true;
     item.prepend(marker);
     list.append(item);
   }
   return list;
 }
 
-export function mountCoverageOverview(container) {
-  const panel = element("section", "card coverage-overview");
-  const heading = element("h2", "", "Покрытие");
-  heading.id = "coverage-overview-title";
+function yearsOf(periods) {
+  const years = new Map();
+  periods.forEach((period, index) => {
+    const year = period.id.slice(0, 4);
+    if (!years.has(year)) years.set(year, []);
+    years.get(year).push({ ...period, index });
+  });
+  return years;
+}
+
+function moveCell(event, grid) {
+  const cell = event.target.closest(".coverage-overview-cell");
+  if (!cell) return;
+  let row = Number(cell.dataset.row);
+  let column = Number(cell.dataset.column);
+  switch (event.key) {
+    case "ArrowLeft": column--; break;
+    case "ArrowRight": column++; break;
+    case "ArrowUp": row--; break;
+    case "ArrowDown": row++; break;
+    case "Home": column = 0; if (event.ctrlKey) row = 0; break;
+    case "End": column = grid[0].length - 1; if (event.ctrlKey) row = grid.length - 1; break;
+    default: return;
+  }
+  event.preventDefault();
+  grid[Math.max(0, Math.min(grid.length - 1, row))][Math.max(0, Math.min(grid[0].length - 1, column))].focus();
+}
+
+function makeBlock(station, year, months, selected, onPick, controls, statuses) {
+  const block = element("section", "coverage-overview-block");
+  const heading = element("h3", "coverage-overview-station", `${station.label} · ${year}`);
+  heading.id = `coverage-block-${++nextCoverageId}`;
+  block.setAttribute("aria-labelledby", heading.id);
+  const scroll = element("div", "coverage-overview-scroll");
+  const table = element("table", "coverage-overview-table");
+  table.setAttribute("aria-labelledby", heading.id);
+  const header = table.createTHead().insertRow();
+  const corner = element("th", "coverage-overview-name");
+  corner.scope = "col";
+  corner.append(element("span", "coverage-overview-sr", "Показатель"));
+  header.append(corner);
+  for (const month of months) {
+    const label = element("th", "coverage-overview-period", monthShort[Number(month.id.slice(5, 7)) - 1]);
+    label.scope = "col";
+    label.setAttribute("aria-label", monthFormat.format(new Date(month.id)));
+    header.append(label);
+  }
+
+  const metrics = [{ label: "Станция", id: "all", cells: station.station_cells }];
+  if (selected.id !== "all") metrics.push({ ...selected, cells: station.cells });
+  const body = table.createTBody();
+  let tabCell;
+  function select(control) {
+    if (tabCell !== control.button) {
+      tabCell.tabIndex = -1;
+      control.button.tabIndex = 0;
+      tabCell = control.button;
+    }
+    onPick(control);
+  }
+  const grid = metrics.map((metric, row) => {
+    const tr = body.insertRow();
+    const name = element("th", "coverage-overview-name", metric.label);
+    name.scope = "row";
+    tr.append(name);
+    return months.map((month, column) => {
+      const cell = metric.cells[month.index];
+      const count = cell.status === "unsupported" ? "—" : `${cell.valid_days}/${cell.total_days}`;
+      const button = element("button", "coverage-overview-cell", count);
+      const heading = `${station.label} · ${metric.label} · ${detailDates(month)}`;
+      const detail = describeCell(cell);
+      const control = { button, heading, detail, status: cell.status,
+        key: `${station.station}:${metric.id}:${month.id}`, select() { select(control); } };
+      statuses.add(cell.status);
+      controls.set(control.key, control);
+      button.type = "button";
+      button.tabIndex = -1;
+      button.dataset.row = row;
+      button.dataset.column = column;
+      button.dataset.level = cell.status;
+      button.title = `${heading} · ${detail}`;
+      button.setAttribute("aria-label", button.title);
+      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("focus", control.select);
+      button.addEventListener("click", control.select);
+      tr.insertCell().append(button);
+      return button;
+    });
+  });
+  tabCell = grid[0][0];
+  tabCell.tabIndex = 0;
+  table.addEventListener("keydown", event => moveCell(event, grid));
+  scroll.append(table);
+  block.append(heading, scroll);
+  return block;
+}
+
+export function mountCoverageOverview(container, { compact = false } = {}) {
+  const panel = element("section", compact ? "coverage-overview coverage-overview-embedded" : "card coverage-overview");
+  const heading = element("h2", compact ? "coverage-overview-sr" : "", "Покрытие по месяцам");
+  heading.id = `coverage-title-${++nextCoverageId}`;
   panel.setAttribute("aria-labelledby", heading.id);
-  const help = element("p", "", "Доля суток, прошедших порог по числу сроков наблюдений.");
+  const help = element("p", "", "Валидные дни / выбранные календарные дни");
   const headingBlock = element("div");
   headingBlock.append(heading, help);
-
   const picker = element("label", "coverage-overview-picker", "Параметр");
   const select = element("select");
+  select.setAttribute("aria-label", "Параметр покрытия");
   picker.append(select);
   picker.hidden = true;
   const header = element("header", "coverage-overview-heading");
@@ -94,103 +166,46 @@ export function mountCoverageOverview(container) {
   retry.type = "button";
   retry.hidden = true;
   const content = element("div", "coverage-overview-content");
-  const scroll = element("div", "coverage-overview-scroll");
-  const footer = element("footer", "coverage-overview-footer");
+  const blocks = element("div", "coverage-overview-blocks");
+  const footer = element("div", "coverage-overview-footer");
+  const legendHost = element("div");
   const detail = element("p", "coverage-overview-detail");
-  const legend = makeLegend();
-  const unavailableLegend = legend.lastElementChild;
-  footer.append(legend, detail);
-  content.append(scroll, footer);
+  detail.setAttribute("aria-live", "polite");
+  footer.append(legendHost, detail);
+  content.append(blocks, footer);
   content.hidden = true;
   panel.append(header, status, retry, content);
   container.replaceChildren(panel);
 
   let activeRequest;
-  let activeCell;
+  let active;
   let currentKey;
   let currentFilters;
-  let parameter = "all";
-  let data;
-  let buttons = [];
+  let chart;
+  let parameter;
   let enabled = true;
 
-  function activate(button, moveFocus = false) {
-    const row = data.rows[Number(button.dataset.row)];
-    const index = Number(button.dataset.column);
-    const period = data.periods[index];
-    const cell = row.cells[index];
-    if (activeCell !== button) {
-      if (activeCell) {
-        activeCell.tabIndex = -1;
-        activeCell.setAttribute("aria-pressed", "false");
-      }
-      activeCell = button;
-      button.tabIndex = 0;
-      button.setAttribute("aria-pressed", "true");
-    }
-    const label = element("strong", "", `${row.label} · ${detailDates(period)}`);
-    let text;
-    if (!row.supported) {
-      text = "Станция не измеряет этот параметр.";
-    } else if (!cell.observed_days) {
-      text = `Нет наблюдений за ${countFormat.format(cell.total_days)} сут. ${detailSlot(row)}`;
-    } else {
-      text = `Пригодны ${stationCount(cell.valid_days, cell.total_days)} (${percentFormat.format(cell.ratio)}). ${detailSlot(row)}`;
-    }
-    detail.replaceChildren(label, document.createTextNode(`  ${text}`));
-    if (moveFocus) {
-      button.focus({ preventScroll: true });
-      const fixedColumn = button.closest("tr").firstElementChild.getBoundingClientRect();
-      const viewport = scroll.getBoundingClientRect();
-      const cellBox = button.getBoundingClientRect();
-      if (cellBox.left < fixedColumn.right + 5) scroll.scrollLeft += cellBox.left - fixedColumn.right - 5;
-      if (cellBox.right > viewport.right - 5) scroll.scrollLeft += cellBox.right - viewport.right + 5;
-    }
+  function pick(control) {
+    if (active === control) return;
+    active?.button.setAttribute("aria-pressed", "false");
+    active = control;
+    active.button.setAttribute("aria-pressed", "true");
+    detail.replaceChildren(element("strong", "", control.heading), document.createTextNode(` ${control.detail}`));
   }
 
-  function navigation(event) {
-    const button = event.target.closest(".coverage-overview-cell");
-    if (!button) return;
-    let row = Number(button.dataset.row);
-    let column = Number(button.dataset.column);
-    if (event.key === "ArrowLeft") column--;
-    else if (event.key === "ArrowRight") column++;
-    else if (event.key === "ArrowUp") row--;
-    else if (event.key === "ArrowDown") row++;
-    else if (event.key === "Home") {
-      column = 0;
-      if (event.ctrlKey) row = 0;
-    } else if (event.key === "End") {
-      column = data.periods.length - 1;
-      if (event.ctrlKey) row = data.rows.length - 1;
-    } else return;
-    event.preventDefault();
-    const target = buttons[Math.max(0, Math.min(data.rows.length - 1, row))][
-      Math.max(0, Math.min(data.periods.length - 1, column))
-    ];
-    activate(target, true);
-  }
-
-  function render(payload) {
-    const previous = activeCell && data ? [
-      data.rows[Number(activeCell.dataset.row)].station,
-      data.periods[Number(activeCell.dataset.column)].id
-    ] : null;
-    const restoreFocus = scroll.contains(document.activeElement);
-    data = payload;
-    parameter = payload.parameter;
-    help.textContent = payload.intervals.length > 1
-      ? "Доля пригодных суток в выбранных интервалах."
-      : "Доля суток, прошедших порог по числу сроков наблюдений.";
-    unavailableLegend.hidden = data.rows.every(row => row.supported);
-    select.replaceChildren(...payload.parameters.map(item => {
+  function render(data) {
+    const previous = active?.key;
+    const selected = data.parameters.find(item => item.id === data.parameter);
+    const options = data.parameters.filter(item => item.id !== "all"
+      && (!compact || data.chart_parameters.includes(item.id)));
+    select.replaceChildren(...options.map(item => {
       const option = element("option", "", item.label);
       option.value = item.id;
       return option;
     }));
-    select.value = parameter;
-    picker.hidden = payload.parameters.length < 2;
-    activeCell = undefined;
+    select.value = selected.id;
+    picker.hidden = options.length < 2;
+    active = undefined;
     status.textContent = "";
     status.hidden = true;
     if (!data.rows.length || !data.periods.length) {
@@ -200,78 +215,20 @@ export function mountCoverageOverview(container) {
       return;
     }
 
-    const table = element("table", "coverage-overview-table");
-    const caption = element("caption", "coverage-overview-sr",
-      `Покрытие по ${data.grain === "year" ? "годам" : "месяцам"}. Стрелки перемещают по таблице. Home и End переходят к началу и концу строки.`);
-    table.append(caption);
-    const headerRow = table.createTHead().insertRow();
-    const station = element("th", "coverage-overview-name", "Станция");
-    station.scope = "col";
-    headerRow.append(station);
-    const multipleYears = data.start.slice(0, 4) !== data.end.slice(0, 4);
-    data.periods.forEach((period, index) => {
-      const label = element("th", "coverage-overview-period");
-      label.scope = "col";
-      if (data.grain === "year") {
-        label.textContent = period.id.slice(0, 4);
-      } else {
-        label.textContent = monthFormat.format(new Date(period.id)).replace(/\.$/, "");
-        if (multipleYears && period.id.slice(0, 4) !== data.periods[index - 1]?.id.slice(0, 4)) {
-          label.append(element("span", "coverage-overview-year", period.id.slice(0, 4)));
-        }
+    const years = yearsOf(data.periods);
+    const controls = new Map();
+    const statuses = new Set();
+    const fragment = document.createDocumentFragment();
+    for (const station of data.rows) {
+      for (const [year, months] of years) {
+        fragment.append(makeBlock(station, year, months, selected, pick, controls, statuses));
       }
-      label.setAttribute("aria-label", labelPeriod(period, data.grain));
-      headerRow.append(label);
-    });
-
-    const body = table.createTBody();
-    buttons = data.rows.map((row, rowIndex) => {
-      const tr = body.insertRow();
-      const name = element("th", "coverage-overview-name");
-      name.scope = "row";
-      const stationLabel = element("span", "coverage-overview-station", row.label);
-      if (/^#[0-9a-f]{6}$/i.test(row.color)) {
-        const dot = element("i", "coverage-overview-dot");
-        dot.style.backgroundColor = row.color;
-        dot.setAttribute("aria-hidden", "true");
-        stationLabel.prepend(dot);
-      }
-      name.append(stationLabel);
-      const total = row.supported ? stationCount(row.valid_days, row.total_days) : "Параметр недоступен";
-      name.append(element("span", "coverage-overview-total", total));
-      tr.append(name);
-      return row.cells.map((cell, column) => {
-        const period = data.periods[column];
-        const copy = row.supported && cell.observed_days ? percentFormat.format(cell.ratio) : "—";
-        const button = element("button", "coverage-overview-cell", copy);
-        const label = describeCell(row, period, cell, data.grain);
-        button.type = "button";
-        button.dataset.row = rowIndex;
-        button.dataset.column = column;
-        button.dataset.level = measureLevel(cell);
-        button.setAttribute("aria-label", label);
-        button.setAttribute("aria-pressed", "false");
-        button.tabIndex = -1;
-        button.title = label;
-        tr.insertCell().append(button);
-        return button;
-      });
-    });
-    table.addEventListener("keydown", navigation);
-    table.addEventListener("focusin", event => {
-      const button = event.target.closest(".coverage-overview-cell");
-      if (button) activate(button);
-    });
-    table.addEventListener("click", event => {
-      const button = event.target.closest(".coverage-overview-cell");
-      if (button) activate(button);
-    });
-    scroll.replaceChildren(table);
+    }
+    blocks.replaceChildren(fragment);
+    legendHost.replaceChildren(legend(statuses));
     content.hidden = false;
-    const previousRow = previous ? data.rows.findIndex(row => row.station === previous[0]) : -1;
-    const previousColumn = previous ? data.periods.findIndex(period => period.id === previous[1]) : -1;
-    const current = previousRow >= 0 && previousColumn >= 0 ? buttons[previousRow][previousColumn] : buttons[0][0];
-    activate(current, restoreFocus);
+    const initial = controls.get(previous) || controls.values().next().value;
+    initial.select();
   }
 
   async function update(filters, { force = false } = {}) {
@@ -280,24 +237,26 @@ export function mountCoverageOverview(container) {
       stations: [...filters.stations],
       intervals: (filters.intervals || []).map(({ start, end }) => ({ start, end }))
     };
+    if (chart !== (filters.chart || "air")) {
+      chart = filters.chart || "air";
+      parameter = undefined;
+    }
     if (!enabled) return;
     const { stations, start, end, intervals } = currentFilters;
-    const keyParts = [stations, start, end, intervals];
-    const key = JSON.stringify([...keyParts, parameter]);
+    const key = JSON.stringify([stations, start, end, intervals, chart, parameter]);
     if (key === currentKey && !force) return;
     currentKey = key;
     activeRequest?.abort();
     activeRequest = undefined;
     retry.hidden = true;
     if (!stations.length) {
-      scroll.replaceChildren();
+      blocks.replaceChildren();
       content.hidden = true;
       picker.hidden = true;
       status.textContent = "Выберите станции, чтобы увидеть покрытие.";
       status.hidden = false;
       panel.removeAttribute("aria-busy");
-      data = null;
-      activeCell = null;
+      active = undefined;
       return;
     }
     status.textContent = "Загружаем покрытие…";
@@ -306,7 +265,8 @@ export function mountCoverageOverview(container) {
     content.hidden = true;
     const request = new AbortController();
     activeRequest = request;
-    const query = new URLSearchParams({ stations: stations.join(","), start, end, parameter });
+    const query = new URLSearchParams({ stations: stations.join(","), start, end, chart });
+    if (parameter) query.set("parameter", parameter);
     if (intervals.length > 1) {
       query.set("intervals", intervals.map(interval => `${interval.start}:${interval.end}`).join(","));
     }
@@ -314,13 +274,10 @@ export function mountCoverageOverview(container) {
       const response = await fetch(`/api/observation-coverage?${query}`, { signal: request.signal, cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
-      if (request !== activeRequest) return;
-      render(payload);
-      currentKey = JSON.stringify([...keyParts, parameter]);
+      if (request === activeRequest) render(payload);
     } catch (error) {
       if (request !== activeRequest || error.name === "AbortError") return;
-      status.textContent = error.message && error.message !== "Failed to fetch" && error.name !== "SyntaxError"
-        ? error.message : "Не удалось загрузить покрытие.";
+      status.textContent = "Не удалось загрузить покрытие.";
       retry.hidden = false;
       currentKey = undefined;
     } finally {

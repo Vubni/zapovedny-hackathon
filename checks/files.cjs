@@ -82,8 +82,10 @@ async function runChecks(page, base, workbook, operatorPassword) {
   const queueItem = (name) => page.locator(".queue-item").filter({ hasText: name });
   const row = (name) => page.getByRole("row").filter({ hasText: name });
   const station = page.getByLabel("Метеостанция", { exact: true });
-  const hampel = page.getByRole("checkbox", { name: /^Локальная медиана/ });
-  const spike = page.getByRole("checkbox", { name: /^Одиночные скачки/ });
+  const hampel = page.getByRole("checkbox", { name: /^Значение выбивается из ряда/ });
+  const spike = page.getByRole("checkbox", { name: /^Скачок с возвратом/ });
+  const external = page.getByRole("checkbox", { name: /^Внешние метеосервисы/ });
+  const model = page.getByRole("checkbox", { name: /^Локальная модель заполнения/ });
   const add = page.getByRole("button", { name: "Добавить в базу", exact: true });
   const toFiles = page.getByRole("button", { name: "К файлам", exact: true });
   const pressure = page.getByLabel("Верхняя граница давления", { exact: true });
@@ -131,6 +133,7 @@ async function runChecks(page, base, workbook, operatorPassword) {
   assert.equal((await fileRecord(page, base, xlsxName)).rows, 24);
   await queueItem(csvName).getByRole("button", { name: "Настроить" }).click();
   assert.equal(await pressure.count(), 0);
+  assert.equal(await page.getByRole("checkbox", { name: /сверка с соседней станцией/i }).count(), 0);
   assert.equal(await page.getByRole("link", { name: "Аудит исходника" }).getAttribute("href"),
     `/review?file=${csvRecord.id}`);
   await station.selectOption("kr2");
@@ -149,7 +152,7 @@ async function runChecks(page, base, workbook, operatorPassword) {
   await temperature.click();
   const graph = page.getByRole("img", { name: "Температура воздуха с выделенными выбросами" });
   assert.match(await graph.locator("circle title").textContent(), /100.+к удалению/);
-  await page.locator("summary").click();
+  await page.locator(".outlier-details summary").click();
   await page.getByRole("row").filter({ hasText: "2026-02-14 07:00" }).waitFor();
   await spike.check();
   await page.getByText("Настройки изменились. Запустите фильтрацию повторно.").waitFor();
@@ -164,12 +167,24 @@ async function runChecks(page, base, workbook, operatorPassword) {
   assert.equal(await spike.isChecked(), true);
   assert.equal(await add.isDisabled(), true);
 
-  await page.getByLabel("Способ заполнения", { exact: true }).selectOption("model");
+  await external.check();
+  await model.check();
+  assert.equal(await external.isChecked(), true);
+  assert.equal(await model.isChecked(), true);
+  await page.getByText("Сначала метеосервисы, затем локальная модель для оставшихся пропусков.").waitFor();
+  await page.getByLabel("Часовой пояс исходного файла").waitFor();
+  await external.uncheck();
+  assert.equal(await model.isChecked(), true);
+  await page.locator(".file-bounds summary").click();
+  await page.getByLabel("Значение выбивается из ряда: Температура воздуха", { exact: true }).fill("4.5");
   await applyFilters(page);
   await page.waitForFunction(() => document.querySelector("[data-file-action=publish]")?.disabled === false);
   const updatedDraft = await fileRecord(page, base, csvName);
   assert.notEqual(updatedDraft.preview.revision, draft.preview.revision);
   assert.deepEqual(updatedDraft.preview.settings.filters, ["hampel", "spike"]);
+  assert.equal(updatedDraft.preview.settings.thresholds.hampel.t_air, 4.5);
+  assert.equal(updatedDraft.preview.settings.fill_external, false);
+  assert.equal(updatedDraft.preview.settings.fill_model, true);
   assert.equal(updatedDraft.preview.stats.filled, 3);
 
   const replaced = timeline.getByRole("button", { name: /07:00.*Замены и заполнения.*Температура воздуха/ });
@@ -183,7 +198,7 @@ async function runChecks(page, base, workbook, operatorPassword) {
   assert.match(await page.locator("#timeline-events tbody").innerText(), /(?:предел|диапазон)/i);
   await filledGap.click();
   const fillRow = page.getByRole("row").filter({ hasText: "2026-02-14 12:00" });
-  await fillRow.getByText(/Локальная модель.*Регрессия/).waitFor();
+  await fillRow.getByText(/Локальная модель.*интерполяция/i).waitFor();
   assert.match(await fillRow.innerText(), /Относительная влажность.*78/s);
 
   await temperature.click();
@@ -250,6 +265,18 @@ async function runChecks(page, base, workbook, operatorPassword) {
   assert.equal(await pressure.inputValue(), "1050");
   await applyFilters(page);
   assert.equal((await fileRecord(page, base, xlsxName)).preview.stats.parameters.pressure_hpa.marked, 1);
+  await pressure.selectOption("manual");
+  const lowPressure = page.getByLabel("Минимум: Атмосферное давление", { exact: true });
+  const highPressure = page.getByLabel("Максимум: Атмосферное давление", { exact: true });
+  await highPressure.fill("1200");
+  await lowPressure.fill("1300");
+  assert.equal(await add.isDisabled(), true);
+  await page.getByRole("button", { name: "Отфильтровать", exact: true }).click();
+  await page.getByText(/Минимум не должен превышать максимум/).waitFor();
+  await lowPressure.fill("940");
+  await applyFilters(page);
+  await page.getByText("0 выбросов", { exact: true }).waitFor();
+  assert.deepEqual((await fileRecord(page, base, xlsxName)).preview.settings.ranges.pressure_hpa, [940, 1200]);
   await pressure.selectOption("1550");
   assert.equal(await add.isDisabled(), true);
   await applyFilters(page);
@@ -326,20 +353,64 @@ async function runChecks(page, base, workbook, operatorPassword) {
 
   await page.setViewportSize({ width: 390, height: 844 });
   const dropzone = page.locator("#dropzone");
-  const transfer = await page.evaluateHandle(() => {
-    const data = new DataTransfer();
-    data.items.add(new File(["datetime,t_air\n2026-02-16 00:00,0\n"], "Перетащенный.csv", { type: "text/csv" }));
-    return data;
+  const uploadStation = page.getByLabel("Станция для загрузки", { exact: true });
+  const longitude = page.getByLabel("Точная долгота", { exact: true });
+  const label = "QA · станция у реки";
+  let registrations = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/stations" && request.method() === "POST") registrations++;
   });
-  await dropzone.dispatchEvent("dragover", { dataTransfer: transfer });
-  assert.match(await dropzone.getAttribute("class"), /\bdrag\b/);
-  await dropzone.dispatchEvent("drop", { dataTransfer: transfer });
-  await transfer.dispose();
-  await queueItem("Перетащенный.csv").getByText("Ожидает обработки").waitFor();
+  await uploadStation.selectOption("new");
+  await page.getByLabel("Название новой станции").fill(label);
+  await page.getByLabel("Точная широта").fill("0");
+  await page.getByRole("button", { name: "Выбрать файлы" }).click();
+  assert.equal(await longitude.evaluate((input) => input.validity.valid), false);
+  assert.equal(registrations, 0);
+  await longitude.fill("-71,123456789");
+  async function dropFiles(names) {
+    const transfer = await page.evaluateHandle((filenames) => {
+      const data = new DataTransfer();
+      const readings = ["datetime,t_air", ...Array.from({ length: 72 }, (_, index) =>
+        `2026-02-${16 + Math.floor(index / 24)} ${String(index % 24).padStart(2, "0")}:00,${index === 31 ? -100 : 0}`)].join("\n");
+      for (const name of filenames) data.items.add(new File([readings], name, { type: "text/csv" }));
+      return data;
+    }, names);
+    await dropzone.dispatchEvent("dragover", { dataTransfer: transfer });
+    assert.match(await dropzone.getAttribute("class"), /\bdrag\b/);
+    await dropzone.dispatchEvent("drop", { dataTransfer: transfer });
+    await transfer.dispose();
+    for (const name of names) await queueItem(name).getByText("Ожидает обработки").waitFor();
+  }
+  await dropFiles(["Перетащенный.csv", "Второй замер.csv"]);
+  await uploadStation.selectOption("new");
+  await dropFiles(["Повторная загрузка.csv"]);
+  assert.equal(registrations, 1);
+  const catalogResponse = await page.request.get(`${base}/api/stations`);
+  const created = (await catalogResponse.json()).stations.filter((item) => item.label === label);
+  assert.equal(created.length, 1);
+  const [registered] = created;
+  assert.equal(registered.latitude, 0);
+  assert.equal(registered.longitude, -71.123456789);
+  assert.equal(registered.location_precision, "exact");
+  for (const name of ["Перетащенный.csv", "Второй замер.csv", "Повторная загрузка.csv"]) {
+    assert.equal((await fileRecord(page, base, name)).station, registered.id);
+  }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
   await queueItem("Перетащенный.csv").getByRole("button", { name: "Настроить" }).click();
+  assert.equal(await station.inputValue(), registered.id);
   await applyFilters(page);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+  const timelineDate = page.getByLabel("Дата на шкале");
+  await timelineDate.fill("2026-02-17");
+  await page.getByRole("button", { name: "Перейти", exact: true }).click();
+  await page.getByRole("row").filter({ hasText: "2026-02-17 07:00" }).getByText("К удалению").waitFor();
+  assert.equal(await timeline.locator(".timeline-event[aria-pressed=true]").count(), 1);
+  await timelineDate.fill("2026-02-16");
+  await page.getByRole("button", { name: "Перейти", exact: true }).click();
+  await page.getByText("В предпросмотре нет отмеченных сроков на выбранную дату.").waitFor();
+  await publish(page, "Добавить в базу");
+  const updatedCatalog = await page.request.get(`${base}/api/stations`);
+  assert.equal((await updatedCatalog.json()).stations.find(({ id }) => id === registered.id).start, "2026-02-16");
   assert.deepEqual(pageErrors, []);
 }
 
@@ -373,7 +444,7 @@ async function run() {
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     await runChecks(page, `http://127.0.0.1:${port}`, await fs.readFile(workbook), operatorPassword);
-    console.log("PASS /files: очередь CSV/XLSX, шкала, ручные версии CSV, перезагрузка, выгрузка, публикация, замена, удаление, аудит и drop");
+    console.log("PASS /files: фильтры, ручные границы и пороги, заполнение, шкала и дата, версии CSV, аудит, регистрация и публикация без дубликатов");
   } catch (error) {
     if (serverErrors) console.error(serverErrors.trim());
     throw error;

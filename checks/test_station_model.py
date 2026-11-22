@@ -1,45 +1,73 @@
-"""Run from the project root with python3 -m unittest discover -s checks -p test_station_model.py."""
+"""Check archived benchmarks, chronological transfer and the confirmed-file workflow."""
 
 import json
+import os
 import unittest
 from contextlib import closing
 from datetime import date
+from pathlib import Path
 from statistics import fmean
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from analytics import database
-from station_model import HOLDOUT_YEARS, MODEL_FILE, evaluate_station, examples, predict
+from observation_store import confirm_file, preview_file, upload_file
+from station_catalog import register_station
+from station_model import MODEL_FILE, examples, features, fit_before, model_catalog, predict
 
 
 class StationModelTest(unittest.TestCase):
-    def test_regression_uses_adjacent_days(self):
-        values = {date.fromisoformat(day): value for day, value in [
-            ("2025-01-01", 1),
-            ("2025-01-02", 2),
-            ("2025-01-04", 4),
-            ("2025-01-05", 5),
-            ("2025-01-06", 6),
-        ]}
-        [(day, inputs, actual)] = examples(values)
-        self.assertEqual((day.isoformat(), inputs[1:3], actual), ("2025-01-06", (5, 1), 6))
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        env = patch.dict(os.environ, {"METEO_OBSERVATION_DB": str(Path(temporary.name) / "observations.sqlite")})
+        env.start()
+        self.addCleanup(env.stop)
 
-    def test_holdout_does_not_affect_fit(self):
+    def test_training_uses_adjacent_days(self):
+        values = {date.fromisoformat(day): value for day, value in [
+            ("2025-01-01", 1), ("2025-01-02", 2), ("2025-01-04", 4),
+            ("2025-01-05", 5), ("2025-01-06", 6),
+        ]}
+        [(day, season_and_trend, today, actual)] = examples(values, None)
+        self.assertEqual((day.isoformat(), season_and_trend, today, actual), ("2025-01-06", (1, 0), 5, 6))
+
+    def test_seasonal_phase_tracks_hemisphere_and_vanishes_without_location(self):
+        spring = date(2026, 4, 1)
+        autumn = date(2026, 10, 1)
+        north = features(spring, 10, 8, 56.52)
+        south = features(spring, 10, 8, -56.52)
+        self.assertGreater(north[1], 0)
+        self.assertEqual(north, (south[0], -south[1]))
+        self.assertLess(features(autumn, 10, 8, 56.52)[1], 0)
+        self.assertEqual(features(spring, 10, 8, None), (2, 0))
+        self.assertEqual(features(spring, 10, 8, 0), (2, 0))
+
+    def test_post_cutoff_and_excluded_station_do_not_affect_fit(self):
         with closing(database()) as connection:
             rows = connection.execute(
-                "SELECT day, mean FROM daily WHERE station='kr1' AND param='t_air' "
-                "AND valid=1 ORDER BY day"
+                "SELECT station, day, mean FROM daily WHERE station IN ('kr1','kr2') "
+                "AND param='t_air' AND valid=1 ORDER BY station,day"
             )
-            real = {date.fromisoformat(day): mean for day, mean in rows}
-        perturbed = {day: mean + 20 if day.year == 2025 else mean for day, mean in real.items()}
-        original, altered = (evaluate_station("kr1", values) for values in (real, perturbed))
-        self.assertEqual(original["coefficients"], altered["coefficients"])
-        self.assertNotEqual(original["test"]["model_mae_c"], altered["test"]["model_mae_c"])
+            groups = {"kr1": {}, "kr2": {}}
+            for station, day, mean in rows:
+                groups[station][date.fromisoformat(day)] = mean
+        cutoff = date(2025, 1, 1)
+        original = {key: list(examples(readings, 56.52)) for key, readings in groups.items()}
+        perturbed = {key: list(examples({
+            day: mean + 20 if day >= cutoff or key == "kr2" else mean
+            for day, mean in readings.items()
+        }, 56.52)) for key, readings in groups.items()}
+        self.assertEqual(fit_before(original, cutoff, "kr2"), fit_before(perturbed, cutoff, "kr2"))
+        pooled_perturbed = {**perturbed, "kr2": original["kr2"]}
+        self.assertEqual(fit_before(original, cutoff), fit_before(pooled_perturbed, cutoff))
 
     def test_published_metrics_match_rolling_archive_predictions(self):
-        artifact = json.loads(MODEL_FILE.read_text(encoding="utf-8"))
-        from_station = {fit["id"]: fit for fit in artifact["stations"]}
-        self.assertEqual(from_station.keys(), HOLDOUT_YEARS.keys())
+        model = json.loads(MODEL_FILE.read_text(encoding="utf-8"))
+        self.assertEqual({test["station"] for test in model["tests"]}, {"ame60", "kr1", "kr2"})
         with closing(database()) as connection:
-            for station, year in HOLDOUT_YEARS.items():
+            for test in model["tests"]:
+                station, year = test["station"], test["window_start"][:4]
                 with self.subTest(station=station):
                     targets = connection.execute(
                         """SELECT target.day, source.day AS source_day, target.mean, source.mean
@@ -58,32 +86,70 @@ class StationModelTest(unittest.TestCase):
                         result = predict({"station": station, "day": source})
                         self.assertEqual((result["target_day"], result["baseline_c"], result["observed_c"]),
                                          (target, baseline, actual))
+                        self.assertLessEqual(result["fit"]["training_through"], source)
                         model_errors.append(abs(result["prediction_c"] - actual))
                         baseline_errors.append(abs(baseline - actual))
-                    fit = from_station[station]
-                    test = fit["test"]
                     self.assertEqual(test["days"], len(targets))
                     self.assertEqual((test["first_target_day"], test["last_target_day"]),
                                      (targets[0][0], targets[-1][0]))
-                    self.assertLess(fit["training"]["last_target_day"], test["window_start"])
                     self.assertAlmostEqual(test["model_mae_c"], fmean(model_errors), places=11)
                     self.assertAlmostEqual(test["baseline_mae_c"], fmean(baseline_errors), places=11)
 
-    def test_manual_inputs_match_archived_lags(self):
-        archived = predict({"station": "kr1"})
-        previous, latest = archived["inputs"]
-        manual = predict({"station": "kr1", "mode": "manual", "day": archived["source_day"],
-                          "today": str(latest["temperature_c"]).replace(".", ","),
-                          "yesterday": str(previous["temperature_c"])})
-        self.assertEqual(manual["inputs"], archived["inputs"])
-        self.assertEqual(manual["prediction_c"], archived["prediction_c"])
-        self.assertIsNone(manual["observed_c"])
+    def test_transfer_reports_donor_stations_and_absent_contemporaneous_training(self):
+        report = {row["station"]: row for row in model_catalog()["transfer_tests"]}
+        self.assertEqual(report["ame60"]["days"], 0)
+        self.assertIn("отсутствуют", report["ame60"]["reason"])
+        for key in ("kr1", "kr2"):
+            test = report[key]
+            self.assertNotIn(key, test["training"]["stations"])
+            self.assertLess(test["training"]["last_target_day"], test["window_start"])
+            self.assertGreater(test["days"], 0)
+
+    def test_new_station_forecasts_with_manual_or_confirmed_observations(self):
+        key = "test-model-station"
+        register_station({"id": key, "label": "Полевая станция без координат"})
+        station_meta = lambda: next(s for s in model_catalog()["stations"] if s["id"] == key)
+        self.assertIsNone(station_meta()["archive"])
+        self.assertFalse(station_meta()["has_observations"])
+        with self.assertRaisesRegex(ValueError, "двое последовательных суток"):
+            predict({"station": key})
+
+        manual = predict({"station": key, "mode": "manual", "day": "2026-05-17",
+                          "today": "11,375", "yesterday": "8.125"})
+        self.assertEqual(manual["target_day"], "2026-05-18")
+        self.assertEqual(manual["fit"], {"kind": "transfer", "training_through": "2025-12-31"})
+        self.assertTrue(all(item["origin"] == "manual" for item in manual["inputs"]))
+
+        def confirmable(days, name):
+            rows = ["datetime,t_air"]
+            rows.extend(f"{day} {hour:02d}:15,{temperature}"
+                        for day, temperature in days for hour in range(18))
+            uploaded = upload_file({"filename": name, "station": key}, ("\n".join(rows) + "\n").encode(), "text/csv")
+            request = {"id": uploaded["id"], "station": key, "filters": "", "fill": "none"}
+            return {**request, "revision": preview_file(request)["revision"]}
+
+        gaps = confirmable([("2026-05-16", 8.125), ("2026-05-18", 13)], "gap.csv")
+        confirm_file(gaps)
+        self.assertIsNone(station_meta()["archive"])
+        self.assertTrue(station_meta()["has_observations"])
+        with self.assertRaisesRegex(ValueError, "2026-05-17"):
+            predict({"station": key, "day": "2026-05-18"})
+
+        consecutive = confirmable([("2026-05-17", 11.375)], "next.csv")
+        self.assertIsNone(station_meta()["archive"])  # A draft adds no usable days.
+        confirm_file(consecutive)
+        self.assertEqual(station_meta()["archive"]["default_source_day"], "2026-05-18")
+        archive = predict({"station": key, "day": "2026-05-17"})
+        self.assertEqual(archive["target_day"], "2026-05-18")
+        self.assertEqual(archive["prediction_c"], manual["prediction_c"])
+        self.assertEqual(archive["observed_c"], 13)
+        self.assertEqual([item["temperature_c"] for item in archive["inputs"]], [8.125, 11.375])
+        self.assertTrue(all(item["origin"] == "confirmed" for item in archive["inputs"]))
 
     def test_invalid_inputs_and_archive_gap(self):
         for query, message in [
             ({"station": "other"}, "Неизвестная станция"),
             ({"day": "20251230"}, "ГГГГ-ММ-ДД"),
-            ({"day": "2024-12-30"}, "обучение уже завершено"),
             ({"station": "kr2", "day": "2025-05-24"}, "2025-05-23"),
             ({"mode": "manual", "day": "2025-12-30", "today": "nan", "yesterday": "4"},
              "за выбранный день"),
@@ -92,9 +158,9 @@ class StationModelTest(unittest.TestCase):
         ]:
             with self.subTest(query=query), self.assertRaisesRegex(ValueError, message):
                 predict(query)
-        after_archive = predict({"station": "kr1", "day": "2025-12-31"})
-        self.assertEqual(after_archive["target_day"], "2026-01-01")
-        self.assertIsNone(after_archive["observed_c"])
+        early = predict({"station": "ame60", "day": "1992-07-02"})
+        self.assertEqual(early["fit"]["kind"], "baseline")
+        self.assertEqual(early["prediction_c"], early["baseline_c"])
 
 
 if __name__ == "__main__":

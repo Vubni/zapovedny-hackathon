@@ -1,3 +1,4 @@
+@import url("/reserve-brand.css");
 @font-face{font-family:Manrope;src:url("/fonts/manrope.ttf") format("truetype"),local("Manrope");font-weight:200 800;font-style:normal;font-display:swap}
 :root{--canvas:#f4f5ee;--paper:#fff;--ink:#162820;--mute:#53645a;--soft:#728079;--side:#172c23;--side-active:#284438;--side-text:#e6eee6;--side-mute:#a6bbae;--lime:#d7e950;--lime-strong:#cde425;--green:#2b7650;--dark:#20563b;--mint:#e5f0e5;--line:#dce5db;--grid:#e5ebe3;--blue:#426583;--blue-pale:#e8eff4;--plum:#735579;--orange:#945320;--cream:#fcf0db;--empty:#ebede7;--radius:16px}
 *{box-sizing:border-box}
@@ -10,7 +11,6 @@ svg{vertical-align:middle}
 button[aria-disabled=true]{cursor:default}
 .side{position:fixed;inset:0 auto 0 0;width:224px;padding:27px 20px 28px;background:var(--side);color:var(--side-text);display:flex;flex-direction:column;z-index:5}
 .brand{display:flex;align-items:center;gap:11px;background:transparent;border:0;color:inherit;padding:0;font-size:17px;font-weight:800;text-align:left}
-.logo{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#d2f197;color:var(--side)}
 .nav-label{margin:52px 0 12px;color:var(--side-mute);text-transform:uppercase;font-size:11px;font-weight:800;letter-spacing:.08em}
 .nav{display:grid;gap:5px}
 .nav a{display:flex;width:100%;align-items:center;gap:11px;padding:0 12px;height:44px;background:none;color:inherit;border:0;border-radius:8px;font-size:13px;font-weight:750;text-align:left;white-space:nowrap}
@@ -250,7 +250,7 @@ button:disabled{cursor:default;opacity:.56}
   .side { position: static; width: 100%; padding: 12px 14px 8px; gap: 10px; }
   .side .brand { margin: 0; font-size: 15px; }
   .side .brand span:last-child,.side .nav span { display: inline; }
-  .side .logo { width: 30px; height: 30px; }
+
   .side .nav { display: flex; margin: 0; gap: 4px; }
   .side .nav a { width: auto; height: 36px; padding-inline: 9px; gap: 5px; font-size: 12px; }
   .side .nav a svg { width: 15px; }

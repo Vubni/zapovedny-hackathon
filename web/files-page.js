@@ -26,12 +26,19 @@ const parameterColors = {
   wind_dir: "#735579", pressure_hpa: "#936025", soil_05: "#8e5948",
   soil_10: "#6d6aa3", soil_20: "#377a79",
 };
+const filterText = {
+  conflicts: ["Записи с одинаковым временем", "Если на одно время приходятся разные показания, можно убрать всю группу или оставить запись, которая лучше согласуется с соседними."],
+  hampel: ["Значение выбивается из ряда", "Сравнивает показание с соседними. Отмечает его, когда разница превышает заданный порог и обычный разброс значений."],
+  spike: ["Скачок с возвратом", "Значение резко меняется на один замер, а в следующем возвращается к прежнему уровню."],
+  stuck: ["Датчик повторяет одно значение", "Отмечает одинаковые показания, которые держатся заданное число часов или дольше."],
+};
 const state = {
   files: new Map(),
   editors: new Map(),
   stations: [],
+  uploadStation: "kr1",
+  newStation: { label: "", latitude: "", longitude: "", profile: "kr1" },
   filters: [],
-  fills: [],
   transfers: [],
   loading: true,
   uploading: false,
@@ -115,8 +122,21 @@ function selectField(label, id, options, current, disabled = false) {
   </select></div>`;
 }
 
+function inputField(label, id, value, attributes) {
+  return `<div class="field"><label for="${id}">${label}</label>
+    <input id="${id}" value="${escapeHtml(value)}" ${attributes}></div>`;
+}
+
 function stationName(id) {
   return state.stations.find((station) => station.id === id)?.label ?? id ?? "—";
+}
+
+function stationOptions() {
+  return state.stations.map(({ id, label }) => [id, label]);
+}
+
+function saveStations(catalog) {
+  state.stations = catalog.stations.filter(({ label }) => !/^поляна и поле$/i.test(label.trim()));
 }
 
 function filesUrl(endpoint = "", params = {}) {
@@ -197,6 +217,7 @@ function filesPage() {
     `<div class="row heading-actions">${link("Расширенный аудит", "/review")}${link("Доступ оператора", "/operator")}</div>`)}
     <div class="split">
       ${card(`${cardTitle("Загрузить новые файлы", "Выберите один или несколько CSV или XLSX. Обработка выполняется по одному файлу.")}
+        ${uploadStationFields()}
         <div class="upload" id="dropzone">
           <span class="upload-icon">${icon("upload", 24)}</span><h3>Перетащите CSV или XLSX сюда</h3>
           ${button("Выбрать файлы", "browse", { type: "accent", disabled: state.loading })}
@@ -216,63 +237,160 @@ function filesPage() {
       </div>`)}`;
 }
 
-function settingsQuery(settings) {
-  const { station, filters, fill, timezone, subhour, pressure_reference, sources, conflict_policy, pressure_max } = settings;
+function uploadStationFields() {
+  const { label, latitude, longitude, profile } = state.newStation;
+  return `<div id="upload-station-fields" class="file-options">
+    ${selectField("Станция для загрузки", "upload-station", [...stationOptions(), ["new", "Новая метеостанция…"]],
+      state.uploadStation, state.loading)}
+    ${state.uploadStation === "new" ? `<div class="new-station-fields">
+      ${inputField("Название новой станции", "upload-station-label", label, 'required maxlength="100" data-new-station="label"')}
+      ${selectField("Профиль прибора", "upload-station-profile", [["kr1", "Сокол М1"], ["ame60", "АМЕ-60"]], profile)}
+      ${inputField("Точная широта", "upload-station-latitude", latitude, 'required inputmode="decimal" placeholder="56,5234" data-new-station="latitude"')}
+      ${inputField("Точная долгота", "upload-station-longitude", longitude, 'required inputmode="decimal" placeholder="32,8765" data-new-station="longitude"')}
+    </div>` : ""}
+  </div>`;
+}
+
+function effectiveRanges(settings = {}) {
+  const ranges = { ...state.primary?.ranges };
+  if (!settings.ranges?.pressure_hpa && String(settings.pressure_max) === "1550" && ranges.pressure_hpa) {
+    ranges.pressure_hpa = [ranges.pressure_hpa[0], 1550];
+  }
+  return { ...ranges, ...settings.ranges };
+}
+
+function effectiveThresholds(settings = {}) {
+  return Object.fromEntries(Object.entries(state.primary?.thresholds ?? {}).map(([method, defaults]) =>
+    [method, { ...defaults, ...settings.thresholds?.[method] }]));
+}
+
+function fillSelection(settings) {
   return {
-    station, filters: [...filters].sort().join(","), fill, pressure_max: String(pressure_max ?? "1050"),
-    conflict_policy: filters.includes("conflicts") ? conflict_policy : "all",
-    ...(fill === "external" ? { timezone, subhour, pressure_reference: pressure_reference ?? "", sources: [...sources].sort().join(",") } : {}),
+    fill_external: settings.fill_external ?? ["external", "both"].includes(settings.fill),
+    fill_model: settings.fill_model ?? ["model", "both"].includes(settings.fill),
   };
 }
 
-function settingsFor(file) {
-  const settings = file.preview?.settings ?? file.settings ?? file.confirmed?.settings;
+function settingsPayload(settings) {
+  const { station, filters, timezone, subhour, pressure_reference, sources, conflict_policy } = settings;
+  const { fill_external, fill_model } = fillSelection(settings);
+  const ranges = Object.fromEntries(Object.entries(effectiveRanges(settings)).sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, values]) => [id, values.map((value) => value === "" ? null : Number(value))]));
+  const thresholds = Object.fromEntries(Object.entries(effectiveThresholds(settings)).sort(([a], [b]) => a.localeCompare(b))
+    .map(([method, params]) => [method, Object.fromEntries(Object.entries(params).sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, value]) => {
+        const maximum = method === "stuck" ? state.primary.max_stuck_hours : state.primary.max_absolute_bound;
+        if (!filters.includes(method) && !(Number(value) > 0 && Number(value) <= maximum)) {
+          return [id, state.primary.thresholds[method][id]];
+        }
+        return [id, value === "" ? null : Number(value)];
+      }))]));
   return {
-    station: settings?.station ?? file.station,
-    filters: settings?.filters ?? [],
-    fill: settings?.fill ?? "none",
-    timezone: settings?.timezone ?? "",
-    subhour: settings?.subhour ?? "skip",
-    pressure_reference: settings?.pressure_reference ?? "",
-    pressure_max: String(settings?.pressure_max ?? "1050"),
-    sources: settings?.sources?.length ? settings.sources : ["era5", "merra2"],
-    conflict_policy: settings?.conflict_policy ?? "all",
+    station, filters: [...filters].sort().join(","), ranges, thresholds,
+    fill_external: fill_external ? "1" : "0", fill_model: fill_model ? "1" : "0",
+    pressure_max: ranges.pressure_hpa?.[1] === 1550 ? "1550" : "1050",
+    conflict_policy: filters.includes("conflicts") ? conflict_policy : "all",
+    ...(fill_external ? { timezone, subhour, pressure_reference: pressure_reference ?? "", sources: [...sources].sort().join(",") } : {}),
+  };
+}
+
+function jsonPost(body) {
+  return { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+}
+
+function settingsFor(file) {
+  const settings = file.preview?.settings ?? file.settings ?? file.confirmed?.settings ?? {};
+  return {
+    station: settings.station ?? file.station,
+    filters: settings.filters ?? [],
+    ...fillSelection(settings),
+    ranges: effectiveRanges(settings),
+    thresholds: effectiveThresholds(settings),
+    timezone: settings.timezone ?? "",
+    subhour: settings.subhour ?? "skip",
+    pressure_reference: settings.pressure_reference ?? "",
+    sources: settings.sources?.length ? settings.sources : ["era5", "merra2"],
+    conflict_policy: settings.conflict_policy ?? "all",
   };
 }
 
 function checkedPreview(editor) {
   if (!editor.preview) return false;
-  const calculated = settingsQuery(editor.preview.settings);
-  return Object.entries(settingsQuery(editor.settings)).every(([key, value]) => calculated[key] === value);
+  return JSON.stringify(settingsPayload(editor.settings)) === JSON.stringify(settingsPayload(editor.preview.settings));
+}
+
+function processingStatus(editor) {
+  if (editor.busy === "restore") return "Загрузка предпросмотра…";
+  if (editor.busy === "preview") return "Обработка файла…";
+  if (editor.busy === "corrected") return "Проверка исправленного CSV…";
+  if (editor.busy === "confirm") return "Сохранение результата…";
+  if (editor.preview && !checkedPreview(editor)) return "Настройки изменились. Запустите фильтрацию повторно.";
+  if (editor.preview?.manual) return "Повторная фильтрация обработает исходник и заменит ручные правки в черновике.";
+  return "";
 }
 
 function fillSettings(settings, busy) {
-  const fill = state.fills.find((item) => item.id === settings.fill);
-  return `${selectField("Способ заполнения", "fill-pick", state.fills.map((item) => [item.id, item.label]), settings.fill, busy)}
-    ${fill?.description ? `<p class="caption">${escapeHtml(fill.description)}</p>` : ""}
-    ${settings.fill === "external" ? `<div class="file-options">
-      ${selectField("Часовой пояс исходного файла", "file-timezone",
-        [["", "Выберите часовой пояс"], ["Europe/Moscow", "Москва (UTC+3)"], ["UTC", "UTC"]], settings.timezone, busy)}
-      ${selectField("Неполные часы", "file-subhour",
-        [["interpolate", "Интерполировать"], ["skip", "Оставить пропуски"]], settings.subhour, busy)}
-      ${selectField("Тип давления в файле", "file-pressure",
-        [["", "Неизвестен"], ["surface", "Давление у поверхности"]], settings.pressure_reference, busy)}
-      <p class="caption">Источники · ERA5 и MERRA-2</p>
-    </div>` : ""}`;
+  return `<div class="method-list">
+    <label class="method">
+      <input type="checkbox" id="file-fill-external" data-fill="fill_external" ${settings.fill_external ? "checked" : ""} ${busy ? "disabled" : ""}>
+      <span><strong>Внешние метеосервисы</strong><span>Оценки из ERA5 и MERRA-2.</span></span>
+    </label>
+    <label class="method">
+      <input type="checkbox" id="file-fill-model" data-fill="fill_model" ${settings.fill_model ? "checked" : ""} ${busy ? "disabled" : ""}>
+      <span><strong>Локальная модель заполнения</strong><span>Использует соседние пригодные измерения из файла.</span></span>
+    </label>
+  </div>
+  <p class="caption">${settings.fill_external && settings.fill_model
+    ? "Сначала метеосервисы, затем локальная модель для оставшихся пропусков."
+    : !settings.fill_external && !settings.fill_model ? "Пропуски останутся в данных." : ""}</p>
+  ${settings.fill_external ? `<div class="file-options">
+    ${selectField("Часовой пояс исходного файла", "file-timezone",
+      [["", "Выберите часовой пояс"], ["Europe/Moscow", "Москва (UTC+3)"], ["UTC", "UTC"]], settings.timezone, busy)}
+    ${selectField("Неполные часы", "file-subhour",
+      [["interpolate", "Интерполировать"], ["skip", "Оставить пропуски"]], settings.subhour, busy)}
+    ${selectField("Тип давления в файле", "file-pressure",
+      [["", "Неизвестен"], ["surface", "Давление у поверхности"]], settings.pressure_reference, busy)}
+  </div>` : ""}`;
+}
+
+function filteringBounds(file, editor) {
+  const rows = file.params?.filter(({ id }) => editor.settings.ranges[id]) ?? [];
+  if (!rows.length) return "";
+  return `<details class="file-bounds" ${editor.boundsOpen ? "open" : ""}>
+    <summary>Ручные границы значений</summary>
+    <div class="file-options">
+      <p class="caption">Значения за границами исключаются. Флаги качества из исходного файла учитываются.</p>
+      ${rows.map(({ id, label, unit }) => `<fieldset class="range-fields"><legend>${escapeHtml(label)}${unit ? `, ${escapeHtml(unit)}` : ""}</legend>
+        ${editor.settings.ranges[id].map((value, index) => inputField(index ? "Максимум" : "Минимум", `bound-${id}-${index}`, value,
+          `type="number" step="any" required aria-label="${index ? "Максимум" : "Минимум"}: ${escapeHtml(label)}" data-bound="${id}" data-bound-index="${index}" ${editor.busy ? "disabled" : ""}`)).join("")}
+      </fieldset>`).join("")}
+      ${methodThresholds(rows, editor)}
+      <div>${button("Сбросить границы", "reset-bounds", { disabled: Boolean(editor.busy) })}</div>
+    </div>
+  </details>`;
+}
+
+function methodThresholds(params, editor) {
+  const methods = Object.entries(editor.settings.thresholds).filter(([method]) => editor.settings.filters.includes(method));
+  if (!methods.length) return "";
+  return `<h3>Пороги дополнительных методов</h3>
+    ${methods.map(([method, values]) => `<fieldset class="range-fields">
+      <legend>${filterText[method][0]}${method === "stuck" ? " · минимум часов" : " · минимальное отклонение"}</legend>
+      ${params.filter(({ id }) => Object.hasOwn(values, id)).map(({ id, label, unit }) => inputField(
+        `${escapeHtml(label)}${unit && method !== "stuck" ? `, ${escapeHtml(unit)}` : ""}`, `threshold-${method}-${id}`, values[id],
+        `type="number" step="any" required aria-label="${escapeHtml(filterText[method][0] + ": " + label)}"
+        data-threshold="${method}" data-threshold-param="${id}" ${editor.busy ? "disabled" : ""}`)).join("")}
+    </fieldset>`).join("")}`;
 }
 
 function editorPage(editor) {
   const file = state.files.get(editor.id);
   const { settings, busy } = editor;
   const hasPressure = file.params?.some(({ id }) => id === "pressure_hpa");
+  const pressureUpper = String(settings.ranges.pressure_hpa?.[1] ?? "1050");
+  const pressurePreset = ["1050", "1550"].includes(pressureUpper) ? pressureUpper : "manual";
   const checked = checkedPreview(editor);
   const active = editor.done ? "В общих графиках" : editor.preview ? "Проверка результата" : "Настройка фильтрации";
-  const statusText = busy === "restore" ? "Загрузка предпросмотра…" :
-    busy === "preview" ? "Обработка файла…" :
-    busy === "corrected" ? "Проверка исправленного CSV…" :
-    busy === "confirm" ? "Сохранение результата…" :
-    editor.preview && !checked ? "Настройки изменились. Запустите фильтрацию повторно." :
-    editor.preview?.manual ? "Повторная фильтрация обработает исходник и заменит ручные правки в черновике." : "";
   return `${heading("Обработка файла", "", button("К файлам", "list", { glyph: "back" }))}
     ${card(`<div class="between file-context"><div class="row"><span class="file-symbol">${icon("file", 19)}</span>
         <div><h2>${escapeHtml(file.filename)}</h2><p class="muted">${spanLabel(file.start, file.end)} · ${countLabel(file.rows, "строка", "строки", "строк")}</p></div>
@@ -286,24 +404,27 @@ function editorPage(editor) {
         ${note(state.primary?.description || "Явно невозможные значения исключаются. Например, −100 °C или +55 °C.")}
         ${hasPressure ? `<div class="file-options">
           ${selectField("Верхняя граница давления", "file-pressure-max",
-            [["1050", "1 050 гПа"], ["1550", "1 550 гПа · расширенная граница"]], settings.pressure_max, busy)}
-          <p class="caption">При любой границе учитываются флаги качества из исходного файла.</p>
+            [["1050", "1 050 гПа"], ["1550", "1 550 гПа · расширенная граница"], ["manual", "Задана вручную"]], pressurePreset, busy)}
         </div>` : ""}
+        ${filteringBounds(file, editor)}
         <h3 class="edit-subhead">Дополнительные методы</h3>
-        <div class="method-list">${state.filters.map((filter) => `<label class="method">
+        <div class="method-list">${state.filters.map((filter) => {
+          const [label, description] = filterText[filter.id] ?? [filter.label, filter.description];
+          return `<label class="method">
           <input type="checkbox" data-method="${escapeHtml(filter.id)}" ${settings.filters.includes(filter.id) ? "checked" : ""} ${busy ? "disabled" : ""}>
-          <span><strong>${escapeHtml(filter.label)}</strong><span>${escapeHtml(filter.description)}</span></span>
-        </label>`).join("")}</div>
-        ${settings.filters.includes("conflicts") ? `<div class="file-options">${selectField("Повторяющиеся сроки", "file-conflicts",
+          <span><strong>${escapeHtml(label)}</strong><span>${escapeHtml(description)}</span></span>
+        </label>`;
+        }).join("")}</div>
+        ${settings.filters.includes("conflicts") ? `<div class="file-options">${selectField("Записи с одинаковым временем", "file-conflicts",
           [["all", "Исключить конфликтные сроки"], ["best", "Выбрать наиболее надёжную запись"]], settings.conflict_policy, busy)}</div>` : ""}`)}
       ${card(`${cardTitle("Заполнение пропусков", "Выберите источник данных или ИИ-модель.")}
         ${fillSettings(settings, busy)}
         <hr class="rule section-rule">
-        ${selectField("Метеостанция", "file-station", state.stations.map(({ id, label }) => [id, label]), settings.station, busy)}`)}
+        ${selectField("Метеостанция", "file-station", stationOptions(), settings.station, busy)}`)}
     </div>
-    <div class="between processing-bar"><span class="muted small" id="processing-status" role="status">${statusText}</span>
+    <div class="between processing-bar"><span class="muted small" id="processing-status" role="status">${processingStatus(editor)}</span>
       ${button("Отфильтровать", "filter", { type: "primary", glyph: "filter", disabled: Boolean(busy) })}</div>
-    ${editor.message ? `<div role="alert">${note(editor.message, true)}</div>` : ""}
+    ${editor.message ? `<div class="file-editor-feedback" role="alert">${note(editor.message, true)}</div>` : ""}
     ${editor.preview ? previewCard(editor, checked, file) : ""}`}`;
 }
 
@@ -391,7 +512,7 @@ function manualCsvControls(file, preview, editor, ready) {
 }
 
 function previewCard(editor, checked, file) {
-  const { preview, parameters, hiddenLayers, focusEvent } = editor;
+  const { preview, parameters, hiddenLayers, focusEvent, eventDate } = editor;
   const { params, points, stats } = preview;
   const chosen = parameters.size ? params.filter(({ id }) => parameters.has(id)) : params;
   const selected = parameters.size === 1 ? chosen[0] : null;
@@ -406,10 +527,15 @@ function previewCard(editor, checked, file) {
   }
   const timeline = timelineData(preview, file, chosen, events, totals);
   const focus = focusEvent ? timeline.groups.get(focusEvent.bucket)?.[focusEvent.kind] : null;
-  const eventCount = focus ? sumCounts(focus) : enabled.reduce((sum, kind) => sum + totals[kind], 0);
   const visible = events.filter(({ kind, time }) => focus
     ? kind === focusEvent.kind && timeline.indexFor(time) === focusEvent.bucket
-    : enabled.includes(kind));
+    : enabled.includes(kind) && (!eventDate || time.startsWith(eventDate)));
+  const eventCount = focus ? sumCounts(focus) : eventDate
+    ? eventsOnDate(preview, chosen, enabled, eventDate, visible.length)
+    : enabled.reduce((sum, kind) => sum + totals[kind], 0);
+  const chartFocus = eventDate
+    ? { bucket: timeline.indexFor(eventDate), endBucket: timeline.indexFor(`${eventDate} 23:59`) }
+    : focusEvent;
   const download = filesUrl("excel", { id: file.id, revision: preview.revision });
   return card(`${cardTitle("Выбросы и заполнения", "Общая шкала изменений после выбранных методов.",
       tag(file.confirmed ? "Текущая версия остаётся в графиках" : "В общую базу не добавлено", "neutral"))}
@@ -422,18 +548,26 @@ function previewCard(editor, checked, file) {
       ${outlierChip("Все", "all", stats.marked, !parameters.size)}
       ${params.map(({ id, label }) => outlierChip(label, id, stats.parameters[id]?.marked ?? 0, parameters.has(id), colorFor(id))).join("")}
     </div>
-    <div class="legend timeline-legend" role="group" aria-label="Слои шкалы">
+    <div class="timeline-tools"><div class="legend timeline-legend" role="group" aria-label="Слои шкалы">
       ${layers.map((kind) =>
         `<button type="button" class="legend-key" data-file-action="timeline-layer" data-file-id="${kind}" aria-pressed="${enabled.includes(kind)}">
           <i class="swatch block" style="--dot:${timelineLayers[kind].color}"></i>${timelineLayers[kind].label}</button>`).join("")}
     </div>
-    <div class="outlier-chart">${outlierTimeline(timeline, chosen, enabled, focusEvent)}</div>
+    ${file.start !== file.end ? `<form class="timeline-date">
+      <label for="timeline-date" class="muted small">Дата на шкале</label>
+      <input id="timeline-date" type="date" required min="${escapeHtml(file.start)}" max="${escapeHtml(file.end)}" value="${escapeHtml(eventDate)}">
+      <button type="submit" class="btn line">Перейти</button>
+    </form>` : ""}</div>
+    <div class="outlier-chart">${outlierTimeline(timeline, chosen, enabled, chartFocus)}</div>
     ${timeline.incomplete ? note("Чтобы увидеть заполнения по выбранным параметрам, пересчитайте сохранённый предпросмотр.") : ""}
     ${selected ? `<div class="outlier-chart parameter-trace">${outlierTrace(points[selected.id] ?? [], selected, enabled)}</div>` : ""}
-    ${eventCount ? `<details class="outlier-details" ${focus ? "open" : ""}>
-      <summary>${focus ? `${timeline.periodLabel(focusEvent.bucket)} · ${timelineLayers[focusEvent.kind].label} · ${fmt(eventCount)}` : "Показать отмеченные ячейки"}</summary>
-      <div id="timeline-events">${eventTable(visible, eventCount)}</div>
-      ${focus ? button("Все отмеченные сроки", "timeline-reset") : ""}
+    ${eventCount || eventDate ? `<details class="outlier-details" ${focus || eventDate ? "open" : ""}>
+      <summary>${focus ? `${timeline.periodLabel(focusEvent.bucket)} · ${timelineLayers[focusEvent.kind].label} · ${fmt(eventCount)}` :
+        eventDate ? `${spanLabel(eventDate, eventDate)} · Отмеченные сроки` : "Показать отмеченные ячейки"}</summary>
+      <div id="timeline-events">${eventDate && !eventCount
+        ? '<p class="caption">В предпросмотре нет отмеченных сроков на выбранную дату.</p>'
+        : eventTable(visible, eventCount)}</div>
+      ${focus || eventDate ? button("Все отмеченные сроки", "timeline-reset") : ""}
     </details>` : `<p class="caption">${enabled.length ? "Для выбранных слоёв нет изменений." : "Выберите слой на шкале."}</p>`}
     ${preview.warnings?.length ? `<div class="preview-warnings">${preview.warnings.map((message) => note(message, true)).join("")}</div>` : ""}
     ${manualCsvControls(file, preview, editor, checked && !editor.busy)}
@@ -444,6 +578,15 @@ function previewCard(editor, checked, file) {
       ${button(editor.busy === "confirm" ? "Сохранение…" : file.confirmed ? "Заменить в базе" : "Добавить в базу",
         "publish", { type: "accent", glyph: "arrow", disabled: !checked || Boolean(editor.busy) })}
     </div>`, "anchor preview-card-shell");
+}
+
+function eventsOnDate(preview, parameters, enabled, date, visibleCount) {
+  if (preview.timeline_days > 1) return visibleCount;
+  const day = preview.timeline.find(({ time }) => time === date);
+  if (!day || (enabled.includes("filled") && day.filled && !day.filled_parameters)) return visibleCount;
+  const fields = { marked: day.parameters, filled: day.filled_parameters, manual: day.manual_parameters };
+  return enabled.reduce((total, kind) =>
+    total + parameters.reduce((count, { id }) => count + (fields[kind]?.[id] ?? 0), 0), 0);
 }
 
 const DAY = 86_400_000;
@@ -580,7 +723,8 @@ function outlierTimeline(timeline, parameters, enabled, focus) {
     const x = left + (bucket + 0.5) * width;
     const a = y(first);
     const b = y(last);
-    const active = focus?.bucket === bucket && focus.kind === kind;
+    const active = Boolean(focus && bucket >= focus.bucket && bucket <= (focus.endBucket ?? focus.bucket)
+      && (!focus.kind || focus.kind === kind));
     return `<rect class="timeline-event" data-file-action="timeline-event" data-file-id="${kind}:${bucket}" role="button"
       tabindex="0" aria-label="${escapeHtml(label)}" aria-pressed="${active}" x="${x - barWidth / 2}" width="${barWidth}" y="${Math.min(a, b)}"
       height="${Math.abs(a - b)}" fill="${timelineLayers[kind].color}"><title>${escapeHtml(label)}</title></rect>`;
@@ -695,9 +839,8 @@ async function loadList() {
       jsonRequest("/api/stations"),
     ]);
     state.files = new Map(listing.files.map((file) => [file.id, file]));
-    state.stations = catalog.stations;
-    state.filters = listing.filters;
-    state.fills = listing.fills;
+    saveStations(catalog);
+    state.filters = listing.filters.filter(({ id }) => id !== "buddy");
     state.primary = listing.primary;
     state.loading = false;
   } catch (error) {
@@ -707,8 +850,66 @@ async function loadList() {
   render();
 }
 
-function appendUploads(files) {
-  for (const file of files) state.transfers.push({ file, filename: file.name, status: "queued" });
+function coordinateInput(value) {
+  const text = value.trim().replace(",", ".");
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text) ? Number(text) : NaN;
+}
+
+function newPassport() {
+  return {
+    label: state.newStation.label.trim(),
+    latitude: coordinateInput(state.newStation.latitude),
+    longitude: coordinateInput(state.newStation.longitude),
+    profile: state.newStation.profile,
+  };
+}
+
+function validUploadStation() {
+  if (state.uploadStation !== "new") return true;
+  const passport = newPassport();
+  const fields = [
+    ["label", Boolean(passport.label), "Введите название станции."],
+    ["latitude", Math.abs(passport.latitude) <= 90, "Введите широту от −90 до 90."],
+    ["longitude", Math.abs(passport.longitude) <= 180, "Введите долготу от −180 до 180."],
+  ];
+  for (const [key, valid, message] of fields) {
+    const field = document.getElementById(`upload-station-${key}`);
+    field.setCustomValidity(valid ? "" : message);
+    if (!field.reportValidity()) return false;
+  }
+  return true;
+}
+
+function samePassport(station, passport) {
+  return station.label.toLocaleLowerCase("ru-RU") === passport.label.toLocaleLowerCase("ru-RU")
+    && station.latitude === passport.latitude && station.longitude === passport.longitude && station.profile === passport.profile;
+}
+
+async function stationForBatch(batch) {
+  const { passport } = batch;
+  const existing = state.stations.find((station) => samePassport(station, passport));
+  if (existing) return existing;
+  try {
+    const { station } = await jsonRequest("/api/stations", jsonPost(passport));
+    state.stations.push(station);
+    notifyDataChange();
+    return station;
+  } catch (error) {
+    // Another tab or a previous request may already have saved this passport.
+    try {
+      saveStations(await jsonRequest("/api/stations"));
+    } catch {
+      throw error;
+    }
+    const registered = state.stations.find((station) => samePassport(station, passport));
+    if (registered) return registered;
+    throw error;
+  }
+}
+
+function appendUploads(files, selected = state.uploadStation) {
+  const batch = selected === "new" ? { passport: { ...newPassport(), id: `station-${crypto.randomUUID()}` } } : { station: selected };
+  for (const file of files) state.transfers.push({ file, batch, filename: file.name, status: "queued" });
   if (!state.editor) render();
   if (!state.uploading) void uploadNext();
 }
@@ -717,14 +918,24 @@ async function uploadNext() {
   state.uploading = true;
   while (state.transfers.length) {
     const transfer = state.transfers[0];
-    const { file, filename } = transfer;
+    const { file, filename, batch } = transfer;
     transfer.status = "loading";
     if (!state.editor) render();
     try {
       if (!/\.(csv|xlsx)$/i.test(filename)) throw new Error("Поддерживаются форматы CSV и XLSX.");
+      if (!batch.station && !batch.error) {
+        try {
+          const station = await stationForBatch(batch);
+          batch.station = station.id;
+          if (state.uploadStation === "new" && samePassport(station, newPassport())) state.uploadStation = station.id;
+        } catch (error) {
+          batch.error = error;
+        }
+      }
+      if (batch.error) throw batch.error;
       const contentType = filename.toLowerCase().endsWith(".xlsx")
         ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv";
-      const result = await jsonRequest(filesUrl("upload", { filename }), {
+      const result = await jsonRequest(filesUrl("upload", { filename, station: batch.station }), {
         method: "POST", headers: { "Content-Type": contentType }, body: file,
       });
       saveRecord(result);
@@ -751,7 +962,7 @@ async function uploadExample() {
     const fields = Object.keys(rows[0]);
     const csv = [fields.join(","), ...rows.map((row) => fields.map((field) => csvCell(row[field])).join(","))].join("\n");
     state.message = "";
-    appendUploads([new File([csv], "kr1-station-2024-04-01.csv", { type: "text/csv" })]);
+    appendUploads([new File([csv], "kr1-station-2024-04-01.csv", { type: "text/csv" })], "kr1");
   } catch (error) {
     state.message = messageFor(error);
     state.error = true;
@@ -788,7 +999,8 @@ async function openEditor(id) {
 
 async function runPreview(editor) {
   if (editor.busy) return;
-  if (editor.settings.fill === "external" && !editor.settings.timezone) {
+  if (!validateRanges(editor)) return;
+  if (editor.settings.fill_external && !editor.settings.timezone) {
     editor.message = "Укажите часовой пояс исходного файла.";
     render();
     document.getElementById("file-timezone").focus();
@@ -798,7 +1010,9 @@ async function runPreview(editor) {
   editor.message = "";
   render();
   try {
-    const result = await jsonRequest(filesUrl("preview", { id: editor.id, ...settingsQuery(editor.settings) }), { method: "POST" });
+    const allowed = new Set(state.filters.map(({ id }) => id));
+    const settings = { ...editor.settings, filters: editor.settings.filters.filter((id) => allowed.has(id)) };
+    const result = await jsonRequest(filesUrl("preview"), jsonPost({ id: editor.id, ...settingsPayload(settings) }));
     applyPreview(editor, result);
   } catch (error) {
     editor.message = messageFor(error);
@@ -823,6 +1037,7 @@ function applyPreview(editor, result) {
   editor.parameters.clear();
   editor.hiddenLayers.clear();
   editor.focusEvent = null;
+  editor.eventDate = null;
 }
 
 async function uploadCorrectedCsv(editor, selected) {
@@ -858,9 +1073,9 @@ async function confirmFile(editor) {
   editor.message = "";
   render();
   try {
-    saveRecord(await jsonRequest(filesUrl("confirm", {
-      id: editor.id, revision: editor.preview.revision, ...settingsQuery(editor.settings),
-    }), { method: "POST" }));
+    saveRecord(await jsonRequest(filesUrl("confirm"), jsonPost({
+      id: editor.id, revision: editor.preview.revision, ...settingsPayload(editor.settings),
+    })));
     notifyDataChange();
     editor.done = true;
     state.editors.delete(editor.id);
@@ -969,10 +1184,38 @@ async function discardFile(id) {
 }
 
 const settingFields = {
-  "file-station": "station", "fill-pick": "fill", "file-timezone": "timezone",
-  "file-subhour": "subhour", "file-pressure": "pressure_reference", "file-pressure-max": "pressure_max",
+  "file-station": "station", "file-timezone": "timezone",
+  "file-subhour": "subhour", "file-pressure": "pressure_reference",
   "file-conflicts": "conflict_policy",
 };
+
+function validateRanges(editor) {
+  const params = state.files.get(editor.id).params ?? [];
+  for (const { id, label } of params) {
+    const range = editor.settings.ranges[id];
+    if (!range) continue;
+    const [low, high] = range;
+    if ([low, high].every((value) => value !== "" && Number.isFinite(Number(value))) && Number(low) <= Number(high)) continue;
+    editor.boundsOpen = true;
+    editor.message = `${label}. Введите две границы. Минимум не должен превышать максимум.`;
+    render();
+    document.getElementById(`bound-${id}-${low === "" ? 0 : 1}`)?.focus();
+    return false;
+  }
+  for (const [method, values] of Object.entries(editor.settings.thresholds)) {
+    const upper = method === "stuck" ? state.primary.max_stuck_hours : state.primary.max_absolute_bound;
+    for (const { id, label } of params) {
+      if (!Object.hasOwn(values, id) || (Number(values[id]) > 0 && Number(values[id]) <= upper)) continue;
+      if (!editor.settings.filters.includes(method)) continue;
+      editor.boundsOpen = true;
+      editor.message = `${filterText[method][0]}, ${label.toLocaleLowerCase("ru-RU")}. Порог должен быть больше 0 и не превышать ${upper}.`;
+      render();
+      document.getElementById(`threshold-${method}-${id}`)?.focus();
+      return false;
+    }
+  }
+  return true;
+}
 
 function updatePreviewPresentation(editor, control) {
   if (!editor?.preview) return;
@@ -986,7 +1229,10 @@ function updatePreviewPresentation(editor, control) {
     if (!editor.hiddenLayers.delete(id)) editor.hiddenLayers.add(id);
   } else if (action === "timeline-event") {
     const [kind, bucket] = id.split(":");
+    editor.eventDate = null;
     editor.focusEvent = { kind, bucket: Number(bucket) };
+  } else if (action === "timeline-reset") {
+    editor.eventDate = null;
   }
   const current = main.querySelector(".preview-card-shell");
   const wasOpen = current.querySelector(".outlier-details")?.open;
@@ -998,23 +1244,88 @@ function updatePreviewPresentation(editor, control) {
 }
 
 main.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target.id === "upload-station") {
+    state.uploadStation = target.value;
+    render();
+    document.getElementById("upload-station").focus({ preventScroll: true });
+    return;
+  }
+  if (target.id === "upload-station-profile") {
+    state.newStation.profile = target.value;
+    return;
+  }
   const editor = state.editor;
   if (!editor || editor.busy || editor.done) return;
-  const target = event.target;
-  const { method } = target.dataset;
+  const { method, fill } = target.dataset;
   const key = settingFields[target.id];
-  if (!method && !key) return;
-  if (method) {
+  let focused = target.id;
+  if (target.id === "file-pressure-max") {
+    if (target.value === "manual") {
+      editor.boundsOpen = true;
+      focused = "bound-pressure_hpa-1";
+    } else {
+      const [lower] = editor.settings.ranges.pressure_hpa;
+      editor.settings.ranges.pressure_hpa = [lower, Number(target.value)];
+    }
+  } else if (method) {
     const ids = editor.settings.filters;
     editor.settings.filters = target.checked ? [...ids, method] : ids.filter((id) => id !== method);
-  } else {
+  } else if (fill) {
+    editor.settings[fill] = target.checked;
+  } else if (key) {
     editor.settings[key] = target.value;
+  } else {
+    return;
   }
   editor.message = "";
   render();
   const controls = method ? [...main.querySelectorAll("[data-method]")].find((input) => input.dataset.method === method) :
-    document.getElementById(target.id);
+    document.getElementById(focused);
   controls?.focus({ preventScroll: true });
+});
+
+main.addEventListener("input", (event) => {
+  const target = event.target;
+  const { newStation, bound, boundIndex, threshold, thresholdParam } = target.dataset;
+  if (newStation) {
+    state.newStation[newStation] = target.value;
+    target.setCustomValidity("");
+    return;
+  }
+  const editor = state.editor;
+  if ((!bound && !threshold) || !editor || editor.busy || editor.done) return;
+  editor.message = "";
+  main.querySelector(".file-editor-feedback")?.remove();
+  const checked = checkedPreview(editor);
+  if (threshold) {
+    editor.settings.thresholds[threshold][thresholdParam] = target.value;
+  } else {
+    const values = editor.settings.ranges[bound].slice();
+    values[Number(boundIndex)] = target.value;
+    editor.settings.ranges[bound] = values;
+    if (bound === "pressure_hpa" && boundIndex === "1") {
+      document.getElementById("file-pressure-max").value = ["1050", "1550"].includes(target.value) ? target.value : "manual";
+    }
+  }
+  document.getElementById("processing-status").textContent = processingStatus(editor);
+  if (checked !== checkedPreview(editor)) {
+    main.querySelector(".preview-card-shell").outerHTML = previewCard(editor, !checked, state.files.get(editor.id));
+  }
+});
+
+main.addEventListener("toggle", (event) => {
+  if (state.editor && event.target.isConnected && event.target.matches(".file-bounds")) state.editor.boundsOpen = event.target.open;
+}, true);
+
+main.addEventListener("submit", (event) => {
+  const editor = state.editor;
+  if (!editor?.preview || !event.target.matches(".timeline-date")) return;
+  event.preventDefault();
+  editor.eventDate = event.target.querySelector("input").value;
+  editor.focusEvent = null;
+  main.querySelector(".preview-card-shell").outerHTML = previewCard(editor, checkedPreview(editor), state.files.get(editor.id));
+  main.querySelector(".outlier-details summary")?.focus({ preventScroll: true });
 });
 
 document.addEventListener("click", (event) => {
@@ -1025,7 +1336,7 @@ document.addEventListener("click", (event) => {
   const file = state.files.get(id);
   const editor = state.editor;
   switch (action) {
-    case "browse": picker.click(); break;
+    case "browse": if (validUploadStation()) picker.click(); break;
     case "corrected-browse": correctedPicker.click(); break;
     case "example": void uploadExample(); break;
     case "reload": void loadList(); break;
@@ -1037,6 +1348,15 @@ document.addEventListener("click", (event) => {
     case "remove": if (file) showDiscard(file); break;
     case "discard": void discardFile(id); break;
     case "close": dialog.close(); break;
+    case "reset-bounds":
+      if (editor && !editor.busy) {
+        editor.settings.ranges = effectiveRanges();
+        editor.settings.thresholds = effectiveThresholds();
+        editor.message = "";
+        render();
+        main.querySelector(".file-bounds summary")?.focus({ preventScroll: true });
+      }
+      break;
     case "outlier":
     case "timeline-layer":
     case "timeline-event":
@@ -1058,7 +1378,7 @@ dialog.addEventListener("cancel", (event) => {
 });
 
 picker.addEventListener("change", () => {
-  appendUploads(picker.files);
+  if (validUploadStation()) appendUploads(picker.files);
   picker.value = "";
 });
 
@@ -1092,7 +1412,7 @@ window.addEventListener("drop", (event) => {
   const dropzone = event.target.closest("#dropzone");
   if (!dropzone) return;
   dropzone.classList.remove("drag");
-  if (!state.loading && event.dataTransfer.files.length) appendUploads(event.dataTransfer.files);
+  if (!state.loading && event.dataTransfer.files.length && validUploadStation()) appendUploads(event.dataTransfer.files);
 });
 
 void loadList();

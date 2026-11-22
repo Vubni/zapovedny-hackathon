@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/precip.css">
   <link rel="stylesheet" href="/weather-pages.css">
   <script type="module" src="/archive-shell.js"></script>
-  <script defer src="/precip.js"></script>
+  <script type="module" src="/precip.js"></script>
 </head>
 <body>
   <a class="skip-archive" href="#content">К карте осадков</a>
@@ -47,12 +47,38 @@
         </div>
         <div class="precip-layout">
           <figure class="precip-figure">
-            <figcaption><span>Широта · ° с. ш.</span><span aria-label="Север сверху">↑ Север</span></figcaption>
-            <table class="precip-grid" aria-label="Географическая сетка часового прогноза осадков">
-              <tbody id="precip-rows"></tbody>
-              <tfoot><tr id="precip-longitudes"><td></td></tr></tfoot>
-            </table>
-            <p class="precip-axis">Долгота · ° в. д.</p>
+            <figcaption>
+              <span>Центрально-Лесной заповедник и окрестности</span>
+              <div class="precip-map-tools" role="group" aria-label="Масштаб карты">
+                <button class="btn line" type="button" id="precip-zoom-out" aria-label="Уменьшить карту" disabled>−</button>
+                <button class="btn line" type="button" id="precip-zoom-in" aria-label="Увеличить карту">+</button>
+                <button class="btn line" type="button" id="precip-zoom-reset" disabled>Вся область</button>
+              </div>
+            </figcaption>
+            <div class="precip-map" id="precip-map">
+              <svg class="precip-map-drawing" id="precip-map-drawing" aria-hidden="true">
+                <defs>
+                  <pattern id="precip-nodata" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <rect width="7" height="7" fill="#e7dcc4" fill-opacity=".45"></rect>
+                    <path d="M0 0v7" stroke="#805f34" stroke-opacity=".6" stroke-width="2"></path>
+                  </pattern>
+                </defs>
+                <path id="precip-map-land" class="precip-map-land" fill-rule="evenodd"></path>
+                <path id="precip-map-rivers" class="precip-map-rivers"></path>
+                <path id="precip-map-lakes" class="precip-map-lakes" fill-rule="evenodd"></path>
+                <path id="precip-map-roads" class="precip-map-roads"></path>
+                <g id="precip-map-shading"></g>
+                <path id="precip-map-cells" class="precip-map-cells"></path>
+                <path id="precip-map-boundary" class="precip-map-boundary"></path>
+                <g id="precip-map-places" class="precip-map-places"></g>
+                <circle id="precip-map-marker" class="precip-map-marker" r="5.5"></circle>
+              </svg>
+              <div id="precip-map-points" role="group" aria-label="Ячейки почасового прогноза" aria-describedby="precip-map-instructions"></div>
+              <span class="precip-north" aria-label="Север сверху">↑ С</span>
+              <span class="precip-scale" id="precip-scale" aria-label="Линейный масштаб"></span>
+              <span class="precip-map-reading" id="precip-map-reading" aria-hidden="true"></span>
+            </div>
+            <p class="precip-map-instructions" id="precip-map-instructions">Выберите ячейку на карте или перемещайтесь между ячейками клавишами со стрелками.</p>
           </figure>
           <aside class="precip-notes" aria-label="Обозначения карты">
             <h3>Осадки, мм за час</h3>
@@ -65,9 +91,11 @@
               <li><span class="precip-swatch" data-level="missing"></span>Нет данных</li>
             </ul>
             <p class="precip-reserve"><span class="precip-marker" aria-hidden="true"></span><span>Точка в заповеднике<br>56,52° с. ш., 32,87° в. д.</span></p>
+            <p class="precip-reserve"><span class="precip-boundary-key" aria-hidden="true"></span>Граница заповедника</p>
             <div class="precip-selection">
-              <h3>Выбранный квадрат</h3>
-              <p id="precip-cell" aria-live="polite"></p>
+              <h3>Выбранная ячейка</h3>
+              <p class="precip-selected-value" id="precip-cell" aria-live="polite"></p>
+              <p id="precip-coordinate"></p>
               <p id="precip-node"></p>
             </div>
           </aside>
@@ -75,7 +103,8 @@
       </section>
       <footer class="card precip-source">
         <p>Сумма дождя и снега в водном эквиваленте за указанный час. Источник — модельный прогноз DWD ICON Europe с разрешением около 7 км. Измерения метеостанций доступны в метеожурнале.</p>
-        <p>Расстояние между точками карты — около 7 км с севера на юг и 8 км с запада на восток. Квадраты схематически показывают значения ближайших узлов модели. Соседние квадраты могут ссылаться на один узел.</p>
+        <p>Каждая ячейка показывает прогноз ближайшего узла ICON для своей центральной точки. Шаг сетки — около 7 км с севера на юг и 8 км с запада на восток. Соседние ячейки могут ссылаться на один узел.</p>
+        <p>Географическая основа · <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth</a> · <a href="https://www.geonames.org/export/">GeoNames</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>) · <a href="https://www.clgz.ru/node/18448">Границы заповедника, ГИС 2023</a></p>
         <p><a href="https://open-meteo.com/">Weather data by Open-Meteo.com</a> · <a href="https://open-meteo.com/en/docs/dwd-api">О модели ICON Europe</a> · <a href="/precip-example.json" download>Сохранённый ответ API</a></p>
       </footer>
     </section>

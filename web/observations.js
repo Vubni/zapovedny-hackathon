@@ -1,3 +1,4 @@
+import { mountTimeline } from "/observation-timeline.js";
 import { renderChartCard, download, periodFilename } from "/observation-chart.js";
 import { pickStations, mountStationOverview } from "/station-map.js";
 import { mountCoverageOverview } from "/coverage-overview.js";
@@ -205,8 +206,6 @@ const get = id => document.getElementById(id);
 const dateRows = get("observation-date-rows");
 const addDateInterval = get("add-date-interval");
 let notifiedDateKey;
-const rangeStart = get("range-start");
-const rangeEnd = get("range-end");
 const dateError = get("date-error");
 const stationError = get("station-error");
 const archiveRange = get("archive-range");
@@ -354,8 +353,6 @@ async function loadStationCatalog() {
   if (isDate(data.start) && isDate(data.end) && data.start <= data.end) {
     bounds = { start: data.start, end: data.end };
     applyDateBounds();
-    get("archive-start").textContent = dateLabel(bounds.start);
-    get("archive-end").textContent = dateLabel(bounds.end);
   }
   get("all-dates").disabled = !bounds;
   archiveRange.hidden = !bounds;
@@ -389,25 +386,7 @@ function renderMode() {
 }
 
 function syncHandles() {
-  if (!bounds) return;
-  const first = asDay(bounds.start);
-  const days = asDay(bounds.end) - first;
-  const offset = value => Math.max(0, Math.min(days, asDay(value) - first));
-  const percentage = position => 100 * position / (days || 1);
-  rangeStart.max = days;
-  rangeEnd.max = days;
-  rangeStart.value = offset(state.start);
-  rangeEnd.value = offset(state.end);
-  rangeStart.setAttribute("aria-valuetext", dateLabel(asDate(first + rangeStart.valueAsNumber)));
-  rangeEnd.setAttribute("aria-valuetext", dateLabel(asDate(first + rangeEnd.valueAsNumber)));
-  rangeStart.hidden = rangeEnd.hidden = dateRows.children.length !== 1;
-  archiveRange.querySelector(".date-range-bands").replaceChildren(...state.intervals.map(interval => {
-    const band = document.createElement("span");
-    band.className = "date-range-band";
-    band.style.left = `${percentage(offset(interval.start))}%`;
-    band.style.right = `${percentage(days - offset(interval.end))}%`;
-    return band;
-  }));
+  timeline.update(bounds, state.intervals, dateRows.children.length !== state.intervals.length);
 }
 
 function applyDateBounds() {
@@ -508,20 +487,16 @@ function replaceDates(start, end) {
   commitIntervals([{ start, end }], { redraw: true });
 }
 
-function moveHandle(handle, immediate) {
-  if (!bounds || dateRows.children.length !== 1) return;
-  const first = asDay(bounds.start);
-  const start = rangeStart.valueAsNumber;
-  const end = rangeEnd.valueAsNumber;
-  const interval = {
-    start: asDate(first + (handle === rangeStart ? Math.min(start, end) : start)),
-    end: asDate(first + (handle === rangeEnd ? Math.max(start, end) : end)),
-  };
-  const [{ startInput, endInput }] = readDateRows();
-  startInput.value = interval.start;
-  endInput.value = interval.end;
+function editTimeline(index, start, end, final) {
+  const row = readDateRows()[index];
+  if (!row) return;
+  row.startInput.value = start;
+  row.endInput.value = end;
   setDateError("");
-  commitIntervals([interval], { immediate });
+  if (!final) return;
+  const next = state.intervals.map((interval, i) => i === index ? {start, end} : interval);
+  const normalized = normalizeIntervals(next);
+  commitIntervals(normalized, {redraw: normalized.length !== next.length});
 }
 
 function drawCatalog() {
@@ -659,20 +634,6 @@ function summaryOf(series) {
   return weight ? { min, max, average: weightedSum / weight } : null;
 }
 
-function coverageSummary(data) {
-  const counts = data.coverage || [];
-  if (!counts.length) return "";
-  if (counts.length === 1) {
-    const count = counts[0];
-    return `<hr class="rule"><div><h3>${escape(numberFormat.format(count.valid_days))} из ${escape(numberFormat.format(count.total_days))} суток</h3><p class="muted small">Пригодны для расчёта по параметру.</p></div>`;
-  }
-  return `<hr class="rule"><h3>Сутки, пригодные для расчёта</h3><div class="observation-summary-values">${counts.map(count =>
-    `<div class="between small"><span>${escape([count.label, count.interval_label,
-      counts.some(other => other !== count && other.station === count.station && other.interval === count.interval) ? count.parameter_label : null,
-    ].filter(Boolean).join(" · "))}</span><strong>${escape(numberFormat.format(count.valid_days))} из ${escape(numberFormat.format(count.total_days))}</strong></div>`,
-  ).join("")}</div>`;
-}
-
 function renderSummary(card) {
   const intervals = state.intervals.map(({ start, end }) => `${dateLabel(start)} — ${dateLabel(end)}`);
   const heading = intervals.length === 1
@@ -709,7 +670,7 @@ function renderSummary(card) {
       return `<div class="between small"><span>${escape(series.label)}</span><strong>${escape(interval)}</strong></div>`;
     }).join("")}</div>`;
   }
-  summary.innerHTML = `${heading}${details}${coverageSummary(data)}`;
+  summary.innerHTML = `${heading}${details}`;
 }
 
 function updateCharts({ retry = false } = {}) {
@@ -779,10 +740,7 @@ dateRows.addEventListener("click", event => {
   dateChange({ immediate: true });
   dateRows.children[Math.min(index, dateRows.children.length - 1)].querySelector("input").focus();
 });
-for (const handle of [rangeStart, rangeEnd]) {
-  handle.addEventListener("input", () => moveHandle(handle, false));
-  handle.addEventListener("change", () => moveHandle(handle, true));
-}
+
 get("all-dates").addEventListener("click", () => replaceDates(bounds.start, bounds.end));
 get("reset-dates").addEventListener("click", () => replaceDates(defaultState.start, defaultState.end));
 openStations.addEventListener("click", chooseStations);
@@ -851,6 +809,7 @@ window.addEventListener("storage", event => {
   if (event.key === "meteoarchive.dataRevision") refreshPublishedData();
 });
 
+const timeline = mountTimeline(archiveRange, editTimeline);
 const stationOverview = mountStationOverview(get("station-overview"), {
   onChange: updateStations,
   onExpand: chooseStations,
@@ -876,7 +835,7 @@ coverageToggle.addEventListener("change", () => {
 });
 function updateExtraPanels(options = {}) {
   const dates = {start: state.start, end: state.end, intervals: state.intervals};
-  coverageOverview.update({...dates, stations: state.selected});
+  coverageOverview.update({...dates, stations: state.selected, chart: state.charts[0]});
   indicators.update({...options, ...dates, stations: stations.filter(station => state.selected.includes(station.id))});
 }
 showCoverage();
